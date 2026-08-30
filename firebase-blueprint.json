@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "testimonial": {
+      "title": "Testimonial",
+      "description": "A customer review or comment about the service.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "comment": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reply": { "type": "string" }
+      },
+      "required": ["name", "comment", "rating", "createdAt"]
+    },
+    "siteStats": {
+      "title": "Site Statistics",
+      "description": "Global statistics for the website.",
+      "type": "object",
+      "properties": {
+        "visitorCount": { "type": "number" }
+      },
+      "required": ["visitorCount"]
+    },
+    "maintenanceRecord": {
+      "title": "Maintenance Record",
+      "description": "A record of a vehicle's maintenance service.",
+      "type": "object",
+      "properties": {
+        "customerPhone": { "type": "string" },
+        "carModel": { "type": "string" },
+        "serviceDate": { "type": "string", "format": "date-time" },
+        "serviceType": { "type": "string" },
+        "notes": { "type": "string" },
+        "cost": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "completed", "cancelled"] }
+      },
+      "required": ["customerPhone", "carModel", "serviceDate", "serviceType"]
+    },
+    "service": {
+      "title": "Service",
+      "description": "A service offered by the center.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "price": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["title", "description", "icon", "isActive"]
+    },
+    "offer": {
+      "title": "Offer",
+      "description": "A promotional offer.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "price": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "price", "features", "isActive"]
+    },
+    "galleryItem": {
+      "title": "Gallery Item",
+      "description": "A before/after photo of a service.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "beforeUrl": { "type": "string" },
+        "afterUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "beforeUrl", "afterUrl", "createdAt"]
+    },
+    "dailyStat": {
+      "title": "Daily Statistic",
+      "description": "Statistics for a specific day.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "visitors": { "type": "number" },
+        "bookings": { "type": "number" }
+      },
+      "required": ["date", "visitors", "bookings"]
+    }
+  },
+  "firestore": {
+    "/testimonials/{testimonialId}": {
+      "schema": "testimonial",
+      "description": "Collection of customer testimonials."
+    },
+    "/stats/global": {
+      "schema": "siteStats",
+      "description": "Global site statistics."
+    },
+    "/maintenance/{recordId}": {
+      "schema": "maintenanceRecord",
+      "description": "Collection of vehicle maintenance records and bookings."
+    },
+    "/services/{serviceId}": {
+      "schema": "service",
+      "description": "Collection of services offered."
+    },
+    "/offers/{offerId}": {
+      "schema": "offer",
+      "description": "Collection of promotional offers."
+    },
+    "/gallery/{itemId}": {
+      "schema": "galleryItem",
+      "description": "Collection of before/after gallery items."
+    },
+    "/analytics/{dateId}": {
+      "schema": "dailyStat",
+      "description": "Collection of daily analytics data."
+    }
+  }
+}

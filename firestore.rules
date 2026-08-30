@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow public read and write access to all content collections
+    match /services/{serviceId} { allow read, write: if true; }
+    match /offers/{offerId} { allow read, write: if true; }
+    match /gallery/{itemId} { allow read, write: if true; }
+    match /testimonials/{testimonialId} { allow read, write: if true; }
+    match /maintenance/{recordId} { allow read, write: if true; }
+    match /stats/{docId} { allow read, write: if true; }
+    match /analytics/{dateId} { allow read, write: if true; }
+    match /settings/{docId} { allow read, write: if true; }
+    
+    // Global fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
