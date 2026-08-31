@@ -40,7 +40,7 @@ async function startServer() {
   });
 
   // Setup / Register Webhook with Telegram
-  app.all('/api/telegram/setup-webhook', async (req, res) => {
+  const handleSetupWebhook = async (req: any, res: any) => {
     try {
       const host = (req.headers['x-forwarded-host'] || req.headers.host || 'www.drfix.repair') as string;
       const protocol = (req.headers['x-forwarded-proto'] || 'https') as string;
@@ -73,12 +73,14 @@ async function startServer() {
       const setWebhookResult = await callTelegramApi('setWebhook', payload);
       const getInfoResult = await callTelegramApi('getWebhookInfo', {});
 
-      const isSuccess = setWebhookResult && setWebhookResult.ok === true;
+      const isUrlAlreadyActive = getInfoResult?.result?.url === webhookUrl;
+      const isSuccess = (setWebhookResult && setWebhookResult.ok === true) || isUrlAlreadyActive;
 
       res.status(isSuccess ? 200 : 400).json({
         ok: isSuccess,
         message: isSuccess ? 'Telegram Webhook registered successfully' : 'Failed to register Telegram Webhook',
         targetWebhookUrl: webhookUrl,
+        isUrlAlreadyActive,
         hasSecretTokenConfigured: isValidSecret,
         telegramSetResult: setWebhookResult,
         currentWebhookInfo: getInfoResult,
@@ -87,7 +89,10 @@ async function startServer() {
     } catch (error) {
       res.status(500).json({ ok: false, error: String(error) });
     }
-  });
+  };
+
+  app.all('/api/setup-webhook', handleSetupWebhook);
+  app.all('/api/telegram/setup-webhook', handleSetupWebhook);
 
   // Server-side New Booking Notification Trigger
   app.post('/api/notify-booking', async (req, res) => {
