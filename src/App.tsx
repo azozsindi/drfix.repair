@@ -390,60 +390,107 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
     { name: t.nav.history, path: '/history' },
   ];
 
+  const handleNavClick = (path: string) => {
+    setIsOpen(false);
+    if (path.startsWith('/#')) {
+      const id = path.replace('/#', '');
+      if (location.pathname === '/') {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        navigate('/');
+        setTimeout(() => {
+          const el = document.getElementById(id);
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 150);
+      }
+    } else {
+      navigate(path);
+    }
+  };
+
   const handleBookNow = () => {
+    setIsOpen(false);
     if (location.pathname === '/') {
       const element = document.getElementById('booking');
       if (element) {
         element.scrollIntoView({ behavior: 'smooth' });
-        setIsOpen(false);
       }
     } else {
       navigate('/booking');
-      setIsOpen(false);
     }
   };
 
   return (
-    <nav className="fixed top-7 md:top-8 left-0 right-0 z-50 bg-brand-black/80 backdrop-blur-lg border-b border-white/5" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex justify-between items-center">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="relative flex items-center justify-center">
-            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden">
-              {settings.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-              ) : (
-                <span className="text-brand-red font-display font-black text-lg italic tracking-tighter leading-none">
-                  Dr.Fix
-                </span>
-              )}
-            </div>
+    <nav className="fixed top-7 md:top-8 left-0 right-0 z-50 bg-brand-black/90 backdrop-blur-xl border-b border-white/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 md:py-4 flex justify-between items-center">
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
+            {settings.logoUrl ? (
+              <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
+            ) : (
+              <span className="text-brand-red font-display font-black text-base md:text-lg italic tracking-tighter leading-none">
+                Dr.Fix
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors">
+              {settings.siteName || 'Dr. Fix'}
+            </span>
+            <span className="text-[10px] text-gray-400 hidden sm:inline-block">صيانة سيارات احترافية</span>
           </div>
         </Link>
         
         {/* Desktop Menu */}
-        <div className="hidden md:flex items-center gap-8 text-sm font-bold uppercase tracking-widest">
+        <div className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-bold uppercase tracking-wider">
           {navLinks.map((link) => (
-            <Link 
+            <button 
               key={link.path} 
-              to={link.path} 
-              className={cn("transition-colors hover:text-brand-red", location.pathname === link.path ? "text-brand-red" : "text-white")}
+              onClick={() => handleNavClick(link.path)}
+              className={cn("transition-colors hover:text-brand-red cursor-pointer py-1", location.pathname === link.path ? "text-brand-red" : "text-white")}
             >
               {link.name}
-            </Link>
+            </button>
           ))}
-          <div className="h-6 w-px bg-white/10" />
+          <div className="h-5 w-px bg-white/10" />
           <LanguageToggle />
-          <button onClick={handleBookNow} className="px-4 py-2 bg-brand-red rounded-full text-white font-display font-bold red-glow-hover transition-all">{t.nav.bookNow}</button>
+          <div className="flex items-center gap-2">
+            <a 
+              href={`tel:${settings.phone || '0546870807'}`} 
+              className="p-2.5 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all"
+              title="اتصال هاتفي"
+            >
+              <Phone className="w-4 h-4" />
+            </a>
+            <a 
+              href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="p-2.5 rounded-full bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-all shadow-sm shadow-green-500/20"
+              title="واتساب"
+            >
+              <MessageCircle className="w-4 h-4" />
+            </a>
+          </div>
+          <button 
+            onClick={handleBookNow} 
+            className="px-5 py-2.5 bg-brand-red rounded-full text-white font-display font-black text-xs md:text-sm red-glow-hover transition-all cursor-pointer flex items-center gap-2"
+          >
+            <Car className="w-4 h-4" />
+            {t.nav.bookNow}
+          </button>
         </div>
 
-        {/* Mobile Menu Toggle */}
-        <div className="flex items-center gap-4 md:hidden">
+        {/* Mobile / Tablet Menu Toggle */}
+        <div className="flex items-center gap-2.5 lg:hidden">
           <LanguageToggle />
           <button 
             onClick={() => setIsOpen(!isOpen)}
-            className="p-2 text-white hover:text-brand-red transition-colors"
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white hover:text-brand-red hover:border-brand-red/30 transition-all cursor-pointer"
+            aria-label="Toggle menu"
           >
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
@@ -455,32 +502,132 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="md:hidden bg-brand-dark border-b border-white/5 overflow-hidden"
+            className="lg:hidden bg-brand-dark/98 backdrop-blur-2xl border-b border-white/10 overflow-hidden shadow-2xl"
           >
-            <div className="flex flex-col p-6 gap-6 text-lg font-bold">
+            <div className="flex flex-col p-5 sm:p-6 gap-4 text-base font-bold">
               {navLinks.map((link) => (
-                <Link 
+                <button 
                   key={link.path} 
-                  to={link.path} 
-                  onClick={() => setIsOpen(false)}
-                  className={cn("transition-colors hover:text-brand-red", location.pathname === link.path ? "text-brand-red" : "text-white")}
+                  onClick={() => handleNavClick(link.path)}
+                  className={cn(
+                    "text-right py-2 px-3 rounded-xl transition-all flex items-center justify-between hover:bg-white/5",
+                    location.pathname === link.path ? "text-brand-red bg-brand-red/10" : "text-white"
+                  )}
                 >
-                  {link.name}
-                </Link>
+                  <span>{link.name}</span>
+                  <ChevronLeft className="w-4 h-4 opacity-50" />
+                </button>
               ))}
-              <button onClick={handleBookNow} className="bg-brand-red px-6 py-3 rounded-xl text-center font-display text-white font-bold">{t.nav.bookNow}</button>
-              <Link 
-                to="/admin"
-                onClick={() => setIsOpen(false)}
-                className="text-[10px] text-gray-700 uppercase tracking-widest mt-4 self-center"
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <a 
+                  href={`tel:${settings.phone || '0546870807'}`} 
+                  className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 transition-colors"
+                >
+                  <Phone className="w-4 h-4 text-brand-red" />
+                  <span>اتصال هاتفي</span>
+                </a>
+                <a 
+                  href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="py-3 px-4 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center gap-2 text-sm text-green-400 hover:bg-[#25D366]/30 transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>واتساب</span>
+                </a>
+              </div>
+
+              <button 
+                onClick={handleBookNow} 
+                className="bg-brand-red py-3.5 px-6 rounded-xl text-center font-display text-white font-black text-sm shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2"
               >
-                Admin Access
-              </Link>
+                <Car className="w-4 h-4" />
+                {t.nav.bookNow}
+              </button>
+
+              <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs text-gray-500">
+                <Link 
+                  to="/admin"
+                  onClick={() => setIsOpen(false)}
+                  className="text-gray-500 hover:text-white transition-colors"
+                >
+                  لوحة التحكم (Admin)
+                </Link>
+                <span className="font-mono text-[10px]">v2.5 • Dr. Fix</span>
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </nav>
+  );
+};
+
+const MobileQuickBar = ({ settings }: { settings: AppSettings }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { t } = useLanguage();
+
+  const handleBookClick = () => {
+    if (location.pathname === '/') {
+      const el = document.getElementById('booking');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      navigate('/booking');
+    }
+  };
+
+  const whatsappNumber = (settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '');
+  const phoneNumber = settings.phone || '0546870807';
+
+  return (
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-brand-black/95 backdrop-blur-xl border-t border-white/10 px-3 py-2 pb-safe shadow-[0_-10px_30px_rgba(0,0,0,0.8)]">
+      <div className="grid grid-cols-4 gap-1.5 max-w-md mx-auto items-center">
+        {/* Book Button */}
+        <button
+          onClick={handleBookClick}
+          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-brand-red text-white font-bold transition-transform active:scale-95 shadow-md shadow-brand-red/30 cursor-pointer"
+        >
+          <Car className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] whitespace-nowrap font-display font-black">{t.nav.bookNow}</span>
+        </button>
+
+        {/* WhatsApp Button */}
+        <a
+          href={`https://wa.me/${whatsappNumber}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-green-400 hover:text-white hover:bg-[#25D366] transition-all active:scale-95"
+        >
+          <MessageCircle className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] whitespace-nowrap font-bold">واتساب</span>
+        </a>
+
+        {/* Call Button */}
+        <a
+          href={`tel:${phoneNumber}`}
+          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-brand-red transition-all active:scale-95"
+        >
+          <Phone className="w-5 h-5 mb-0.5 text-brand-red" />
+          <span className="text-[10px] whitespace-nowrap font-bold">اتصال</span>
+        </a>
+
+        {/* History / Status Button */}
+        <Link
+          to="/history"
+          className={cn(
+            "flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all active:scale-95",
+            location.pathname === '/history' 
+              ? "bg-brand-red/20 border border-brand-red/40 text-brand-red" 
+              : "bg-white/5 border border-white/10 text-gray-300 hover:text-white"
+          )}
+        >
+          <History className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] whitespace-nowrap font-bold">سجلي</span>
+        </Link>
+      </div>
+    </div>
   );
 };
 
@@ -501,21 +648,20 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
   };
 
   return (
-    <section className="relative min-h-screen flex items-center pt-24 md:pt-20 overflow-hidden">
-    {/* Background Pattern */}
-    <div className="absolute inset-0 z-0 opacity-10 md:opacity-20 pointer-events-none overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-brand-red/20 via-transparent to-transparent" />
-      
-      <div className="grid grid-cols-6 md:grid-cols-12 h-full w-full border-x border-white/5">
-        {[...Array(12)].map((_, i) => (
-          <div key={i} className="border-r border-white/5 h-full" />
-        ))}
+    <section className="relative min-h-[85vh] lg:min-h-screen flex items-center pt-24 sm:pt-28 md:pt-32 pb-12 sm:pb-16 overflow-hidden">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 z-0 opacity-10 md:opacity-20 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-brand-red/25 via-transparent to-transparent" />
+        <div className="grid grid-cols-6 md:grid-cols-12 h-full w-full border-x border-white/5">
+          {[...Array(12)].map((_, i) => (
+            <div key={i} className="border-r border-white/5 h-full" />
+          ))}
+        </div>
       </div>
-    </div>
 
-    <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10 grid lg:grid-cols-2 gap-12 items-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 relative z-10 grid lg:grid-cols-2 gap-8 lg:gap-12 items-center w-full">
         <motion.div 
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 25 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
           className={cn("text-center lg:text-right", lang === 'en' && "lg:text-left")}
@@ -523,39 +669,56 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5 }}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-red/10 border border-brand-red/20 text-brand-red text-xs sm:text-sm md:text-base font-bold mb-4 md:mb-6"
+            transition={{ delay: 0.3 }}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs sm:text-sm font-bold mb-4 sm:mb-6 shadow-sm"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-red animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-brand-red animate-pulse" />
             {lang === 'ar' ? (settings.heroBadge || t.hero.badge) : t.hero.badge}
           </motion.div>
-          <h1 className="text-xl sm:text-3xl md:text-4xl lg:text-5xl font-display font-black leading-tight md:leading-[1.1] mb-4 md:mb-6 italic uppercase tracking-tighter">
-            {lang === 'ar' ? (settings.heroTitle || t.hero.title) : t.hero.title} <br />
-            <span className="text-brand-red relative inline-block">
+
+          <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-display font-black leading-tight sm:leading-tight md:leading-[1.15] mb-4 sm:mb-6 italic uppercase tracking-tight">
+            {lang === 'ar' ? (settings.heroTitle || t.hero.title) : t.hero.title} <br className="hidden sm:inline" />
+            <span className="text-brand-red relative inline-block mt-1 sm:mt-0">
               {lang === 'ar' ? (settings.heroSubtitle || t.hero.titleAccent) : t.hero.titleAccent}
               <motion.div 
                 initial={{ width: 0 }}
                 animate={{ width: '100%' }}
-                transition={{ delay: 1, duration: 0.8 }}
-                className="absolute -bottom-1 left-0 h-1.5 bg-white/10 rounded-full"
+                transition={{ delay: 0.8, duration: 0.8 }}
+                className="absolute -bottom-1 left-0 h-1 sm:h-1.5 bg-brand-red/30 rounded-full"
               />
             </span>
           </h1>
-          <p className="text-sm md:text-base text-gray-400 mb-8 max-w-lg mx-auto lg:mx-0 leading-relaxed">
+
+          <p className="text-sm sm:text-base md:text-lg text-gray-300 mb-6 sm:mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal">
             {t.hero.description}
           </p>
-          <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center lg:justify-start">
-            <button onClick={handleBookNow} className="px-8 py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all flex items-center justify-center gap-3 text-base">
-              {t.hero.ctaBook}
-              <Car className="w-6 h-6" />
+
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
+            <button 
+              onClick={handleBookNow} 
+              className="w-full sm:w-auto px-7 sm:px-8 py-3.5 sm:py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all flex items-center justify-center gap-3 text-base sm:text-lg shadow-lg shadow-brand-red/20 active:scale-95 cursor-pointer"
+            >
+              <Car className="w-5 h-5 sm:w-6 sm:h-6" />
+              <span>{t.hero.ctaBook}</span>
             </button>
-            <div className="flex gap-2">
-              <a href={`tel:${settings.phone || '0546870807'}`} className="flex-1 px-6 py-4 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-white/5 transition-all cursor-pointer" title="اتصال هاتفي">
-                {t.hero.ctaServices}
-                <Phone className="w-5 h-5" />
+            <div className="grid grid-cols-2 sm:flex gap-2.5 sm:gap-3 w-full sm:w-auto">
+              <a 
+                href={`tel:${settings.phone || '0546870807'}`} 
+                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-white/10 transition-all active:scale-95 cursor-pointer" 
+                title="اتصال هاتفي"
+              >
+                <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red" />
+                <span>{t.hero.ctaServices}</span>
               </a>
-              <a href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} target="_blank" rel="noopener noreferrer" className="px-6 py-4 bg-[#25D366] text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-[#128C7E] transition-all cursor-pointer shadow-lg shadow-green-500/20" title="واتساب">
-                <MessageCircle className="w-5 h-5" />
+              <a 
+                href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-[#25D366] text-white rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-[#128C7E] transition-all active:scale-95 cursor-pointer shadow-lg shadow-green-500/20" 
+                title="واتساب"
+              >
+                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span>واتساب</span>
               </a>
             </div>
           </div>
@@ -563,47 +726,56 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
           <motion.p 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 1.5 }}
-            className="mt-12 text-[10px] md:text-xs text-gray-600 italic font-medium"
+            transition={{ delay: 1.2 }}
+            className="mt-8 sm:mt-10 text-[11px] sm:text-xs text-gray-500 italic font-medium"
           >
             {t.hero.prayer}
           </motion.p>
         </motion.div>
 
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ 
-          opacity: 1, 
-          scale: 1,
-          y: [0, -15, 0]
-        }}
-        transition={{ 
-          duration: 1.2, 
-          delay: 0.2,
-          y: {
-            duration: 5,
-            repeat: Infinity,
-            ease: "easeInOut"
-          }
-        }}
-        className="relative px-4 md:px-0"
-      >
-        <div className="relative z-10 rounded-2xl md:rounded-3xl overflow-hidden border border-white/10 red-glow shadow-2xl">
-          <img 
-            src={settings.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
-            alt="Car Maintenance" 
-            className="w-full h-[180px] sm:h-[250px] md:h-[350px] object-cover"
-            referrerPolicy="no-referrer"
-            loading="lazy"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-brand-black via-transparent to-transparent opacity-40" />
-        </div>
-        
-        <div className="absolute -top-5 -right-5 md:-top-10 md:-right-10 w-24 h-24 md:w-40 md:h-40 bg-brand-red/20 blur-3xl rounded-full" />
-        <div className="absolute -bottom-5 -left-5 md:-bottom-10 md:-left-10 w-32 h-32 md:w-60 md:h-60 bg-brand-red/10 blur-3xl rounded-full" />
-      </motion.div>
-    </div>
-  </section>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ 
+            opacity: 1, 
+            scale: 1,
+            y: [0, -10, 0]
+          }}
+          transition={{ 
+            duration: 1.2, 
+            delay: 0.2,
+            y: {
+              duration: 6,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }
+          }}
+          className="relative px-2 sm:px-4 md:px-0"
+        >
+          <div className="relative z-10 rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 red-glow shadow-2xl">
+            <img 
+              src={settings.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
+              alt="Dr. Fix Car Maintenance" 
+              className="w-full h-[200px] sm:h-[280px] md:h-[360px] lg:h-[420px] object-cover"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60" />
+            
+            {/* Quick floating stat badge on image */}
+            <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 bg-brand-black/85 backdrop-blur-md border border-white/15 rounded-xl px-3.5 py-2 flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-green-500 animate-ping" />
+              <div className="text-right">
+                <div className="text-xs font-bold text-white">خدمة متنقلة وسريعة</div>
+                <div className="text-[10px] text-gray-400">نصلك أينما كنت بجدة</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="absolute -top-5 -right-5 md:-top-10 md:-right-10 w-28 h-28 md:w-48 md:h-48 bg-brand-red/20 blur-3xl rounded-full pointer-events-none" />
+          <div className="absolute -bottom-5 -left-5 md:-bottom-10 md:-left-10 w-36 h-36 md:w-64 md:h-64 bg-brand-red/15 blur-3xl rounded-full pointer-events-none" />
+        </motion.div>
+      </div>
+    </section>
   );
 };
 
@@ -3152,30 +3324,66 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                             className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red resize-none"
                           />
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-gray-500 uppercase">اللوجو</label>
-                          <div className="flex items-center gap-4">
-                            <div className="w-20 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden">
-                              {settingsForm.logoUrl ? (
-                                <img src={settingsForm.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
-                              ) : (
-                                <Camera className="w-8 h-8 text-gray-700" />
-                              )}
+                        <div className="space-y-3 p-4 rounded-2xl bg-white/5 border border-white/10">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+                              <Camera className="w-4 h-4 text-brand-red" />
+                              شعار الموقع (Logo)
+                            </label>
+                            {settingsForm.logoUrl && (
+                              <button
+                                type="button"
+                                onClick={() => setSettingsForm({ ...settingsForm, logoUrl: '' })}
+                                className="text-xs text-brand-red hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                استرجاع الشعار الافتراضي
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="flex flex-col sm:flex-row items-center gap-5">
+                            {/* Live Logo Preview Box */}
+                            <div className="flex flex-col items-center gap-1.5 shrink-0">
+                              <div className="w-24 h-24 rounded-full bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl relative group">
+                                {settingsForm.logoUrl ? (
+                                  <img 
+                                    src={settingsForm.logoUrl} 
+                                    alt="Logo Preview" 
+                                    className="w-full h-full object-cover" 
+                                  />
+                                ) : (
+                                  <span className="text-brand-red font-display font-black text-xl italic tracking-tighter">
+                                    Dr.Fix
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-400">معاينة الشعار في الهيدر</span>
                             </div>
-                            <div className="flex-1 space-y-2">
-                              <input 
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => handleImageUpload(e, 'settings')}
-                                className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-red file:text-white hover:file:bg-red-700"
-                              />
-                              <input 
-                                type="text"
-                                value={settingsForm.logoUrl}
-                                onChange={e => setSettingsForm({...settingsForm, logoUrl: e.target.value})}
-                                placeholder="أو أدخل رابط الصورة مباشرة..."
-                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-brand-red"
-                              />
+
+                            <div className="flex-1 w-full space-y-3">
+                              {/* File Input */}
+                              <div className="space-y-1">
+                                <label className="text-[11px] text-gray-400 block">رفع صورة من جهازك (PNG, JPG, SVG, WebP):</label>
+                                <input 
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleImageUpload(e, 'settings')}
+                                  className="w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
+                                />
+                              </div>
+
+                              {/* URL input */}
+                              <div className="space-y-1">
+                                <label className="text-[11px] text-gray-400 block">أو إدخال رابط الصورة الخارجي مباشرة:</label>
+                                <input 
+                                  type="text"
+                                  value={settingsForm.logoUrl}
+                                  onChange={e => setSettingsForm({...settingsForm, logoUrl: e.target.value})}
+                                  placeholder="https://example.com/logo.png"
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-brand-red text-white"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -3188,6 +3396,46 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                           <Palette className="w-5 h-5 text-brand-red" />
                           الهوية والثيمات
                         </h3>
+
+                        {/* Logo in Branding tab as well */}
+                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
+                              <Camera className="w-4 h-4 text-brand-red" />
+                              شعار وهوية الموقع (Logo)
+                            </label>
+                            {settingsForm.logoUrl && (
+                              <button
+                                type="button"
+                                onClick={() => setSettingsForm({ ...settingsForm, logoUrl: '' })}
+                                className="text-xs text-brand-red hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                استرجاع الشعار الافتراضي
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="flex flex-col sm:flex-row items-center gap-5">
+                            <div className="w-20 h-20 rounded-full bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl shrink-0">
+                              {settingsForm.logoUrl ? (
+                                <img src={settingsForm.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-brand-red font-display font-black text-lg italic tracking-tighter">
+                                  Dr.Fix
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex-1 w-full space-y-2">
+                              <input 
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, 'settings')}
+                                className="w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
+                              />
+                            </div>
+                          </div>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <label className="text-xs font-bold text-gray-500 uppercase">اللون الأساسي</label>
@@ -4273,8 +4521,8 @@ const Footer = React.memo(({ settings }: { settings: AppSettings }) => {
   }, []);
 
   return (
-    <footer className="bg-brand-black border-t border-white/5 py-12">
-      <div className={cn("max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-12", lang === 'ar' ? "text-right" : "text-left")}>
+    <footer className="bg-brand-black border-t border-white/5 pt-12 pb-24 md:pb-12">
+      <div className={cn("max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12", lang === 'ar' ? "text-right" : "text-left")}>
         <div className="col-span-2">
           <div className="flex items-center gap-2 mb-6">
             <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
@@ -4836,7 +5084,7 @@ function MainContent() {
       <Ticker settings={settings} />
       <Navbar settings={settings} />
       
-      <main className="pt-28 md:pt-32">
+      <main className="pt-20 sm:pt-24 md:pt-28 pb-16 md:pb-0">
         <Routes>
           <Route path="/" element={
             <>
@@ -4861,6 +5109,10 @@ function MainContent() {
       </main>
 
       <Footer settings={settings} />
+      
+      {location.pathname !== '/admin' && location.pathname !== '/login' && (
+        <MobileQuickBar settings={settings} />
+      )}
       
       <AnimatePresence>
         {showInstallPrompt && (

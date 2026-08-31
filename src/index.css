@@ -35,16 +35,41 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-brand-black text-white font-sans antialiased selection:bg-brand-red selection:text-white;
     direction: rtl;
     -webkit-tap-highlight-color: transparent;
-    perspective: 1000px;
+    touch-action: manipulation;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Prevent auto-zoom on iOS inputs */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media (min-width: 768px) {
+    input, select, textarea {
+      font-size: 0.875rem;
+    }
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply tracking-tight;
   }
+}
+
+/* Safe area padding utilities for mobile phones */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .glass-card {
