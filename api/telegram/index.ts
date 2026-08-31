@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { handleTelegramWebhook } from '../server/telegram';
+import { handleTelegramWebhook } from '../../server/telegram';
 
 export default async function handler(req: Request, res: Response) {
   // Respond to GET health checks

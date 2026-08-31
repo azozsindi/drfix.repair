@@ -40,12 +40,50 @@ async function startServer() {
   });
 
   // Setup / Register Webhook with Telegram
-  app.get('/api/telegram/setup-webhook', async (req, res) => {
+  app.all('/api/telegram/setup-webhook', async (req, res) => {
     try {
-      const appUrl = process.env.APP_URL || 'https://drfix.repair';
-      const webhookUrl = `${appUrl.replace(/\/$/, '')}/api/telegram`;
-      const result = await callTelegramApi('setWebhook', { url: webhookUrl });
-      res.json({ ok: true, webhookUrl, telegramResponse: result });
+      const host = (req.headers['x-forwarded-host'] || req.headers.host || 'www.drfix.repair') as string;
+      const protocol = (req.headers['x-forwarded-proto'] || 'https') as string;
+      
+      let baseDomain = 'https://www.drfix.repair';
+      const customDomain = req.query.domain as string;
+      if (customDomain && customDomain.startsWith('http')) {
+        baseDomain = customDomain;
+      } else if (process.env.APP_URL && process.env.APP_URL.startsWith('http') && !process.env.APP_URL.includes('run.app')) {
+        baseDomain = process.env.APP_URL;
+      } else if (host && (host.includes('drfix.repair') || host.includes('vercel.app'))) {
+        baseDomain = `${protocol}://${host}`;
+      }
+
+      baseDomain = baseDomain.replace(/\/$/, '');
+      const webhookUrl = `${baseDomain}/api/telegram`;
+
+      const rawSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+      const isValidSecret = /^[A-Za-z0-9_-]{1,256}$/.test(rawSecret);
+
+      const payload: Record<string, any> = {
+        url: webhookUrl,
+        drop_pending_updates: false
+      };
+
+      if (isValidSecret) {
+        payload.secret_token = rawSecret;
+      }
+
+      const setWebhookResult = await callTelegramApi('setWebhook', payload);
+      const getInfoResult = await callTelegramApi('getWebhookInfo', {});
+
+      const isSuccess = setWebhookResult && setWebhookResult.ok === true;
+
+      res.status(isSuccess ? 200 : 400).json({
+        ok: isSuccess,
+        message: isSuccess ? 'Telegram Webhook registered successfully' : 'Failed to register Telegram Webhook',
+        targetWebhookUrl: webhookUrl,
+        hasSecretTokenConfigured: isValidSecret,
+        telegramSetResult: setWebhookResult,
+        currentWebhookInfo: getInfoResult,
+        configuredAt: new Date().toISOString()
+      });
     } catch (error) {
       res.status(500).json({ ok: false, error: String(error) });
     }

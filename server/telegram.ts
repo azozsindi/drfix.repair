@@ -1,9 +1,23 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc, query, orderBy, limit, getDoc, Timestamp } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import { getFirestore, collection, getDocs, doc, updateDoc, query, orderBy, limit, getDoc } from 'firebase/firestore';
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const firebaseConfig = {
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'hr-system-2026',
+  appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_APP_ID || '1:262129832067:web:dc1ddee9ef7ef29befcbb6',
+  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || 'AIzaSyCSHgY3CAhV7ZLDZL2GkIOZhmbD2pK0J7g',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_AUTH_DOMAIN || 'hr-system-2026.firebaseapp.com',
+  firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || 'ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601',
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || 'hr-system-2026.firebasestorage.app',
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '262129832067'
+};
+
+function getDbInstance() {
+  const apps = getApps();
+  const app = apps.length === 0 ? initializeApp(firebaseConfig) : apps[0];
+  return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+}
+
+const db = getDbInstance();
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 const TELEGRAM_ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || '867105778';
