@@ -1,4 +1,4 @@
-import { sendReviewNotification } from '../server/telegram';
+import { sendReviewNotification } from './_telegram';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');

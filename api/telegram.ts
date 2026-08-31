@@ -1,4 +1,4 @@
-import { handleTelegramWebhook } from '../server/telegram';
+import { handleTelegramWebhook } from './_telegram';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -68,7 +68,7 @@ export default async function handler(req: any, res: any) {
       service: 'DR.FIX Telegram Inbound Webhook',
       status: 'active',
       method: req.method,
-      setupInstruction: 'To register webhook, visit /api/telegram/setup-webhook or /api/telegram?setup=1',
+      setupInstruction: 'To register webhook, visit /api/setup-webhook or /api/telegram?setup=1',
       timestamp: new Date().toISOString()
     });
   }
