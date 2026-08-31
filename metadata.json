@@ -1,8 +1,9 @@
 {
-  "name": "Remix Remix Dr. Fix - صيانة السيارات الاحترافية",
-  "description": "مركز Dr. Fix لصيانة السيارات: ميكانيكا، كهرباء، سمكرة، وبرمجة. جودة واحترافية في كل خدمة.",
+  "name": "DR.FIX | ميكانيكي متنقل في جدة",
+  "description": "DR.FIX ميكانيكي متنقل في جدة يقدم خدمات صيانة وإصلاح السيارات عند موقعك. احجز خدمة ميكانيكي متنقل بسرعة وسهولة.",
   "requestFramePermissions": [
-    "notifications"
+    "notifications",
+    "geolocation"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

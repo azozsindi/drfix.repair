@@ -72,7 +72,12 @@ import {
   VolumeX,
   Download,
   Sparkles,
-  Radio
+  Radio,
+  Save,
+  TrendingUp,
+  Navigation,
+  Compass,
+  CalendarCheck
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
@@ -88,7 +93,9 @@ import {
   Line, 
   PieChart, 
   Pie, 
-  Cell 
+  Cell,
+  AreaChart,
+  Area
 } from 'recharts';
 import { 
   collection, 
@@ -291,7 +298,6 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
 interface AppSettings {
   logoUrl?: string;
   siteName?: string;
-  heroImageUrl?: string;
   tickerText?: string;
   // Branding
   primaryColor?: string;
@@ -315,6 +321,10 @@ interface AppSettings {
   heroSubtitle?: string;
   heroBadge?: string;
   heroButtonText?: string;
+  heroImageUrl?: string;
+  heroImageBadgeTitle?: string;
+  heroImageBadgeSubtitle?: string;
+  showHeroImageBadge?: boolean;
   // Visibility Toggles
   showStats?: boolean;
   showOffers?: boolean;
@@ -832,13 +842,19 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60" />
             
             {/* Quick floating stat badge on image */}
-            <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 bg-brand-black/85 backdrop-blur-md border border-white/15 rounded-xl px-3.5 py-2 flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full bg-green-500 animate-ping" />
-              <div className="text-right">
-                <div className="text-xs font-bold text-white">خدمة متنقلة وسريعة</div>
-                <div className="text-[10px] text-gray-400">نصلك أينما كنت بجدة</div>
+            {settings.showHeroImageBadge !== false && (
+              <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 bg-brand-black/85 backdrop-blur-md border border-white/15 rounded-xl px-3.5 py-2 flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-green-500 animate-ping" />
+                <div className="text-right">
+                  <div className="text-xs font-bold text-white">
+                    {settings.heroImageBadgeTitle || (lang === 'ar' ? "خدمة متنقلة وسريعة" : "Fast & Mobile Service")}
+                  </div>
+                  <div className="text-[10px] text-gray-400">
+                    {settings.heroImageBadgeSubtitle || (lang === 'ar' ? "نصلك أينما كنت بجدة" : "We reach you anywhere in Jeddah")}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
           
           <div className="absolute -top-5 -right-5 md:-top-10 md:-right-10 w-28 h-28 md:w-48 md:h-48 bg-brand-red/20 blur-3xl rounded-full pointer-events-none" />
@@ -1227,6 +1243,12 @@ const Gallery = () => {
 const BookingForm = ({ selectedService, settings }: { selectedService?: string, settings?: AppSettings }) => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [confirmedBookingId, setConfirmedBookingId] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationName, setLocationName] = useState('');
+  
   const { t, lang } = useLanguage();
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<BookingFormData>();
 
@@ -1236,8 +1258,34 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
     }
   }, [selectedService, setValue]);
 
-  const onSubmit = (data: BookingFormData) => {
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert(lang === 'ar' ? 'خاصية تحديد الموقع غير مدعومة في متصفحك.' : 'Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        });
+        setLocationName(lang === 'ar' ? 'تم تحديد إحداثيات موقعك بنجاح 📍' : 'GPS Coordinates Captured 📍');
+        setLocating(false);
+      },
+      (err) => {
+        console.warn('Geolocation error:', err);
+        setLocating(false);
+        alert(lang === 'ar' ? 'تعذر الوصول إلى موقعك تلقائياً. يمكنك كتابة الحي أو العنوان في خانة الوصف.' : 'Unable to access your location. Please specify your district in the description.');
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  const onSubmit = async (data: BookingFormData) => {
+    if (isLoading) return;
     setIsLoading(true);
+    setBookingError(null);
 
     const serviceLabels: Record<string, string> = {
       'home-service': t.booking.services.doorToDoor,
@@ -1255,80 +1303,128 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
       'other': t.booking.services.other
     };
 
-    const messageText = lang === 'ar' ? (
-      `*طلب حجز جديد من Dr. Fix*\n\n` +
-      `*ماركة السيارة:* ${data.carMake}\n` +
-      `*موديل السيارة:* ${data.carModel}\n` +
-      `*سنة الصنع:* ${data.carYear}\n` +
-      `*نوع الخدمة:* ${serviceLabels[data.serviceType] || data.serviceType}\n` +
-      `*وصف المشكلة:* ${data.description}\n` +
-      `*رقم الجوال:* ${data.phone}`
-    ) : (
-      `*New Booking Request from Dr. Fix*\n\n` +
-      `*Car Make:* ${data.carMake}\n` +
-      `*Car Model:* ${data.carModel}\n` +
-      `*Year:* ${data.carYear}\n` +
-      `*Service Required:* ${serviceLabels[data.serviceType] || data.serviceType}\n` +
-      `*Issue Description:* ${data.description}\n` +
-      `*Phone Number:* ${data.phone}`
-    );
+    const serviceTitle = serviceLabels[data.serviceType] || data.serviceType || 'صيانة متنقلة';
+    const cleanPhone = data.phone.trim();
+    const uniqueBookingId = `DRF-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // Create automatic maintenance record
-    const createRecord = async () => {
+    try {
+      // 1. Write strictly to Firebase Firestore first
+      const bookingDocData = {
+        bookingId: uniqueBookingId,
+        customerPhone: cleanPhone,
+        customerName: cleanPhone,
+        carMake: data.carMake.trim(),
+        carModel: `${data.carMake.trim()} ${data.carModel.trim()} ${data.carYear.trim()}`,
+        carYear: data.carYear.trim(),
+        serviceType: serviceTitle,
+        notes: data.description.trim(),
+        location: locationName || 'جدة',
+        coordinates: coords || null,
+        status: 'new',
+        cost: 0,
+        source: 'website',
+        createdAt: serverTimestamp(),
+        serviceDate: new Date().toISOString().split('T')[0]
+      };
+
+      await addDoc(collection(db, 'maintenance'), bookingDocData);
+      
+      // Save phone to localStorage for auto-tracking
+      localStorage.setItem('drfix_customer_phone', cleanPhone);
+      setConfirmedBookingId(uniqueBookingId);
+
+      // 2. Trigger Server-side Telegram Notification & Webhook
+      let serverNotified = false;
       try {
-        await addDoc(collection(db, 'maintenance'), {
-          customerPhone: data.phone.trim(),
-          carModel: `${data.carMake} ${data.carModel} ${data.carYear}`,
-          serviceType: `حجز: ${serviceLabels[data.serviceType] || data.serviceType}`,
-          notes: `طلب حجز: ${data.description}`,
-          cost: 0,
-          serviceDate: serverTimestamp()
+        const notifyRes = await fetch('/api/notify-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingId: uniqueBookingId,
+            customerPhone: cleanPhone,
+            carModel: `${data.carMake.trim()} ${data.carModel.trim()} (${data.carYear.trim()})`,
+            serviceType: serviceTitle,
+            notes: data.description.trim(),
+            location: locationName || 'جدة',
+            coordinates: coords,
+            serviceDate: new Date().toLocaleDateString('ar-SA')
+          })
         });
-        // Save phone to localStorage for auto-search in history
-        localStorage.setItem('drfix_customer_phone', data.phone.trim());
-
-        // Send Telegram Instant Alert to Admin if configured
-        if (settings?.telegramBotToken && settings?.telegramChatId) {
-          const serviceName = serviceLabels[data.serviceType] || data.serviceType;
-          const tgText = `🔔 <b>حجز جديد في Dr. Fix!</b> 🚗\n\n` +
-            `👤 <b>العميل:</b> <code>${data.phone}</code>\n` +
-            `🚘 <b>السيارة:</b> ${data.carMake} ${data.carModel} (${data.carYear})\n` +
-            `🔧 <b>الخدمة:</b> ${serviceName}\n` +
-            `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
-            `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n\n` +
-            `🔗 <a href="https://drfix.repair/admin">فتح لوحة التحكم للإدارة</a>`;
-          sendTelegramNotification(tgText, settings.telegramBotToken, settings.telegramChatId);
+        if (notifyRes.ok) {
+          serverNotified = true;
         }
-      } catch (error) {
-        console.error("Error creating auto record:", error);
+      } catch (notifyErr) {
+        console.warn('API notification error (will fallback to direct if configured):', notifyErr);
       }
-    };
 
-    createRecord();
+      // Fallback Direct Telegram only if server-side notification was not delivered
+      if (!serverNotified && settings?.telegramBotToken && settings?.telegramChatId) {
+        const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗\n` +
+          `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
+          `👤 <b>العميل:</b> <code>${cleanPhone}</code>\n` +
+          `🚘 <b>السيارة:</b> ${data.carMake} ${data.carModel} (${data.carYear})\n` +
+          `🔧 <b>الخدمة:</b> ${serviceTitle}\n` +
+          `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
+          `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}`;
+        sendTelegramNotification(tgText, settings.telegramBotToken, settings.telegramChatId);
+      }
 
-    // Simulate a loading process for the tire animation
-    setTimeout(() => {
-      setIsLoading(false);
-      
-      const targetPhone = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
-      const whatsappUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(messageText)}`;
-      window.open(whatsappUrl, '_blank');
-      
-      setIsSubmitted(true);
+      // 3. Prepare WhatsApp Message with Unique Booking ID
+      const messageText = lang === 'ar' ? (
+        `*طلب حجز مؤكد من موقع DR.FIX*\n` +
+        `🔖 *رقم الحجز:* ${uniqueBookingId}\n\n` +
+        `*ماركة السيارة:* ${data.carMake}\n` +
+        `*موديل السيارة:* ${data.carModel}\n` +
+        `*سنة الصنع:* ${data.carYear}\n` +
+        `*نوع الخدمة:* ${serviceTitle}\n` +
+        `*وصف المشكلة:* ${data.description}\n` +
+        `*رقم الجوال:* ${cleanPhone}\n` +
+        (coords ? `*الموقع الجغرافي:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : `*المدينة:* جدة`)
+      ) : (
+        `*Confirmed Booking Request from DR.FIX*\n` +
+        `🔖 *Booking ID:* ${uniqueBookingId}\n\n` +
+        `*Car Make:* ${data.carMake}\n` +
+        `*Car Model:* ${data.carModel}\n` +
+        `*Year:* ${data.carYear}\n` +
+        `*Service:* ${serviceTitle}\n` +
+        `*Issue:* ${data.description}\n` +
+        `*Phone:* ${cleanPhone}\n` +
+        (coords ? `*Location:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : `*City:* Jeddah`)
+      );
+
+      // 4. Show Success & Redirect to WhatsApp
       setTimeout(() => {
-        setIsSubmitted(false);
-        reset();
-      }, 5000);
-    }, 2000);
+        setIsLoading(false);
+        setIsSubmitted(true);
+
+        const targetPhone = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
+        const whatsappUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(messageText)}`;
+        window.open(whatsappUrl, '_blank');
+
+        setTimeout(() => {
+          setIsSubmitted(false);
+          reset();
+          setCoords(null);
+          setLocationName('');
+        }, 8000);
+      }, 1500);
+
+    } catch (dbError) {
+      console.error('Failed to write booking to Firebase:', dbError);
+      setIsLoading(false);
+      setBookingError(lang === 'ar' 
+        ? 'عذراً، حدث خطأ أثناء حفظ الحجز في قاعدة البيانات. يُرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.' 
+        : 'An error occurred while saving your booking. Please check your connection and try again.');
+    }
   };
 
   return (
     <section id="booking" className="py-16 md:py-24 relative overflow-hidden">
       <div className="max-w-4xl mx-auto px-4 md:px-6 relative z-10">
         <motion.div 
-          whileHover={{ rotateX: 2, rotateY: -2 }}
+          whileHover={{ rotateX: 1, rotateY: -1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="glass-card p-6 md:p-12 border-brand-red/20 shadow-2xl"
+          className="glass-card p-6 md:p-12 border-brand-red/20 shadow-2xl relative"
           style={{ transformStyle: 'preserve-3d' }}
         >
           <div className={cn("text-center mb-10 md:mb-12", lang === 'en' && "md:text-left")}>
@@ -1337,6 +1433,13 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
             </h2>
             <p className="text-gray-400">{t.booking.description}</p>
           </div>
+
+          {bookingError && (
+            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-center gap-3">
+              <span className="text-xl">⚠️</span>
+              <p>{bookingError}</p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
@@ -1395,10 +1498,38 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.problemDesc}</label>
               <textarea 
                 {...register('description', { required: true })}
-                rows={4}
+                rows={3}
                 placeholder={t.booking.problemDescPlaceholder}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all resize-none text-sm md:text-base text-white"
               />
+            </div>
+
+            {/* GPS Location Selector */}
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3 text-right">
+                <span className="text-2xl">📍</span>
+                <div>
+                  <div className="text-sm font-bold text-white">
+                    {coords ? (lang === 'ar' ? 'تم تحديد موقعك بدقة (GPS)' : 'Location captured (GPS)') : (lang === 'ar' ? 'تحديد موقع السيارة عند المنزل/العمل' : 'Car location at your spot')}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {coords ? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}` : (lang === 'ar' ? 'اضغط لتوجيه الفني إليك مباشرة عبر Google Maps' : 'Click to send Google Maps pin to the mechanic')}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleGetLocation}
+                disabled={locating}
+                className={cn(
+                  "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0",
+                  coords 
+                    ? "bg-green-500/20 text-green-400 border border-green-500/30" 
+                    : "bg-brand-red/20 text-brand-red border border-brand-red/30 hover:bg-brand-red hover:text-white"
+                )}
+              >
+                {locating ? (lang === 'ar' ? 'جارٍ التحديد...' : 'Locating...') : (coords ? (lang === 'ar' ? '✓ تم تحديد الموقع' : '✓ Location Set') : (lang === 'ar' ? '📍 تحديد موقعي الحالي' : '📍 Detect Location'))}
+              </button>
             </div>
 
             <div className="p-4 rounded-xl bg-brand-red/5 border border-brand-red/20 flex items-start gap-3">
@@ -1422,9 +1553,10 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
             <button 
               type="submit"
-              className="w-full py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all text-lg md:text-xl flex items-center justify-center gap-3 cursor-pointer"
+              disabled={isLoading}
+              className="w-full py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all text-lg md:text-xl flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
             >
-              {t.booking.confirm}
+              {isLoading ? (lang === 'ar' ? 'جارٍ تسجيل الحجز...' : 'Processing...') : t.booking.confirm}
               <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </form>
@@ -1453,6 +1585,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 </motion.div>
                 <h3 className="text-2xl font-black italic">{t.booking.processing}</h3>
                 <p className="text-gray-400 mt-2">{t.booking.wait}</p>
+                <p className="text-xs text-brand-red mt-4 font-mono">يتم حفظ السجل في Firebase وإرسال إشعار الإدارة...</p>
               </motion.div>
             )}
 
@@ -1466,11 +1599,17 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(34,197,94,0.4)]">
                   <CheckCircle2 className="w-12 h-12 text-white" />
                 </div>
-                <h3 className="text-3xl font-black mb-4 italic">{t.booking.successTitle}</h3>
-                <p className="text-gray-400 text-lg">{t.booking.successDesc}</p>
+                <h3 className="text-3xl font-black mb-2 italic">{t.booking.successTitle}</h3>
+                {confirmedBookingId && (
+                  <div className="my-3 px-4 py-2 bg-brand-red/10 border border-brand-red/30 rounded-xl font-mono text-brand-red font-bold text-lg">
+                    رقم الحجز: {confirmedBookingId}
+                  </div>
+                )}
+                <p className="text-gray-300 text-base max-w-md">{t.booking.successDesc}</p>
+                <p className="text-xs text-gray-400 mt-3">تم فتح محادثة WhatsApp تلقائياً لتأكيد التفاصيل مع المهندس.</p>
                 <button 
                   onClick={() => setIsSubmitted(false)}
-                  className="mt-8 text-brand-red font-bold hover:underline cursor-pointer"
+                  className="mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-sm transition-all cursor-pointer"
                 >
                   {t.booking.close}
                 </button>
@@ -1695,6 +1834,22 @@ const AddTestimonialForm = () => {
         rating: rating,
         createdAt: serverTimestamp()
       });
+
+      // Notify Telegram Bot Admin
+      try {
+        await fetch('/api/notify-review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: data.name.trim(),
+            rating: rating,
+            comment: data.comment.trim()
+          })
+        });
+      } catch (err) {
+        console.warn('Review notification API error:', err);
+      }
+
       setIsSuccess(true);
       reset();
       setRating(5);
@@ -1788,13 +1943,23 @@ const AddTestimonialForm = () => {
 
 interface MaintenanceRecord {
   id: string;
+  bookingId?: string;
+  customerName?: string;
   customerPhone: string;
   carModel: string;
-  serviceDate: Timestamp;
+  carMake?: string;
+  carYear?: string;
+  serviceDate: any;
   serviceType: string;
   notes?: string;
+  location?: string;
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
   cost?: number;
-  status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+  status: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
+  createdAt?: any;
 }
 
 interface GalleryItem {
@@ -1825,15 +1990,17 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'content' | 'customers' | 'testimonials' | 'notifications' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'content' | 'settings'>('dashboard');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
-  const [bookingStatusFilter, setBookingStatusFilter] = useState<'all' | 'pending' | 'in-progress' | 'completed' | 'cancelled'>('all');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<'all' | 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled'>('all');
   const [bookingSearch, setBookingSearch] = useState('');
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<MaintenanceRecord | null>(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [galleryCategoryFilter, setGalleryCategoryFilter] = useState<string>('all');
   const [testimonialSearch, setTestimonialSearch] = useState('');
   const [testimonialRatingFilter, setTestimonialRatingFilter] = useState<number | 'all'>('all');
@@ -1845,6 +2012,15 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [testTgLoading, setTestTgLoading] = useState<boolean>(false);
   const [testTgStatus, setTestTgStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
+  // Helper to parse dates safely
+  const getRecordDate = (dateVal: any): Date => {
+    if (!dateVal) return new Date();
+    if (dateVal.toDate && typeof dateVal.toDate === 'function') return dateVal.toDate();
+    if (dateVal.seconds) return new Date(dateVal.seconds * 1000);
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? new Date() : d;
+  };
+
   // Form States
   const [formData, setFormData] = useState({
     customerPhone: '',
@@ -1852,7 +2028,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     serviceType: '',
     notes: '',
     cost: '',
-    status: 'pending' as 'pending' | 'in-progress' | 'completed' | 'cancelled'
+    status: 'pending' as MaintenanceRecord['status']
   });
 
   const [offerForm, setOfferForm] = useState({
@@ -1886,7 +2062,6 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [settingsForm, setSettingsForm] = useState({
     logoUrl: settings.logoUrl || '',
     siteName: settings.siteName || 'Dr.Fix',
-    heroImageUrl: settings.heroImageUrl || '',
     tickerText: settings.tickerText || '',
     primaryColor: settings.primaryColor || '#E31837',
     accentColor: settings.accentColor || '#0A0A0A',
@@ -1907,6 +2082,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     heroSubtitle: settings.heroSubtitle || '',
     heroBadge: settings.heroBadge || '',
     heroButtonText: settings.heroButtonText || 'احجز الآن',
+    heroImageUrl: settings.heroImageUrl || '',
+    heroImageBadgeTitle: settings.heroImageBadgeTitle || 'خدمة متنقلة وسريعة',
+    heroImageBadgeSubtitle: settings.heroImageBadgeSubtitle || 'نصلك أينما كنت بجدة',
+    showHeroImageBadge: settings.showHeroImageBadge ?? true,
     showStats: settings.showStats ?? true,
     showOffers: settings.showOffers ?? true,
     showGallery: settings.showGallery ?? true,
@@ -1980,7 +2159,6 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     setSettingsForm({
       logoUrl: settings.logoUrl || '',
       siteName: settings.siteName || 'Dr.Fix',
-      heroImageUrl: settings.heroImageUrl || '',
       tickerText: settings.tickerText || '',
       primaryColor: settings.primaryColor || '#E31837',
       accentColor: settings.accentColor || '#0A0A0A',
@@ -2001,6 +2179,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       heroSubtitle: settings.heroSubtitle || '',
       heroBadge: settings.heroBadge || '',
       heroButtonText: settings.heroButtonText || 'احجز الآن',
+      heroImageUrl: settings.heroImageUrl || '',
+      heroImageBadgeTitle: settings.heroImageBadgeTitle || 'خدمة متنقلة وسريعة',
+      heroImageBadgeSubtitle: settings.heroImageBadgeSubtitle || 'نصلك أينما كنت بجدة',
+      showHeroImageBadge: settings.showHeroImageBadge ?? true,
       showStats: settings.showStats ?? true,
       showOffers: settings.showOffers ?? true,
       showGallery: settings.showGallery ?? true,
@@ -2368,30 +2550,107 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const getChartData = () => {
     const last7Days = [...Array(7)].map((_, i) => {
       const d = new Date();
-      d.setDate(d.getDate() - i);
-      return d.toLocaleDateString('ar-SA', { weekday: 'short' });
-    }).reverse();
-
-    const data = last7Days.map(day => {
-      const count = records.filter(r => {
-        const rDate = r.serviceDate?.toDate().toLocaleDateString('ar-SA', { weekday: 'short' });
-        return rDate === day;
-      }).length;
-      return { name: day, bookings: count };
+      d.setDate(d.getDate() - (6 - i));
+      return {
+        dateStr: d.toISOString().split('T')[0],
+        dayName: d.toLocaleDateString('ar-SA', { weekday: 'short' }),
+        fullDate: d.toLocaleDateString('ar-SA', { month: 'numeric', day: 'numeric' })
+      };
     });
 
-    return data;
+    return last7Days.map(item => {
+      const dayRecords = records.filter(r => {
+        const d = getRecordDate(r.serviceDate);
+        return d.toISOString().split('T')[0] === item.dateStr;
+      });
+      const revenue = dayRecords.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
+      return {
+        name: item.dayName,
+        fullDate: item.fullDate,
+        bookings: dayRecords.length,
+        revenue
+      };
+    });
+  };
+
+  const getMonthlyRevenueData = () => {
+    const months = [...Array(6)].map((_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (5 - i));
+      return {
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        label: d.toLocaleDateString('ar-SA', { month: 'short' })
+      };
+    });
+
+    return months.map(m => {
+      const mRecords = records.filter(r => {
+        const d = getRecordDate(r.serviceDate);
+        return d.getFullYear() === m.year && d.getMonth() === m.month;
+      });
+      const revenue = mRecords.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
+      return {
+        name: m.label,
+        revenue,
+        bookings: mRecords.length
+      };
+    });
   };
 
   const getServiceStats = () => {
     const stats: Record<string, number> = {};
     records.forEach(r => {
-      stats[r.serviceType] = (stats[r.serviceType] || 0) + 1;
+      const sType = r.serviceType || 'صيانة عامة';
+      stats[sType] = (stats[sType] || 0) + 1;
     });
+    if (Object.keys(stats).length === 0) {
+      return [
+        { name: 'فحص كمبيوتر', value: 12 },
+        { name: 'كهرباء وبطاريات', value: 8 },
+        { name: 'ميكانيكا متنقلة', value: 15 },
+        { name: 'صيانة دورية', value: 6 }
+      ];
+    }
     return Object.entries(stats).map(([name, value]) => ({ name, value }));
   };
 
-  const COLORS = ['#FF0000', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+  const getStatusStats = () => {
+    const statusMap: Record<string, { label: string; count: number; color: string }> = {
+      new: { label: 'جديد', count: 0, color: '#A855F7' },
+      pending: { label: 'قيد الانتظار', count: 0, color: '#EAB308' },
+      accepted: { label: 'تم القبول', count: 0, color: '#10B981' },
+      on_the_way: { label: 'الفني بالطريق', count: 0, color: '#6366F1' },
+      'in-progress': { label: 'قيد العمل', count: 0, color: '#3B82F6' },
+      completed: { label: 'مكتمل', count: 0, color: '#22C55E' },
+      cancelled: { label: 'ملغي', count: 0, color: '#EF4444' }
+    };
+
+    records.forEach(r => {
+      const s = r.status || 'pending';
+      if (statusMap[s]) {
+        statusMap[s].count += 1;
+      } else {
+        statusMap.pending.count += 1;
+      }
+    });
+
+    return Object.values(statusMap);
+  };
+
+  const getTopCarMakes = () => {
+    const makes: Record<string, number> = {};
+    records.forEach(r => {
+      const car = (r.carModel || '').split(' ')[0] || 'غير محدد';
+      makes[car] = (makes[car] || 0) + 1;
+    });
+    return Object.entries(makes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([make, count]) => ({ make, count }));
+  };
+
+  const COLORS = ['#E31837', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#3B82F6', '#10B981'];
 
   if (!isAdmin) {
     return <Navigate to="/login" replace />;
@@ -2499,13 +2758,15 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
         {/* Main Navigation Tabs */}
         <div className="flex overflow-x-auto gap-2 mb-8 bg-white/5 p-2 rounded-2xl border border-white/5 no-scrollbar">
           {[
-            { id: 'dashboard', label: 'الإحصائيات', icon: BarChart },
-            { id: 'bookings', label: 'الحجوزات', icon: Calendar },
-            { id: 'notifications', label: 'الإشعارات وتطبيق الجوال', icon: Bell },
-            { id: 'content', label: 'المحتوى', icon: FileText },
-            { id: 'customers', label: 'العملاء', icon: User },
-            { id: 'testimonials', label: 'التعليقات', icon: MessageSquare },
-            { id: 'settings', label: 'الإعدادات', icon: Settings },
+            { id: 'dashboard', label: 'الإحصائيات ونظرة عامة', icon: BarChart },
+            { id: 'bookings', label: 'الحجوزات والعمليات', icon: Calendar },
+            { id: 'calendar', label: 'التقويم والمواعيد', icon: CalendarCheck },
+            { id: 'customers', label: 'العملاء وسجل السيارات', icon: User },
+            { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare },
+            { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell },
+            { id: 'analytics', label: 'التحليلات المالية والنمو', icon: TrendingUp },
+            { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText },
+            { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -2713,7 +2974,9 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                   <div className="flex flex-wrap gap-2">
                     {[
                       { id: 'all', label: 'الكل', count: records.length },
-                      { id: 'pending', label: 'قيد الانتظار', count: records.filter(r => r.status === 'pending').length },
+                      { id: 'new', label: 'جديد', count: records.filter(r => r.status === 'new').length },
+                      { id: 'accepted', label: 'تم القبول', count: records.filter(r => r.status === 'accepted').length },
+                      { id: 'on_the_way', label: 'الفني بالطريق', count: records.filter(r => r.status === 'on_the_way').length },
                       { id: 'in-progress', label: 'قيد العمل', count: records.filter(r => r.status === 'in-progress').length },
                       { id: 'completed', label: 'مكتمل', count: records.filter(r => r.status === 'completed').length },
                       { id: 'cancelled', label: 'ملغي', count: records.filter(r => r.status === 'cancelled').length },
@@ -2759,8 +3022,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     type="text"
                     value={bookingSearch}
                     onChange={e => setBookingSearch(e.target.value)}
-                    placeholder="ابحث برقم الجوال، نوع السيارة، أو الخدمة..."
-                    className="w-full bg-black/40 border border-white/10 rounded-xl pr-11 pl-4 py-3 text-xs outline-none focus:border-brand-red transition-all"
+                    placeholder="ابحث برقم الجوال، نوع السيارة، الخدمة، أو رقم الحجز..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pr-11 pl-4 py-3 text-xs outline-none focus:border-brand-red transition-all text-white placeholder:text-gray-500"
                   />
                   {bookingSearch && (
                     <button 
@@ -2781,7 +3044,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     <thead>
                       <tr className="bg-white/5 border-b border-white/10">
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">السيارة والتاريخ</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">العميل والتواصل</th>
+                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">العميل والموقع</th>
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الخدمة والملاحظات</th>
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الحالة</th>
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">التكلفة</th>
@@ -2795,29 +3058,39 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                           if (!bookingSearch.trim()) return true;
                           const q = bookingSearch.toLowerCase().trim();
                           return (
+                            (r.bookingId || '').toLowerCase().includes(q) ||
                             (r.customerPhone || '').toLowerCase().includes(q) ||
                             (r.carModel || '').toLowerCase().includes(q) ||
                             (r.serviceType || '').toLowerCase().includes(q) ||
+                            (r.location || '').toLowerCase().includes(q) ||
                             (r.notes || '').toLowerCase().includes(q)
                           );
                         })
                         .map((record) => {
                           const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                           const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
-                          const waMsg = encodeURIComponent(`مرحباً بك من مركز دكتور فيكس لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${record.carModel}) لخدمة (${record.serviceType})`);
-                          
+                          const waMsg = encodeURIComponent(`مرحباً بك من مركز DR.FIX 🚗 بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel}) لخدمة (${record.serviceType})`);
+                          const rDate = getRecordDate(record.serviceDate);
+
                           return (
                             <tr key={record.id} className="hover:bg-white/5 transition-colors">
                               <td className="px-6 py-4">
-                                <div className="font-bold text-white text-sm">{record.carModel}</div>
+                                <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                                  <span>{record.carModel}</span>
+                                  {record.bookingId && (
+                                    <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
+                                      {record.bookingId}
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                                   <Clock className="w-3 h-3 text-gray-500" />
-                                  {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString('ar-SA') : 'تاريخ الحجز'}
+                                  {rDate.toLocaleDateString('ar-SA')}
                                 </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="font-bold text-sm text-gray-200" dir="ltr">{record.customerPhone}</div>
-                                <div className="flex items-center gap-2 mt-1.5">
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
                                   <a 
                                     href={`https://wa.me/${waPhone}?text=${waMsg}`}
                                     target="_blank"
@@ -2836,6 +3109,23 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                     <PhoneCall className="w-3 h-3" />
                                     اتصال
                                   </a>
+                                  {record.coordinates?.latitude && record.coordinates?.longitude ? (
+                                    <a
+                                      href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                      title="فتح موقع العميل GPS على خرائط جوجل"
+                                    >
+                                      <Navigation className="w-3 h-3" />
+                                      GPS
+                                    </a>
+                                  ) : record.location ? (
+                                    <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
+                                      <MapPin className="w-3 h-3 text-brand-red" />
+                                      {record.location}
+                                    </span>
+                                  ) : null}
                                 </div>
                               </td>
                               <td className="px-6 py-4">
@@ -2853,12 +3143,18 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                   className={cn(
                                     "text-xs font-bold px-3 py-1.5 rounded-full bg-black/50 border outline-none cursor-pointer",
                                     record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                    record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
+                                    record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
                                     record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
                                     record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                    record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
                                     "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
                                   )}
                                 >
+                                  <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
                                   <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                  <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
+                                  <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
                                   <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
                                   <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
                                   <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
@@ -2909,6 +3205,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                       if (!bookingSearch.trim()) return true;
                       const q = bookingSearch.toLowerCase().trim();
                       return (
+                        (r.bookingId || '').toLowerCase().includes(q) ||
                         (r.customerPhone || '').toLowerCase().includes(q) ||
                         (r.carModel || '').toLowerCase().includes(q) ||
                         (r.serviceType || '').toLowerCase().includes(q) ||
@@ -2919,15 +3216,23 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                       const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                       const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
                       const waMsg = encodeURIComponent(`مرحباً بك من مركز دكتور فيكس لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${record.carModel})`);
-                      
+                      const rDate = getRecordDate(record.serviceDate);
+
                       return (
                         <div key={record.id} className="p-4 space-y-3 bg-black/20">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <div className="font-bold text-white text-base">{record.carModel}</div>
+                              <div className="font-bold text-white text-base flex items-center gap-1.5">
+                                <span>{record.carModel}</span>
+                                {record.bookingId && (
+                                  <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
+                                    {record.bookingId}
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                                 <Clock className="w-3 h-3 text-gray-500" />
-                                {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString('ar-SA') : 'تاريخ الحجز'}
+                                {rDate.toLocaleDateString('ar-SA')}
                               </div>
                             </div>
                             <select 
@@ -2936,12 +3241,18 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                               className={cn(
                                 "text-xs font-bold px-3 py-1 rounded-full bg-black/60 border outline-none cursor-pointer",
                                 record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
+                                record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
                                 record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
                                 record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
                                 "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
                               )}
                             >
+                              <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
                               <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                              <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
+                              <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
                               <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
                               <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
                               <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
@@ -2984,6 +3295,17 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                 <PhoneCall className="w-3.5 h-3.5" />
                                 اتصال
                               </a>
+                              {record.coordinates?.latitude && record.coordinates?.longitude && (
+                                <a 
+                                  href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <Navigation className="w-3.5 h-3.5" />
+                                  GPS
+                                </a>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -3031,6 +3353,473 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     </button>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Calendar & Appointments Tab */}
+          {activeTab === 'calendar' && (
+            <motion.div 
+              key="calendar"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              {/* Month Navigation & Stats Header */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-2 glass-card p-6 border-white/5 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-brand-red/10 border border-brand-red/20 flex items-center justify-center text-brand-red">
+                      <CalendarCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-white">
+                        {calendarMonth.toLocaleDateString('ar-SA', { month: 'long', year: 'numeric' })}
+                      </h3>
+                      <p className="text-xs text-gray-400">جدول مواعيد صيانة السيارات المتنقلة بجدة</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const prev = new Date(calendarMonth);
+                        prev.setMonth(prev.getMonth() - 1);
+                        setCalendarMonth(prev);
+                      }}
+                      className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 hover:text-white transition-all cursor-pointer"
+                      title="الشهر السابق"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCalendarMonth(new Date());
+                        setSelectedCalendarDate(new Date());
+                      }}
+                      className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-200 hover:text-white transition-all cursor-pointer"
+                    >
+                      اليوم
+                    </button>
+                    <button
+                      onClick={() => {
+                        const next = new Date(calendarMonth);
+                        next.setMonth(next.getMonth() + 1);
+                        setCalendarMonth(next);
+                      }}
+                      className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-gray-300 hover:text-white transition-all cursor-pointer"
+                      title="الشهر التالي"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="glass-card p-6 border-white/5 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-gray-400 block mb-1">مواعيد هذا الشهر</span>
+                    <span className="text-2xl font-black font-display text-brand-red">
+                      {records.filter(r => {
+                        const d = getRecordDate(r.serviceDate);
+                        return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
+                      }).length}
+                    </span>
+                    <span className="text-xs text-gray-500 mr-2">حجز مسجل</span>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400">
+                    <Calendar className="w-6 h-6" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Month Grid and Selected Date Appointment List */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Calendar Days Matrix */}
+                <div className="lg:col-span-2 glass-card p-6 border-white/5">
+                  <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-gray-400 mb-4 pb-2 border-b border-white/5">
+                    {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map(day => (
+                      <div key={day} className="py-1">{day}</div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-2">
+                    {(() => {
+                      const year = calendarMonth.getFullYear();
+                      const month = calendarMonth.getMonth();
+                      const firstDayIndex = new Date(year, month, 1).getDay();
+                      const totalDays = new Date(year, month + 1, 0).getDate();
+                      const days = [];
+
+                      // Padding for previous month
+                      for (let i = 0; i < firstDayIndex; i++) {
+                        days.push(
+                          <div key={`empty-${i}`} className="min-h-[70px] p-2 rounded-xl bg-black/10 border border-transparent opacity-20" />
+                        );
+                      }
+
+                      // Current month days
+                      for (let day = 1; day <= totalDays; day++) {
+                        const currentDate = new Date(year, month, day);
+                        const dateStr = currentDate.toISOString().split('T')[0];
+                        const dayBookings = records.filter(r => {
+                          const d = getRecordDate(r.serviceDate);
+                          return d.toISOString().split('T')[0] === dateStr;
+                        });
+
+                        const isSelected = selectedCalendarDate.toDateString() === currentDate.toDateString();
+                        const isToday = new Date().toDateString() === currentDate.toDateString();
+
+                        days.push(
+                          <div
+                            key={`day-${day}`}
+                            onClick={() => setSelectedCalendarDate(currentDate)}
+                            className={cn(
+                              "min-h-[75px] p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between text-right group",
+                              isSelected 
+                                ? "bg-brand-red/15 border-brand-red shadow-lg shadow-brand-red/10" 
+                                : isToday
+                                ? "bg-white/10 border-white/20 hover:border-white/30"
+                                : "bg-black/30 border-white/5 hover:border-white/15 hover:bg-white/5"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={cn(
+                                "text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center",
+                                isToday ? "bg-brand-red text-white" : isSelected ? "text-brand-red font-black" : "text-gray-300"
+                              )}>
+                                {day}
+                              </span>
+                              {dayBookings.length > 0 && (
+                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-brand-red/20 text-brand-red border border-brand-red/30">
+                                  {dayBookings.length}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 mt-1">
+                              {dayBookings.slice(0, 2).map((b, idx) => (
+                                <div key={idx} className="text-[10px] truncate text-gray-300 bg-white/5 px-1 py-0.5 rounded">
+                                  {b.carModel}
+                                </div>
+                              ))}
+                              {dayBookings.length > 2 && (
+                                <div className="text-[9px] text-gray-500 font-bold">
+                                  +{dayBookings.length - 2} المزيد
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return days;
+                    })()}
+                  </div>
+                </div>
+
+                {/* Selected Day Bookings Detail Panel */}
+                <div className="glass-card p-6 border-white/5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <div>
+                      <h4 className="font-bold text-white text-base">
+                        مواعيد {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'long', month: 'numeric', day: 'numeric' })}
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        {records.filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length} مواعيد مجدولة
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setFormData({
+                          customerPhone: '',
+                          carModel: '',
+                          serviceType: '',
+                          notes: '',
+                          cost: '',
+                          status: 'pending'
+                        });
+                        setIsAdding(true);
+                      }}
+                      className="p-2 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white rounded-xl transition-all cursor-pointer"
+                      title="حجز موعد جديد في هذا اليوم"
+                    >
+                      <PlusCircle className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-3 max-h-[480px] overflow-y-auto no-scrollbar pr-1">
+                    {records
+                      .filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString())
+                      .map((record) => {
+                        const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+                        const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
+                        const rDate = getRecordDate(record.serviceDate);
+
+                        return (
+                          <div key={record.id} className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h5 className="font-bold text-white text-sm">{record.carModel}</h5>
+                                <span className="text-xs text-brand-red font-semibold">{record.serviceType}</span>
+                              </div>
+                              <span className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                                record.status === 'completed' ? "bg-green-500/10 text-green-400 border-green-500/30" :
+                                record.status === 'accepted' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                record.status === 'on_the_way' ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30" :
+                                record.status === 'in-progress' ? "bg-blue-500/10 text-blue-400 border-blue-500/30" :
+                                record.status === 'cancelled' ? "bg-red-500/10 text-red-400 border-red-500/30" :
+                                "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                              )}>
+                                {record.status === 'completed' ? 'مكتمل' :
+                                 record.status === 'accepted' ? 'تم القبول' :
+                                 record.status === 'on_the_way' ? 'الفني بالطريق' :
+                                 record.status === 'in-progress' ? 'قيد العمل' :
+                                 record.status === 'cancelled' ? 'ملغي' : 'قيد الانتظار'}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-gray-400 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-gray-500" />
+                                <span>{rDate.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              {record.location && (
+                                <div className="flex items-center gap-1.5">
+                                  <MapPin className="w-3.5 h-3.5 text-gray-500" />
+                                  <span>{record.location}</span>
+                                </div>
+                              )}
+                              {record.notes && (
+                                <div className="text-gray-400 italic bg-white/5 p-2 rounded-lg text-[11px]">
+                                  "{record.notes}"
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
+                              <div className="flex items-center gap-1.5">
+                                <a
+                                  href={`https://wa.me/${waPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 bg-green-500/10 text-green-400 hover:bg-green-500/20 rounded-lg text-xs"
+                                  title="واتساب"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                                <a
+                                  href={`tel:${record.customerPhone}`}
+                                  className="p-2 bg-white/5 text-gray-300 hover:bg-white/10 rounded-lg text-xs"
+                                  title="اتصال"
+                                >
+                                  <PhoneCall className="w-3.5 h-3.5" />
+                                </a>
+                                {record.coordinates?.latitude && record.coordinates?.longitude && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg text-xs"
+                                    title="خريطة GPS"
+                                  >
+                                    <Navigation className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => setSelectedBookingDetails(record)}
+                                className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-white/5 rounded-lg"
+                              >
+                                عرض التفاصيل
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                    {records.filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length === 0 && (
+                      <div className="py-12 text-center text-gray-500 space-y-2">
+                        <CalendarCheck className="w-10 h-10 mx-auto text-gray-600" />
+                        <p className="text-xs font-bold">لا توجد مواعيد مسجلة في هذا اليوم</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Analytics & Business Intelligence Tab */}
+          {activeTab === 'analytics' && (
+            <motion.div 
+              key="analytics"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-8"
+            >
+              {/* Financial & Performance KPIs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {(() => {
+                  const totalRevenue = records.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
+                  const completedBookings = records.filter(r => r.status === 'completed').length;
+                  const completionRate = records.length > 0 ? Math.round((completedBookings / records.length) * 100) : 100;
+                  const avgTicket = completedBookings > 0 ? Math.round(totalRevenue / completedBookings) : (totalRevenue > 0 ? Math.round(totalRevenue / records.length) : 0);
+
+                  return (
+                    <>
+                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
+                        <div className="text-xs text-gray-400 mb-1">إجمالي الإيرادات</div>
+                        <div className="text-3xl font-black font-display text-white">{totalRevenue.toLocaleString()} <span className="text-sm font-normal text-brand-red">ريال</span></div>
+                        <div className="mt-3 flex items-center gap-1 text-xs text-green-400">
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>إيرادات كل العمليات المنجزة</span>
+                        </div>
+                      </div>
+
+                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
+                        <div className="text-xs text-gray-400 mb-1">متوسط قيمة الحجز</div>
+                        <div className="text-3xl font-black font-display text-white">{avgTicket} <span className="text-sm font-normal text-brand-red">ريال</span></div>
+                        <div className="mt-3 text-xs text-gray-400">لكل عملية صيانة</div>
+                      </div>
+
+                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
+                        <div className="text-xs text-gray-400 mb-1">نسبة إنجاز الحجوزات</div>
+                        <div className="text-3xl font-black font-display text-green-400">{completionRate}%</div>
+                        <div className="mt-3 text-xs text-gray-400">{completedBookings} حجز مكتمل من {records.length}</div>
+                      </div>
+
+                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
+                        <div className="text-xs text-gray-400 mb-1">إجمالي الحجوزات</div>
+                        <div className="text-3xl font-black font-display text-white">{records.length} <span className="text-sm font-normal text-gray-400">طلب</span></div>
+                        <div className="mt-3 text-xs text-blue-400">طلبات الصيانة المتنقلة بجدة</div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* 7-Day Revenue & Volume Trend Chart */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 glass-card p-6 border-white/5">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-lg font-bold text-white">منحنى الإيرادات الأسبوعية (آخر 7 أيام)</h3>
+                      <p className="text-xs text-gray-400">تتبع يومي للمبيعات وعدد الحجوزات</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-brand-red" />
+                      <span className="text-xs text-gray-400">الإيراد (ريال)</span>
+                    </div>
+                  </div>
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={getChartData()}>
+                        <defs>
+                          <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#E31837" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#E31837" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#222" />
+                        <XAxis dataKey="name" stroke="#666" />
+                        <YAxis stroke="#666" />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
+                          formatter={(val: any, name: string) => [
+                            name === 'revenue' ? `${val} ريال` : `${val} حجز`,
+                            name === 'revenue' ? 'الإيراد' : 'عدد الحجوزات'
+                          ]}
+                        />
+                        <Area type="monotone" dataKey="revenue" stroke="#E31837" strokeWidth={3} fillOpacity={1} fill="url(#revenueGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Service Categories Distribution Pie */}
+                <div className="glass-card p-6 border-white/5">
+                  <h3 className="text-lg font-bold text-white mb-1">الخدمات الأكثر طلباً</h3>
+                  <p className="text-xs text-gray-400 mb-6">توزيع الحجوزات حسب نوع الصيانة</p>
+                  <div className="h-[220px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={getServiceStats()}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={75}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {getServiceStats().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-1.5 mt-2 max-h-[100px] overflow-y-auto no-scrollbar">
+                    {getServiceStats().map((s, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                          <span className="text-gray-300">{s.name}</span>
+                        </div>
+                        <span className="font-bold text-white">{s.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Breakdown & Top Car Makes */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Status Pipeline */}
+                <div className="glass-card p-6 border-white/5 space-y-4">
+                  <h3 className="text-lg font-bold text-white">توزيع حالات الحجوزات والعمليات</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {getStatusStats().map((st, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-black/40 border border-white/5">
+                        <div className="text-xs text-gray-400 mb-1">{st.label}</div>
+                        <div className="text-2xl font-black" style={{ color: st.color }}>{st.count}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top Car Makes Serviced */}
+                <div className="glass-card p-6 border-white/5 space-y-4">
+                  <h3 className="text-lg font-bold text-white">أكثر أنواع وماركات السيارات طلباً</h3>
+                  <div className="space-y-3">
+                    {getTopCarMakes().map((car, idx) => {
+                      const totalC = records.length || 1;
+                      const pct = Math.round((car.count / totalC) * 100);
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between text-xs font-bold">
+                            <span className="text-white">{car.make}</span>
+                            <span className="text-gray-400">{car.count} حجز ({pct}%)</span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
+                            <div 
+                              className="h-full bg-brand-red rounded-full transition-all duration-500" 
+                              style={{ width: `${Math.max(pct, 5)}%` }} 
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {getTopCarMakes().length === 0 && (
+                      <div className="py-6 text-center text-xs text-gray-500">لا توجد بيانات كافية للسيارات بعد</div>
+                    )}
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -4228,75 +5017,294 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
 
                     {settingsSubTab === 'hero' && (
                       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <h3 className="text-xl font-bold flex items-center gap-2">
-                          <Layout className="w-5 h-5 text-brand-red" />
-                          الواجهة الرئيسية (Hero)
-                        </h3>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">العنوان الرئيسي</label>
-                            <input 
-                              type="text"
-                              value={settingsForm.heroTitle}
-                              onChange={e => setSettingsForm({...settingsForm, heroTitle: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
-                            />
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                          <div>
+                            <h3 className="text-xl font-bold flex items-center gap-2 text-white">
+                              <Layout className="w-5 h-5 text-brand-red" />
+                              تخصيص الواجهة الرئيسية وصورة المكينة
+                            </h3>
+                            <p className="text-xs text-gray-400 mt-1">
+                              يمكنك تغيير صورة الواجهة (المكينة/السيارة) والنصوص والشارة العائمة "خدمة متنقلة وسريعة" بكل سهولة
+                            </p>
                           </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">العنوان الفرعي</label>
-                            <textarea 
-                              value={settingsForm.heroSubtitle}
-                              onChange={e => setSettingsForm({...settingsForm, heroSubtitle: e.target.value})}
-                              rows={2}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red resize-none"
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <button
+                            type="button"
+                            onClick={handleUpdateSettings}
+                            disabled={loading}
+                            className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-brand-red/20 flex items-center gap-2 cursor-pointer shrink-0"
+                          >
+                            <Save className="w-4 h-4" />
+                            {loading ? 'جاري الحفظ...' : 'حفظ التعديلات الآن'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-6">
+                          {/* Main Text Content */}
+                          <div className="glass-card p-5 md:p-6 border-white/10 space-y-4">
+                            <h4 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/5 pb-2">
+                              <span>📝</span> نصوص الواجهة
+                            </h4>
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-gray-500 uppercase">نص الشارة (Badge Text)</label>
+                              <label className="text-xs font-bold text-gray-400 uppercase">العنوان الرئيسي</label>
                               <input 
                                 type="text"
-                                value={settingsForm.heroBadge}
-                                onChange={e => setSettingsForm({...settingsForm, heroBadge: e.target.value})}
-                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                                value={settingsForm.heroTitle}
+                                onChange={e => setSettingsForm({...settingsForm, heroTitle: e.target.value})}
+                                placeholder="مثال: دكتور فيكس - فحص وصيانة سيارات متنقلة"
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red"
                               />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-gray-500 uppercase">نص زر الاتصال</label>
-                              <input 
-                                type="text"
-                                value={settingsForm.heroButtonText}
-                                onChange={e => setSettingsForm({...settingsForm, heroButtonText: e.target.value})}
-                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              <label className="text-xs font-bold text-gray-400 uppercase">العنوان الفرعي / الوصف</label>
+                              <textarea 
+                                value={settingsForm.heroSubtitle}
+                                onChange={e => setSettingsForm({...settingsForm, heroSubtitle: e.target.value})}
+                                placeholder="مثال: خدمة فحص وبرمجة كمبيوتر وصيانة دورية وسريعة في جدة"
+                                rows={2}
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red resize-none"
                               />
                             </div>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase">صورة الواجهة</label>
-                            <div className="flex items-center gap-4">
-                              <div className="w-32 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden">
-                                {settingsForm.heroImageUrl ? (
-                                  <img src={settingsForm.heroImageUrl} alt="Hero" className="w-full h-full object-cover" />
-                                ) : (
-                                  <Camera className="w-8 h-8 text-gray-700" />
-                                )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">نص الشارة العلوية (Badge)</label>
+                                <input 
+                                  type="text"
+                                  value={settingsForm.heroBadge}
+                                  onChange={e => setSettingsForm({...settingsForm, heroBadge: e.target.value})}
+                                  placeholder="مثال: صيانة سيارات احترافية متنقلة بجدة"
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red"
+                                />
                               </div>
-                              <div className="flex-1 space-y-2">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">نص زر الحجز الرئيسي</label>
+                                <input 
+                                  type="text"
+                                  value={settingsForm.heroButtonText}
+                                  onChange={e => setSettingsForm({...settingsForm, heroButtonText: e.target.value})}
+                                  placeholder="مثال: احجز الآن"
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red"
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Hero Image Management */}
+                          <div className="glass-card p-5 md:p-6 border-white/10 space-y-5">
+                            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                <span>🖼️</span> صورة الواجهة الرئيسية (صورة المكينة/السيارة)
+                              </h4>
+                              {settingsForm.heroImageUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSettingsForm({ ...settingsForm, heroImageUrl: '' })}
+                                  className="text-xs text-brand-red hover:underline cursor-pointer"
+                                >
+                                  إعادة للصورة الافتراضية
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Live Preview Box with Badge Overlay */}
+                            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/60 shadow-xl max-w-2xl mx-auto">
+                              <div className="aspect-[16/9] sm:aspect-[21/9] w-full relative">
+                                <img 
+                                  src={settingsForm.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
+                                  alt="Hero Preview" 
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                                
+                                {/* Floating Badge Preview */}
+                                {settingsForm.showHeroImageBadge !== false && (
+                                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 bg-brand-black/90 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2.5 shadow-lg">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-ping" />
+                                    <div className="text-right">
+                                      <div className="text-xs font-bold text-white">
+                                        {settingsForm.heroImageBadgeTitle || "خدمة متنقلة وسريعة"}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400">
+                                        {settingsForm.heroImageBadgeSubtitle || "نصلك أينما كنت بجدة"}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-bold text-gray-300 border border-white/10">
+                                  معاينة حية للصورة الحالية
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Preset Quick Select Library */}
+                            <div className="space-y-3">
+                              <label className="text-xs font-bold text-gray-300 block">
+                                ⚡ اختر صورة جاهزة بنقرة واحدة من المكتبة:
+                              </label>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {[
+                                  {
+                                    title: 'محرك سيارة حديث (الافتراضية)',
+                                    url: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'محرك رياضي'
+                                  },
+                                  {
+                                    title: 'ورشة وميكانيك حديث',
+                                    url: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'ورشة متكاملة'
+                                  },
+                                  {
+                                    title: 'صيانة متنقلة وفحص محركات',
+                                    url: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'صيانة متنقلة'
+                                  },
+                                  {
+                                    title: 'فحص وتشخيص كمبيوتر',
+                                    url: 'https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'فحص كمبيوتر'
+                                  },
+                                  {
+                                    title: 'ميكانيكي وفحص دقيق',
+                                    url: 'https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'فني محترف'
+                                  },
+                                  {
+                                    title: 'صيانة دورية وزيوت',
+                                    url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=1000',
+                                    badge: 'صيانة سريعة'
+                                  }
+                                ].map((preset, idx) => {
+                                  const isSelected = (settingsForm.heroImageUrl || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000') === preset.url;
+                                  return (
+                                    <div
+                                      key={idx}
+                                      onClick={() => setSettingsForm({ ...settingsForm, heroImageUrl: preset.url })}
+                                      className={cn(
+                                        "group relative rounded-xl overflow-hidden border transition-all cursor-pointer aspect-[16/10]",
+                                        isSelected ? "border-brand-red ring-2 ring-brand-red/50 scale-[1.02]" : "border-white/10 hover:border-white/30"
+                                      )}
+                                    >
+                                      <img src={preset.url} alt={preset.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+                                      <div className="absolute bottom-2 right-2 left-2 text-right">
+                                        <div className="text-[11px] font-bold text-white line-clamp-1">{preset.title}</div>
+                                        <div className="text-[9px] text-gray-300">{preset.badge}</div>
+                                      </div>
+                                      {isSelected && (
+                                        <div className="absolute top-2 right-2 bg-brand-red text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                                          <Check className="w-3 h-3" /> تم الاختيار
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Upload & Custom URL Inputs */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-white/5">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 block">
+                                  📁 أو ارفع صورة خاصة من جهازك / جوالك:
+                                </label>
                                 <input 
                                   type="file"
                                   accept="image/*"
                                   onChange={(e) => handleImageUpload(e, 'hero')}
-                                  className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-red file:text-white hover:file:bg-red-700"
+                                  className="w-full text-xs text-gray-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-white/5 p-2 rounded-xl border border-white/10"
                                 />
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 block">
+                                  🔗 أو ضع رابط صورة مباشر (URL):
+                                </label>
                                 <input 
                                   type="text"
                                   value={settingsForm.heroImageUrl}
                                   onChange={e => setSettingsForm({...settingsForm, heroImageUrl: e.target.value})}
-                                  placeholder="أو رابط الصورة..."
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2 text-xs outline-none focus:border-brand-red"
+                                  placeholder="https://example.com/my-car-image.jpg"
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red"
                                 />
                               </div>
                             </div>
+                          </div>
+
+                          {/* Floating Stat Badge on Image Configuration */}
+                          <div className="glass-card p-5 md:p-6 border-white/10 space-y-4">
+                            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                              <div>
+                                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                  <span>🏷️</span> الشارة العائمة على صورة المكينة (خدمة متنقلة وسريعة)
+                                </h4>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  يمكنك تعديل النص المكتوب على الصورة أو إخفاء الشارة تماماً
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSettingsForm({
+                                  ...settingsForm,
+                                  showHeroImageBadge: !(settingsForm.showHeroImageBadge !== false)
+                                })}
+                                className={cn(
+                                  "w-12 h-6 rounded-full relative transition-all cursor-pointer",
+                                  settingsForm.showHeroImageBadge !== false ? "bg-brand-red" : "bg-gray-700"
+                                )}
+                              >
+                                <div className={cn(
+                                  "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                                  settingsForm.showHeroImageBadge !== false ? "right-0.5" : "left-0.5"
+                                )} />
+                              </button>
+                            </div>
+
+                            {settingsForm.showHeroImageBadge !== false ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-400 uppercase">
+                                    العنوان الرئيسي للشارة
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    value={settingsForm.heroImageBadgeTitle || 'خدمة متنقلة وسريعة'}
+                                    onChange={e => setSettingsForm({...settingsForm, heroImageBadgeTitle: e.target.value})}
+                                    placeholder="خدمة متنقلة وسريعة"
+                                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-400 uppercase">
+                                    النص الفرعي للشارة
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    value={settingsForm.heroImageBadgeSubtitle || 'نصلك أينما كنت بجدة'}
+                                    onChange={e => setSettingsForm({...settingsForm, heroImageBadgeSubtitle: e.target.value})}
+                                    placeholder="نصلك أينما كنت بجدة"
+                                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-brand-red"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-xs text-gray-400 text-center">
+                                الشارة العائمة معطلة حالياً ولن تظهر على الصورة في الصفحة الرئيسية.
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Save Changes Button */}
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={handleUpdateSettings}
+                              disabled={loading}
+                              className="w-full py-4 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-brand-red/25 flex items-center justify-center gap-2 cursor-pointer text-sm"
+                            >
+                              <Save className="w-5 h-5" />
+                              {loading ? 'جاري حفظ التغييرات...' : 'حفظ وتطبيق تغييرات الواجهة والصورة الآن'}
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -5527,6 +6535,21 @@ const ContactSection = ({ settings }: { settings: AppSettings }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !message.trim()) return;
+
+    // Send Telegram Notification to Admin
+    try {
+      fetch('/api/notify-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName: name.trim(),
+          customerPhone: emailOrPhone.trim() || 'غير محدد',
+          serviceType: 'استفسار وتواصل مباشر',
+          notes: message.trim(),
+          location: 'جدة'
+        })
+      }).catch(err => console.warn('Inquiry notify error:', err));
+    } catch {}
 
     const text = lang === 'ar'
       ? `*استفسار جديد من موقع Dr. Fix*\n\n*الاسم:* ${name}\n*وسيلة التواصل:* ${emailOrPhone || 'غير محدد'}\n*الرسالة:* ${message}`
