@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CheckCircle,
   CheckCircle2,
   X,
   Hammer,
@@ -67,6 +68,11 @@ import {
   ExternalLink,
   PhoneCall,
   Image as ImageIcon,
+  Volume2,
+  VolumeX,
+  Download,
+  Sparkles,
+  Radio
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
@@ -327,7 +333,71 @@ interface AppSettings {
   // Maintenance
   maintenanceMode?: boolean;
   maintenanceMessage?: string;
+  // Telegram & Notifications
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  enableSoundAlerts?: boolean;
 }
+
+// Audio synthesized notification chime for bookings
+export const playNotificationSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    // High-pitched pleasant dual chime
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5
+    osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
+
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(880, now + 0.12);
+    osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.3); // D6
+
+    gainNode.gain.setValueAtTime(0.25, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+    osc1.connect(gainNode);
+    osc2.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc1.start(now);
+    osc1.stop(now + 0.15);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.4);
+  } catch (e) {
+    console.log('Audio notification chime not supported or allowed yet', e);
+  }
+};
+
+// Telegram instant message dispatcher
+export const sendTelegramNotification = async (messageText: string, botToken?: string, chatId?: string): Promise<boolean> => {
+  if (!botToken || !chatId) return false;
+  try {
+    const cleanToken = botToken.trim();
+    const cleanChatId = chatId.trim();
+    const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: cleanChatId,
+        text: messageText,
+        parse_mode: 'HTML'
+      })
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("Telegram notification error:", err);
+    return false;
+  }
+};
 
 const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> => {
   return new Promise((resolve) => {
@@ -1216,6 +1286,19 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         });
         // Save phone to localStorage for auto-search in history
         localStorage.setItem('drfix_customer_phone', data.phone.trim());
+
+        // Send Telegram Instant Alert to Admin if configured
+        if (settings?.telegramBotToken && settings?.telegramChatId) {
+          const serviceName = serviceLabels[data.serviceType] || data.serviceType;
+          const tgText = `🔔 <b>حجز جديد في Dr. Fix!</b> 🚗\n\n` +
+            `👤 <b>العميل:</b> <code>${data.phone}</code>\n` +
+            `🚘 <b>السيارة:</b> ${data.carMake} ${data.carModel} (${data.carYear})\n` +
+            `🔧 <b>الخدمة:</b> ${serviceName}\n` +
+            `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
+            `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n\n` +
+            `🔗 <a href="https://drfix.repair/admin">فتح لوحة التحكم للإدارة</a>`;
+          sendTelegramNotification(tgText, settings.telegramBotToken, settings.telegramChatId);
+        }
       } catch (error) {
         console.error("Error creating auto record:", error);
       }
@@ -1742,8 +1825,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'content' | 'customers' | 'testimonials' | 'settings'>('dashboard');
-  const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance'>('general');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'content' | 'customers' | 'testimonials' | 'notifications' | 'settings'>('dashboard');
+  const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -1757,6 +1840,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied'
   );
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPWAInstalled, setIsPWAInstalled] = useState<boolean>(false);
+  const [testTgLoading, setTestTgLoading] = useState<boolean>(false);
+  const [testTgStatus, setTestTgStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Form States
   const [formData, setFormData] = useState({
@@ -1833,8 +1920,61 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     footerDescription: settings.footerDescription || '',
     copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
     maintenanceMode: settings.maintenanceMode ?? false,
-    maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.'
+    maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
+    telegramBotToken: settings.telegramBotToken || '',
+    telegramChatId: settings.telegramChatId || '',
+    enableSoundAlerts: settings.enableSoundAlerts ?? true
   });
+
+  useEffect(() => {
+    // Detect PWA status
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    setIsPWAInstalled(!!isStandalone);
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallPWA = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setIsPWAInstalled(true);
+      }
+      setDeferredPrompt(null);
+    } else {
+      alert("لتثبيت التطبيق على الآيفون: اضغط زر المشاركة (Share) في المتصفح ثم اختر 'إضافة إلى الصفحة الرئيسية (Add to Home Screen)'. \n\nعلى أندرويد: افتح خيارات المتصفح (⋮) ثم اضغط 'تثبيت التطبيق (Install App)'.");
+    }
+  };
+
+  const handleTestTelegram = async () => {
+    if (!settingsForm.telegramBotToken?.trim() || !settingsForm.telegramChatId?.trim()) {
+      alert("يرجى إدخال Bot Token و Chat ID أولاً في الحقول المخصصة");
+      return;
+    }
+    setTestTgLoading(true);
+    setTestTgStatus('idle');
+    const testMsg = `🔔 <b>تجربة إشعار تيليجرام من Dr. Fix!</b> 🚗\n\n` +
+      `✅ <b>مبروك!</b> تم ربط بوت تيليجرام بلوحة تحكم Dr. Fix بنجاح.\n` +
+      `⏰ <b>التاريخ والوقت:</b> ${new Date().toLocaleString('ar-SA')}\n\n` +
+      `الآن ستصلك تفاصيل أي حجز سيارة جديد فور تسجيل العميل له مباشرة! 🚀\n\n` +
+      `🔗 <a href="https://drfix.repair/admin">لوحة الإدارة</a>`;
+    const ok = await sendTelegramNotification(testMsg, settingsForm.telegramBotToken, settingsForm.telegramChatId);
+    setTestTgLoading(false);
+    if (ok) {
+      setTestTgStatus('success');
+    } else {
+      setTestTgStatus('error');
+    }
+  };
 
   useEffect(() => {
     setSettingsForm({
@@ -1874,7 +2014,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       footerDescription: settings.footerDescription || '',
       copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
       maintenanceMode: settings.maintenanceMode ?? false,
-      maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.'
+      maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
+      telegramBotToken: settings.telegramBotToken || '',
+      telegramChatId: settings.telegramChatId || '',
+      enableSoundAlerts: settings.enableSoundAlerts ?? true
     });
   }, [settings]);
 
@@ -1896,6 +2039,9 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
         snapshot.docChanges().forEach((change) => {
           if (change.type === "added" && !isInitialLoad) {
             const newBooking = change.doc.data() as MaintenanceRecord;
+            if (settings.enableSoundAlerts !== false) {
+              playNotificationSound();
+            }
             if (Notification.permission === "granted") {
               new Notification("حجز جديد! 🚗", {
                 body: `حجز جديد لسيارة ${newBooking.carModel} - ${newBooking.serviceType}`,
@@ -2272,6 +2418,41 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
               العودة للموقع
             </button>
             
+            {/* Sound alert toggle */}
+            <button
+              onClick={() => {
+                const nextVal = !(settingsForm.enableSoundAlerts ?? true);
+                setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
+                if (nextVal) {
+                  playNotificationSound();
+                }
+              }}
+              className={cn(
+                "p-3 border rounded-xl transition-all cursor-pointer",
+                settingsForm.enableSoundAlerts !== false 
+                  ? "bg-brand-red/10 border-brand-red/30 text-brand-red" 
+                  : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
+              )}
+              title={settingsForm.enableSoundAlerts !== false ? "الصوت مفعل للحجوزات الجديدة (اضغط للتعطيل)" : "تفعيل الصوت التنبيهي"}
+            >
+              {settingsForm.enableSoundAlerts !== false ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+
+            {/* PWA Install Button */}
+            <button
+              onClick={handleInstallPWA}
+              className={cn(
+                "hidden sm:flex items-center gap-2 px-4 py-3 border rounded-xl font-bold text-xs transition-all cursor-pointer",
+                isPWAInstalled 
+                  ? "bg-green-500/10 border-green-500/20 text-green-400" 
+                  : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+              )}
+              title="تثبيت لوحة التحكم كتطبيق مستقل على جوالك أو جهازك"
+            >
+              <Download className="w-4 h-4 text-brand-red" />
+              <span>{isPWAInstalled ? "التطبيق مثبت ✓" : "تثبيت كتطبيق (PWA)"}</span>
+            </button>
+
             {typeof Notification !== 'undefined' && (
               <button 
                 onClick={() => {
@@ -2287,7 +2468,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                   }
                 }}
                 className={cn(
-                  "p-3 border rounded-xl transition-all",
+                  "p-3 border rounded-xl transition-all cursor-pointer",
                   notificationPermission === 'granted' ? "bg-green-500/10 border-green-500/20 text-green-500" : 
                   notificationPermission === 'denied' ? "bg-red-500/10 border-red-500/20 text-red-500" :
                   "bg-white/5 border-white/10 text-yellow-500 hover:bg-white/10"
@@ -2300,14 +2481,14 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
 
             <button 
               onClick={() => setIsAdding(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20"
+              className="flex items-center gap-2 px-6 py-3 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white"
             >
               <PlusCircle className="w-5 h-5" />
               إضافة جديد
             </button>
             <button 
               onClick={onLogout}
-              className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400"
+              className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
               title="تسجيل الخروج"
             >
               <LogOut className="w-5 h-5" />
@@ -2320,6 +2501,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
           {[
             { id: 'dashboard', label: 'الإحصائيات', icon: BarChart },
             { id: 'bookings', label: 'الحجوزات', icon: Calendar },
+            { id: 'notifications', label: 'الإشعارات وتطبيق الجوال', icon: Bell },
             { id: 'content', label: 'المحتوى', icon: FileText },
             { id: 'customers', label: 'العملاء', icon: User },
             { id: 'testimonials', label: 'التعليقات', icon: MessageSquare },
@@ -2591,9 +2773,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                 </div>
               </div>
 
-              {/* Bookings Table / Cards */}
+              {/* Bookings Table (Desktop) / Cards (Mobile) */}
               <div className="glass-card overflow-hidden border-white/5">
-                <div className="overflow-x-auto">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-right">
                     <thead>
                       <tr className="bg-white/5 border-b border-white/10">
@@ -2639,7 +2822,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                     href={`https://wa.me/${waPhone}?text=${waMsg}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all"
+                                    className="px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                                     title="محادثة واتساب مباشرة"
                                   >
                                     <MessageCircle className="w-3 h-3" />
@@ -2647,7 +2830,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                   </a>
                                   <a 
                                     href={`tel:${record.customerPhone}`}
-                                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all"
+                                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                                     title="اتصال هاتفي"
                                   >
                                     <PhoneCall className="w-3 h-3" />
@@ -2690,21 +2873,21 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                 <div className="flex items-center justify-center gap-1">
                                   <button 
                                     onClick={() => setSelectedBookingDetails(record)}
-                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                                     title="عرض التفاصيل الكاملة"
                                   >
                                     <Eye className="w-4 h-4" />
                                   </button>
                                   <button 
                                     onClick={() => handleEdit('booking', record)}
-                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                                     title="تعديل الحجز"
                                   >
                                     <Edit3 className="w-4 h-4" />
                                   </button>
                                   <button 
                                     onClick={() => handleDelete('maintenance', record.id)}
-                                    className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors"
+                                    className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                                     title="حذف الحجز"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2716,23 +2899,138 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                         })}
                     </tbody>
                   </table>
-                  {records.length === 0 && (
-                    <div className="py-16 text-center text-gray-500 space-y-3">
-                      <Calendar className="w-12 h-12 text-gray-700 mx-auto" />
-                      <p className="font-bold">لا توجد أي حجوزات مسجلة حتى الآن</p>
-                      <button 
-                        onClick={() => {
-                          setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
-                          setEditingItem(null);
-                          setIsAdding(true);
-                        }}
-                        className="px-6 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer"
-                      >
-                        إضافة أول حجز
-                      </button>
-                    </div>
-                  )}
                 </div>
+
+                {/* Mobile Cards View (Optimized for Mobile App PWA) */}
+                <div className="md:hidden divide-y divide-white/5">
+                  {records
+                    .filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
+                    .filter(r => {
+                      if (!bookingSearch.trim()) return true;
+                      const q = bookingSearch.toLowerCase().trim();
+                      return (
+                        (r.customerPhone || '').toLowerCase().includes(q) ||
+                        (r.carModel || '').toLowerCase().includes(q) ||
+                        (r.serviceType || '').toLowerCase().includes(q) ||
+                        (r.notes || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((record) => {
+                      const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+                      const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
+                      const waMsg = encodeURIComponent(`مرحباً بك من مركز دكتور فيكس لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${record.carModel})`);
+                      
+                      return (
+                        <div key={record.id} className="p-4 space-y-3 bg-black/20">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-bold text-white text-base">{record.carModel}</div>
+                              <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                <Clock className="w-3 h-3 text-gray-500" />
+                                {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString('ar-SA') : 'تاريخ الحجز'}
+                              </div>
+                            </div>
+                            <select 
+                              value={record.status}
+                              onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
+                              className={cn(
+                                "text-xs font-bold px-3 py-1 rounded-full bg-black/60 border outline-none cursor-pointer",
+                                record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
+                                record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                              )}
+                            >
+                              <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                              <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
+                              <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
+                              <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
+                            </select>
+                          </div>
+
+                          <div className="bg-white/5 p-3 rounded-xl space-y-1 text-xs">
+                            <div className="flex justify-between text-gray-300">
+                              <span className="text-gray-500">الخدمة:</span>
+                              <span className="font-bold text-white">{record.serviceType}</span>
+                            </div>
+                            {record.cost && (
+                              <div className="flex justify-between text-gray-300">
+                                <span className="text-gray-500">التكلفة:</span>
+                                <span className="font-bold text-brand-red">{record.cost} ريال</span>
+                              </div>
+                            )}
+                            {record.notes && (
+                              <div className="text-gray-400 italic pt-1 border-t border-white/5">
+                                "{record.notes}"
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <a 
+                                href={`https://wa.me/${waPhone}?text=${waMsg}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                واتساب
+                              </a>
+                              <a 
+                                href={`tel:${record.customerPhone}`}
+                                className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <PhoneCall className="w-3.5 h-3.5" />
+                                اتصال
+                              </a>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button 
+                                onClick={() => setSelectedBookingDetails(record)}
+                                className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
+                                title="عرض التفاصيل"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleEdit('booking', record)}
+                                className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
+                                title="تعديل الحجز"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => handleDelete('maintenance', record.id)}
+                                className="p-2 text-gray-400 hover:text-brand-red bg-white/5 rounded-xl cursor-pointer"
+                                title="حذف الحجز"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {records.length === 0 && (
+                  <div className="py-16 text-center text-gray-500 space-y-3">
+                    <Calendar className="w-12 h-12 text-gray-700 mx-auto" />
+                    <p className="font-bold">لا توجد أي حجوزات مسجلة حتى الآن</p>
+                    <button 
+                      onClick={() => {
+                        setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
+                        setEditingItem(null);
+                        setIsAdding(true);
+                      }}
+                      className="px-6 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer"
+                    >
+                      إضافة أول حجز
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -2755,8 +3053,10 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     key={sub.id}
                     onClick={() => setContentTab(sub.id as any)}
                     className={cn(
-                      "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-                      contentTab === sub.id ? "bg-brand-red/10 text-brand-red border border-brand-red/20" : "text-gray-500 hover:text-white"
+                      "px-6 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer",
+                      contentTab === sub.id
+                        ? "bg-white/10 text-white border border-white/10 shadow-sm"
+                        : "text-gray-400 hover:text-white"
                     )}
                   >
                     {sub.label}
@@ -3247,6 +3547,271 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
             </motion.div>
           )}
 
+          {activeTab === 'notifications' && (
+            <motion.div
+              key="notifications"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              {/* Header Card */}
+              <div className="glass-card p-6 md:p-8 border-brand-red/20 relative overflow-hidden">
+                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-red/10 border border-brand-red/20 text-brand-red text-xs font-bold mb-3">
+                      <Radio className="w-3.5 h-3.5 animate-pulse" />
+                      مركز التنبيهات الفورية وتطبيق الجوال
+                    </div>
+                    <h3 className="text-2xl md:text-3xl font-display font-black italic mb-2">
+                      تطبيق الإدارة <span className="text-brand-red">وإشعارات تيليجرام</span>
+                    </h3>
+                    <p className="text-gray-400 text-sm max-w-2xl leading-relaxed">
+                      استقبل تنبيهات الحجوزات الجديدة مباشرة على تطبيق تيليجرام الخاص بك، وقم بتثبيت لوحة التحكم كتطبيق مستقل وسريع على شاشة هاتفك (PWA).
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    <button
+                      onClick={handleInstallPWA}
+                      className="px-6 py-3.5 bg-gradient-to-r from-brand-red to-red-700 hover:from-red-600 hover:to-red-800 text-white rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-brand-red/25 transition-all cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      {isPWAInstalled ? "التطبيق مثبت على جهازك ✓" : "تثبيت تطبيق الإدارة على هاتفك (PWA)"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Column Grid: Telegram Bot & App Install */}
+              <div className="grid lg:grid-cols-2 gap-8">
+                {/* 1. Telegram Bot Card */}
+                <div className="glass-card p-6 md:p-8 border-white/10 space-y-6">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                        <MessageSquare className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-white">إشعارات بوت تيليجرام</h4>
+                        <p className="text-xs text-gray-400">تنبيه فوري بتفاصيل العميل والسيارة عند كل حجز</p>
+                      </div>
+                    </div>
+
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-xs font-bold border",
+                      settingsForm.telegramBotToken && settingsForm.telegramChatId
+                        ? "bg-green-500/10 border-green-500/20 text-green-400"
+                        : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                    )}>
+                      {settingsForm.telegramBotToken && settingsForm.telegramChatId ? "تم الربط ✓" : "بحاجة للإعداد"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-300 uppercase flex items-center justify-between">
+                        <span>توكن البوت (Telegram Bot Token)</span>
+                        <span className="text-[11px] text-sky-400 font-normal">من @BotFather</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={settingsForm.telegramBotToken}
+                        onChange={e => setSettingsForm({ ...settingsForm, telegramBotToken: e.target.value })}
+                        placeholder="مثال: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono text-gray-200"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-300 uppercase flex items-center justify-between">
+                        <span>معرف المحادثة أو القناة (Telegram Chat ID)</span>
+                        <span className="text-[11px] text-sky-400 font-normal">من @userinfobot</span>
+                      </label>
+                      <input 
+                        type="text"
+                        value={settingsForm.telegramChatId}
+                        onChange={e => setSettingsForm({ ...settingsForm, telegramChatId: e.target.value })}
+                        placeholder="مثال: 987654321 أو -100123456789"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono text-gray-200"
+                        dir="ltr"
+                      />
+                    </div>
+
+                    {/* Test & Save Actions */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={handleTestTelegram}
+                        disabled={testTgLoading || !settingsForm.telegramBotToken || !settingsForm.telegramChatId}
+                        className="flex-1 px-5 py-3 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-40 cursor-pointer"
+                      >
+                        {testTgLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        {testTgLoading ? "جاري الإرسال للتجربة..." : "إرسال إشعار تجريبي الآن 🚀"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setLoading(true);
+                            await setDoc(doc(db, 'settings', 'general'), {
+                              ...settings,
+                              telegramBotToken: settingsForm.telegramBotToken,
+                              telegramChatId: settingsForm.telegramChatId,
+                              enableSoundAlerts: settingsForm.enableSoundAlerts
+                            }, { merge: true });
+                            alert("تم حفظ إعدادات التيليجرام والتنبيهات بنجاح!");
+                          } catch (err) {
+                            alert("حدث خطأ أثناء الحفظ");
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                        className="px-6 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-brand-red/20"
+                      >
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                        حفظ الإعدادات
+                      </button>
+                    </div>
+
+                    {/* Test Status Banner */}
+                    {testTgStatus === 'success' && (
+                      <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs flex items-center gap-2 animate-in fade-in">
+                        <CheckCircle className="w-4 h-4 shrink-0" />
+                        <span>تم إرسال الإشعار التجريبي بنجاح! افتح تطبيق تيليجرام للتحقق من الرسالة.</span>
+                      </div>
+                    )}
+                    {testTgStatus === 'error' && (
+                      <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>تعذر إرسال الإشعار. تأكد من صحة الـ Token و Chat ID وأنك قمت ببدء محادثة مع البوت (Start).</span>
+                      </div>
+                    )}
+
+                    {/* Step by Step Guide in Arabic */}
+                    <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-2.5 text-xs text-gray-300">
+                      <div className="font-bold text-white flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-brand-red" />
+                        كيف تفعل بوت تيليجرام في 3 خطوات بسيطة:
+                      </div>
+                      <ol className="space-y-1.5 list-decimal list-inside text-gray-400 pr-1 leading-relaxed">
+                        <li>افتح تيليجرام وابحث عن <code className="text-sky-400 bg-black/40 px-1 py-0.5 rounded">@BotFather</code> وأرسل <code className="text-white">/newbot</code> واختر اسماً ومعرفاً وانسخ الـ Token.</li>
+                        <li>لمعرفة الـ Chat ID الخاص بك، افتح بوت <code className="text-sky-400 bg-black/40 px-1 py-0.5 rounded">@userinfobot</code> وأرسل أي رسالة وانسخ رقم الـ Id.</li>
+                        <li>افتح البوت الجديد الذي أنشأته واضغط <b>Start</b>، ثم الصق التوكن والـ ID أعلاه واضغط <b>إرسال إشعار تجريبي</b>.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. PWA Mobile App & Sound Alerts */}
+                <div className="space-y-6">
+                  {/* Sound Alerts Card */}
+                  <div className="glass-card p-6 md:p-8 border-white/10 space-y-6">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-brand-red/10 border border-brand-red/20 flex items-center justify-center text-brand-red">
+                          <Volume2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-white">التنبيهات الصوتية الحية</h4>
+                          <p className="text-xs text-gray-400">تشغيل نغمة عند وصول حجز جديد وأنت داخل اللوحة</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextVal = !(settingsForm.enableSoundAlerts ?? true);
+                          setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
+                          if (nextVal) playNotificationSound();
+                        }}
+                        className={cn(
+                          "w-12 h-6 rounded-full relative transition-all cursor-pointer",
+                          settingsForm.enableSoundAlerts !== false ? "bg-brand-red" : "bg-gray-700"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                          settingsForm.enableSoundAlerts !== false ? "right-0.5" : "left-0.5"
+                        )} />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs text-gray-400">
+                        {settingsForm.enableSoundAlerts !== false ? "الصوت مفعل - ستسمع رنة تنبيه فورية عند إضافة حجز جديد." : "الصوت معطل حالياً."}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => playNotificationSound()}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                      >
+                        <Volume2 className="w-3.5 h-3.5 text-brand-red" />
+                        تجربة النغمة
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PWA Mobile App Card */}
+                  <div className="glass-card p-6 md:p-8 border-white/10 space-y-6">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                          <Download className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-white">تطبيق الجوال (PWA)</h4>
+                          <p className="text-xs text-gray-400">تشغيل لوحة التحكم كبرنامج مستقل على هاتفك</p>
+                        </div>
+                      </div>
+
+                      <span className={cn(
+                        "px-3 py-1 rounded-full text-xs font-bold border",
+                        isPWAInstalled ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-purple-500/10 border-purple-500/20 text-purple-400"
+                      )}>
+                        {isPWAInstalled ? "تطبيق مثبت" : "جاهز للتثبيت"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid sm:grid-cols-2 gap-4 text-xs">
+                        <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <span>📱</span> على الآيفون (iOS Safari):
+                          </div>
+                          <p className="text-gray-400 leading-relaxed">
+                            اضغط زر <b>المشاركة (Share)</b> في أسفل متصفح Safari، ثم اختر <b>إضافة إلى الصفحة الرئيسية (Add to Home Screen)</b>.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-white/5 rounded-xl border border-white/5 space-y-1.5">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <span>🤖</span> على الأندرويد (Chrome):
+                          </div>
+                          <p className="text-gray-400 leading-relaxed">
+                            اضغط على زر <b>خيارات المتصفح (⋮)</b> في الأعلى، ثم اضغط <b>تثبيت التطبيق (Install App)</b>.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleInstallPWA}
+                        className="w-full py-3.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
+                      >
+                        <Download className="w-4 h-4 text-brand-red" />
+                        {isPWAInstalled ? "فتح / إعادة تثبيت التطبيق" : "تثبيت تطبيق دكتور فيكس على الشاشة الرئيسية الآن"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {activeTab === 'settings' && (
             <motion.div
               key="settings"
@@ -3260,6 +3825,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                 <div className="glass-card p-4 border-white/5 space-y-2">
                   {[
                     { id: 'general', label: 'الإعدادات العامة', icon: Globe },
+                    { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
                     { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
                     { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout },
                     { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
@@ -3385,6 +3951,139 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                 />
                               </div>
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {settingsSubTab === 'notifications' && (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xl font-bold flex items-center gap-2">
+                            <Bell className="w-5 h-5 text-brand-red" />
+                            إعدادات التنبيهات الفورية وبوت تيليجرام
+                          </h3>
+                        </div>
+
+                        {/* Telegram Settings Box */}
+                        <div className="glass-card p-6 border-white/10 space-y-6">
+                          <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                            <div>
+                              <h4 className="font-bold text-base flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-sky-400" />
+                                إشعارات بوت تيليجرام التلقائية
+                              </h4>
+                              <p className="text-xs text-gray-400">وصول رسالة تفصيلية فورية عند تسجيل أي عميل لحجز جديد</p>
+                            </div>
+                            <span className={cn(
+                              "px-3 py-1 rounded-full text-xs font-bold border",
+                              settingsForm.telegramBotToken && settingsForm.telegramChatId
+                                ? "bg-green-500/10 border-green-500/20 text-green-400"
+                                : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                            )}>
+                              {settingsForm.telegramBotToken && settingsForm.telegramChatId ? "مفعل ومربوط ✓" : "غير مكتمل"}
+                            </span>
+                          </div>
+
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-gray-400 uppercase">توكن البوت (Bot Token)</label>
+                              <input 
+                                type="text"
+                                value={settingsForm.telegramBotToken}
+                                onChange={e => setSettingsForm({ ...settingsForm, telegramBotToken: e.target.value })}
+                                placeholder="مثال: 123456789:ABCdefGh..."
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono"
+                                dir="ltr"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-gray-400 uppercase">معرف المحادثة (Chat ID)</label>
+                              <input 
+                                type="text"
+                                value={settingsForm.telegramChatId}
+                                onChange={e => setSettingsForm({ ...settingsForm, telegramChatId: e.target.value })}
+                                placeholder="مثال: 987654321"
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono"
+                                dir="ltr"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 pt-2">
+                            <button
+                              type="button"
+                              onClick={handleTestTelegram}
+                              disabled={testTgLoading || !settingsForm.telegramBotToken || !settingsForm.telegramChatId}
+                              className="px-5 py-2.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-xl text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-40 cursor-pointer"
+                            >
+                              {testTgLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                              {testTgLoading ? "جاري الإرسال..." : "إرسال إشعار تجريبي 🚀"}
+                            </button>
+                          </div>
+
+                          {testTgStatus === 'success' && (
+                            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-xs flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 shrink-0" />
+                              <span>تم الإرسال بنجاح إلى التيليجرام!</span>
+                            </div>
+                          )}
+                          {testTgStatus === 'error' && (
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 shrink-0" />
+                              <span>فشل الإرسال. تأكد من صحة التوكن والـ Chat ID وأنك قمت ببدء محادثة مع البوت.</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Sound Alerts Box */}
+                        <div className="glass-card p-6 border-white/10 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-base flex items-center gap-2">
+                                <Volume2 className="w-4 h-4 text-brand-red" />
+                                التنبيهات الصوتية الحية
+                              </h4>
+                              <p className="text-xs text-gray-400">إصدار صوت رنة عند وصول حجز جديد أثناء فتح اللوحة</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = !(settingsForm.enableSoundAlerts ?? true);
+                                setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
+                                if (nextVal) playNotificationSound();
+                              }}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-all cursor-pointer",
+                                settingsForm.enableSoundAlerts !== false ? "bg-brand-red" : "bg-gray-700"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
+                                settingsForm.enableSoundAlerts !== false ? "right-0.5" : "left-0.5"
+                              )} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* PWA Section */}
+                        <div className="glass-card p-6 border-white/10 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-base flex items-center gap-2">
+                                <Download className="w-4 h-4 text-purple-400" />
+                                تطبيق الجوال (PWA)
+                              </h4>
+                              <p className="text-xs text-gray-400">تثبيت لوحة التحكم على الهاتف كبرنامج سريع بدون متصفح</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleInstallPWA}
+                              className="px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              {isPWAInstalled ? "التطبيق مثبت ✓" : "تثبيت التطبيق الآن"}
+                            </button>
                           </div>
                         </div>
                       </div>
