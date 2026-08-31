@@ -11,13 +11,20 @@ const firebaseConfig = {
   messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '262129832067'
 };
 
-function getDbInstance() {
-  const apps = getApps();
-  const app = apps.length === 0 ? initializeApp(firebaseConfig) : apps[0];
-  return getFirestore(app, firebaseConfig.firestoreDatabaseId);
-}
+let dbInstance: any = null;
 
-const db = getDbInstance();
+function getDbInstance() {
+  if (dbInstance) return dbInstance;
+  try {
+    const apps = getApps();
+    const app = apps.length === 0 ? initializeApp(firebaseConfig) : apps[0];
+    dbInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    return dbInstance;
+  } catch (error) {
+    console.warn('Firebase lazy initialization notice:', error);
+    return null;
+  }
+}
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 const TELEGRAM_ADMIN_ID = process.env.TELEGRAM_ADMIN_ID || '867105778';
@@ -262,25 +269,28 @@ export async function handleTelegramWebhook(update: any) {
         // Update in Firestore
         let updateSuccess = false;
         try {
-          // Search for doc by bookingId field or doc ID
-          const maintenanceRef = collection(db, 'maintenance');
-          const snapshot = await getDocs(maintenanceRef);
-          let targetDocId = null;
+          const database = getDbInstance();
+          if (database) {
+            // Search for doc by bookingId field or doc ID
+            const maintenanceRef = collection(database, 'maintenance');
+            const snapshot = await getDocs(maintenanceRef);
+            let targetDocId = null;
 
-          snapshot.forEach(d => {
-            const data = d.data();
-            if (data.bookingId === bookingId || d.id === bookingId) {
-              targetDocId = d.id;
-            }
-          });
-
-          if (targetDocId) {
-            await updateDoc(doc(db, 'maintenance', targetDocId), {
-              status: newStatus,
-              updatedAt: new Date().toISOString(),
-              updatedBy: `Telegram Admin (${fromId})`
+            snapshot.forEach(d => {
+              const data = d.data();
+              if (data.bookingId === bookingId || d.id === bookingId) {
+                targetDocId = d.id;
+              }
             });
-            updateSuccess = true;
+
+            if (targetDocId) {
+              await updateDoc(doc(database, 'maintenance', targetDocId), {
+                status: newStatus,
+                updatedAt: new Date().toISOString(),
+                updatedBy: `Telegram Admin (${fromId})`
+              });
+              updateSuccess = true;
+            }
           }
         } catch (e) {
           console.error('Error updating status in Firestore:', e);
@@ -399,7 +409,16 @@ async function sendMainMenu(chatId: string | number) {
 
 async function sendBookingsList(chatId: string | number, page = 1) {
   try {
-    const maintenanceRef = collection(db, 'maintenance');
+    const database = getDbInstance();
+    if (!database) {
+      await callTelegramApi('sendMessage', {
+        chat_id: chatId,
+        text: '⚠️ تعذر الاتصال بقاعدة البيانات حالياً.',
+        parse_mode: 'Markdown'
+      });
+      return;
+    }
+    const maintenanceRef = collection(database, 'maintenance');
     const snapshot = await getDocs(maintenanceRef);
     const allBookings: any[] = [];
 
@@ -494,7 +513,16 @@ async function sendBookingsList(chatId: string | number, page = 1) {
 
 async function sendStatsReport(chatId: string | number) {
   try {
-    const maintenanceRef = collection(db, 'maintenance');
+    const database = getDbInstance();
+    if (!database) {
+      await callTelegramApi('sendMessage', {
+        chat_id: chatId,
+        text: '⚠️ تعذر حساب الإحصائيات في الوقت الحالي.',
+        parse_mode: 'Markdown'
+      });
+      return;
+    }
+    const maintenanceRef = collection(database, 'maintenance');
     const snapshot = await getDocs(maintenanceRef);
     
     let total = 0;
@@ -528,7 +556,7 @@ async function sendStatsReport(chatId: string | number) {
     let reviewsCount = 0;
     let totalStars = 0;
     try {
-      const revSnap = await getDocs(collection(db, 'testimonials'));
+      const revSnap = await getDocs(collection(database, 'testimonials'));
       revSnap.forEach(d => {
         reviewsCount++;
         totalStars += Number(d.data().rating || 5);
