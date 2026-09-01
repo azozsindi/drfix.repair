@@ -201,6 +201,7 @@ interface TestimonialData {
   createdAt: Timestamp | any;
 }
 interface BookingFormData {
+  customerName?: string;
   carMake: string;
   carModel: string;
   carYear: string;
@@ -1350,10 +1351,11 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
     try {
       // 1. Write strictly to Firebase Firestore first
+      const resolvedCustomerName = data.customerName?.trim() || cleanPhone;
       const bookingDocData = {
         bookingId: uniqueBookingId,
         customerPhone: cleanPhone,
-        customerName: cleanPhone,
+        customerName: resolvedCustomerName,
         carMake: data.carMake.trim(),
         carModel: `${data.carMake.trim()} ${data.carModel.trim()} ${data.carYear.trim()}`,
         carYear: data.carYear.trim(),
@@ -1383,6 +1385,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           body: JSON.stringify({
             bookingId: uniqueBookingId,
             customerPhone: cleanPhone,
+            customerName: resolvedCustomerName,
             carModel: `${data.carMake.trim()} ${data.carModel.trim()} (${data.carYear.trim()})`,
             serviceType: serviceTitle,
             notes: data.description.trim(),
@@ -1622,15 +1625,26 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               </p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.phone}</label>
-              <input 
-                {...register('phone', { required: true })}
-                type="tel"
-                placeholder={t.booking.phonePlaceholder}
-                autoComplete="tel"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
-              />
+            <div className="grid sm:grid-cols-2 gap-4 md:gap-6">
+              <div className="space-y-2">
+                <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.customerName}</label>
+                <input 
+                  {...register('customerName')}
+                  placeholder={t.booking.customerNamePlaceholder}
+                  autoComplete="name"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.phone}</label>
+                <input 
+                  {...register('phone', { required: true })}
+                  type="tel"
+                  placeholder={t.booking.phonePlaceholder}
+                  autoComplete="tel"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                />
+              </div>
             </div>
 
             <button 
@@ -2046,6 +2060,7 @@ interface MaintenanceRecord {
   id: string;
   bookingId?: string;
   customerName?: string;
+  name?: string;
   customerPhone: string;
   carModel: string;
   carMake?: string;
@@ -2132,28 +2147,35 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
 
     const bId = record.bookingId || record.id || '';
-    const car = record.carModel || 'سيارتك';
+    const customerName = record.customerName && record.customerName !== record.customerPhone 
+      ? record.customerName 
+      : (record.name && record.name !== record.customerPhone ? record.name : '');
+    
+    const greeting = customerName ? `مرحباً بك أستاذ/ة ${customerName} 🚗⚡` : `مرحباً بك أستاذنا العزيز 🚗⚡`;
+    const car = record.carModel || (record.carMake ? `${record.carMake} ${record.carModel || ''} ${record.carYear || ''}`.trim() : 'سيارتك');
     const service = record.serviceType || 'صيانة متنقلة';
+    const location = record.location || 'جدة';
+    const notes = record.notes ? record.notes.trim() : '';
 
     let msg = '';
     switch (targetStatus) {
       case 'accepted':
-        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم تأكيد وقبول موعد حجزك لدى DR.FIX ميكانيكي متنقل في جدة.\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى جودة وسرعة!`;
+        msg = `${greeting}\nتم تأكيد وقبول موعد حجزك لدى DR.FIX - ميكانيكي متنقل في جدة ✅\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 الملاحظات: ${notes}\n` : ''}\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى سرعة وجودة! نتشرف بكم دائماً.`;
         break;
       case 'on_the_way':
-        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك (${car}).\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nنتشرف بخدمتك دائماً!`;
+        msg = `${greeting}\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك 🚗💨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 تفاصيل الطلب: ${notes}\n` : ''}\nيرجى إبقاء الهاتف متاحاً للتنسيق عند الوصول. نتشرف بخدمتك!`;
         break;
       case 'in-progress':
-        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nبدأ فني DR.FIX العمل على صيانة وفحص سيارتك (${car}) الآن.\n\n📌 رقم الحجز: #${bId}`;
+        msg = `${greeting}\nبدأ فني DR.FIX العمل على فحص وصيانة سيارتك الآن 🔧\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nسنوافيكم بكافة المستجدات فور الانتهاء بإذن الله!`;
         break;
       case 'completed':
-        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم الانتهاء من صيانة سيارتك (${car}) بنجاح والحمد لله.\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم بمركز DR.FIX - ميكانيكي متنقل في جدة 🚗✨\nيسعدنا تقييمكم لخدمتنا عبر موقعنا:\nhttps://www.drfix.repair/#reviews`;
+        msg = `${greeting}\nتم الانتهاء من صيانة وفحص سيارتك بنجاح والحمد لله 🏁✨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم واختياركم DR.FIX - ميكانيكي متنقل في جدة 🚗\nيسعدنا ويشرفنا تقييمكم لتجربتكم معنا عبر الرابط:\nhttps://www.drfix.repair/#reviews`;
         break;
       case 'cancelled':
-        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنحيطك علماً بأنه تم إلغاء حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\nإذا كان لديك أي استفسار يسعدنا تواصلكم دائماً!`;
+        msg = `${greeting}\nنحيطك علماً بأنه تم إلغاء / رفض حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\n\nإذا كان لديك أي استفسار أو ترغب في إعادة جدولة الموعد، يسعدنا تواصلك معنا دائماً!`;
         break;
       default:
-        msg = `مرحباً بك من DR.FIX لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}`;
+        msg = `${greeting}\nتحديث بخصوص حجزك لسيارة (${car}) رقم الحجز: #${bId}\n🔧 الخدمة: ${service}`;
         break;
     }
 

@@ -37,18 +37,28 @@ export default async function handler(req: any, res: any) {
     const cleanPhone = (booking.customerPhone || '').replace(/\D/g, '');
     const internationalPhone = cleanPhone ? (cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '')) : '';
     const bId = booking.bookingId || '';
-    const car = booking.carModel || 'السيارة';
+    const customerName = booking.customerName && booking.customerName !== booking.customerPhone 
+      ? booking.customerName 
+      : (booking.name && booking.name !== booking.customerPhone ? booking.name : '');
+    
+    const greeting = customerName ? `مرحباً بك أستاذ/ة ${customerName} 🚗⚡` : `مرحباً بك أستاذنا العزيز 🚗⚡`;
+    const car = booking.carModel || (booking.carMake ? `${booking.carMake} ${booking.carModel || ''} ${booking.carYear || ''}`.trim() : 'السيارة');
     const service = booking.serviceType || 'صيانة متنقلة';
+    const location = booking.location || 'جدة';
+    const notes = booking.notes ? booking.notes.trim() : '';
 
     const waGeneralUrl = internationalPhone ? `https://wa.me/${internationalPhone}` : null;
     const waAcceptUrl = internationalPhone 
-      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`مرحباً بك أستاذنا العزيز 🚗⚡\nتم تأكيد وقبول موعد حجزك لدى DR.FIX ميكانيكي متنقل في جدة.\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى جودة وسرعة!`)}`
+      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`${greeting}\nتم تأكيد وقبول موعد حجزك لدى DR.FIX - ميكانيكي متنقل في جدة ✅\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 الملاحظات: ${notes}\n` : ''}\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى سرعة وجودة! نتشرف بكم دائماً.`)}`
       : null;
     const waOnWayUrl = internationalPhone 
-      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`مرحباً بك أستاذنا العزيز 🚗⚡\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك (${car}).\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nنتشرف بخدمتك دائماً!`)}`
+      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`${greeting}\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك 🚗💨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 تفاصيل الطلب: ${notes}\n` : ''}\nيرجى إبقاء الهاتف متاحاً للتنسيق عند الوصول. نتشرف بخدمتك!`)}`
       : null;
     const waDoneUrl = internationalPhone 
-      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`مرحباً بك أستاذنا العزيز 🚗⚡\nتم الانتهاء من صيانة سيارتك (${car}) بنجاح والحمد لله.\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم بمركز DR.FIX - ميكانيكي متنقل في جدة 🚗✨\nيسعدنا تقييمكم لخدمتنا عبر موقعنا:\nhttps://www.drfix.repair/#reviews`)}`
+      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`${greeting}\nتم الانتهاء من صيانة وفحص سيارتك بنجاح والحمد لله 🏁✨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم واختياركم DR.FIX - ميكانيكي متنقل في جدة 🚗\nيسعدنا ويشرفنا تقييمكم لتجربتكم معنا عبر الرابط:\nhttps://www.drfix.repair/#reviews`)}`
+      : null;
+    const waRejectUrl = internationalPhone
+      ? `https://wa.me/${internationalPhone}?text=${encodeURIComponent(`${greeting}\nنحيطك علماً بأنه تم إلغاء / رفض حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\n\nإذا كان لديك أي استفسار أو ترغب في إعادة جدولة الموعد، يسعدنا تواصلك معنا دائماً!`)}`
       : null;
     
     let mapsUrl = '';
@@ -61,13 +71,13 @@ export default async function handler(req: any, res: any) {
     }
 
     const safeBookingId = escapeHtml(booking.bookingId);
-    const safeCustomerName = escapeHtml(booking.customerName || booking.customerPhone || 'عميل DR.FIX');
+    const safeCustomerName = escapeHtml(customerName || booking.customerPhone || 'عميل DR.FIX');
     const safePhone = escapeHtml(booking.customerPhone || 'غير متوفر');
-    const safeCarModel = escapeHtml(booking.carModel || 'غير محدد');
-    const safeServiceType = escapeHtml(booking.serviceType || 'صيانة عامة');
+    const safeCarModel = escapeHtml(car);
+    const safeServiceType = escapeHtml(service);
     const safeDate = escapeHtml(booking.serviceDate || new Date().toLocaleDateString('ar-SA'));
     const safeLocation = escapeHtml(booking.location || (booking.coordinates ? 'إحداثيات GPS مرفقة' : 'جدة'));
-    const safeNotes = booking.notes ? escapeHtml(booking.notes) : '';
+    const safeNotes = notes ? escapeHtml(notes) : '';
     const safeTime = escapeHtml(new Date().toLocaleTimeString('ar-SA'));
 
     const messageText = `🔔 <b>حجز جديد في DR.FIX</b> 🚗⚡\n` +
@@ -84,33 +94,42 @@ export default async function handler(req: any, res: any) {
       `📊 <b>الحالة:</b> 🆕 جديد\n` +
       `━━━━━━━━━━━━━━━━━━`;
 
+    const host = req.headers?.host || 'ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+    const proto = req.headers?.['x-forwarded-proto'] || 'https';
+    const baseUrl = `${proto}://${host}`;
+
+    const acceptDirectUrl = waAcceptUrl ? `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=accepted` : null;
+    const onWayDirectUrl = waOnWayUrl ? `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=on_the_way` : null;
+    const doneDirectUrl = waDoneUrl ? `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=completed` : null;
+    const rejectDirectUrl = waRejectUrl ? `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=cancelled` : null;
+
     const inline_keyboard: any[][] = [];
 
     const actionRow: any[] = [];
-    if (mapsUrl) actionRow.push({ text: '📍 موقع العميل', url: mapsUrl });
+    if (mapsUrl) actionRow.push({ text: '📍 موقع العميل (GPS)', url: mapsUrl });
     if (waGeneralUrl) actionRow.push({ text: '💬 واتساب العميل', url: waGeneralUrl });
     if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
-    if (waOnWayUrl && waAcceptUrl) {
+    if (acceptDirectUrl && onWayDirectUrl) {
       inline_keyboard.push([
-        { text: '🚗 الفني بالطريق (واتساب) ↗️', url: waOnWayUrl },
-        { text: '✅ قبول الحجز (واتساب) ↗️', url: waAcceptUrl }
+        { text: '✅ قبول الحجز (تحديث + واتساب ↗️)', url: acceptDirectUrl },
+        { text: '🚗 الفني بالطريق (تحديث + واتساب ↗️)', url: onWayDirectUrl }
       ]);
     }
 
-    if (waDoneUrl) {
+    if (doneDirectUrl && rejectDirectUrl) {
       inline_keyboard.push([
-        { text: '🏁 تم الإنجاز (واتساب) ↗️', url: waDoneUrl },
-        { text: '❌ رفض / إلغاء', callback_data: `act_reject_${booking.bookingId}` }
+        { text: '🏁 تم الإنجاز (تحديث + واتساب ↗️)', url: doneDirectUrl },
+        { text: '❌ رفض / إلغاء (تحديث + واتساب ↗️)', url: rejectDirectUrl }
       ]);
     } else {
       inline_keyboard.push([
-        { text: '✅ قبول الحجز', callback_data: `act_accept_${booking.bookingId}` },
-        { text: '❌ رفض الحجز', callback_data: `act_reject_${booking.bookingId}` }
+        { text: '✅ قبول الحجز', callback_data: `act_accept_${bId}` },
+        { text: '❌ رفض الحجز', callback_data: `act_reject_${bId}` }
       ]);
       inline_keyboard.push([
-        { text: '🚗 الفني بالطريق', callback_data: `act_onway_${booking.bookingId}` },
-        { text: '🏁 تم الإنجاز', callback_data: `act_done_${booking.bookingId}` }
+        { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bId}` },
+        { text: '🏁 تم الإنجاز', callback_data: `act_done_${bId}` }
       ]);
     }
 
