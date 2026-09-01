@@ -386,18 +386,22 @@ export const playNotificationSound = () => {
   }
 };
 
+// Permanent Fixed Telegram Bot Configuration
+export const DEFAULT_TELEGRAM_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
+export const DEFAULT_TELEGRAM_CHAT_ID = '867105778';
+
 // Telegram instant message dispatcher
 export const sendTelegramNotification = async (messageText: string, botToken?: string, chatId?: string): Promise<boolean> => {
-  if (!botToken || !chatId) return false;
+  const activeToken = (botToken || DEFAULT_TELEGRAM_BOT_TOKEN).trim();
+  const activeChatId = (chatId || DEFAULT_TELEGRAM_CHAT_ID).trim();
+  if (!activeToken || !activeChatId) return false;
   try {
-    const cleanToken = botToken.trim();
-    const cleanChatId = chatId.trim();
-    const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
+    const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: cleanChatId,
+        chat_id: activeChatId,
         text: messageText,
         parse_mode: 'HTML'
       })
@@ -1358,15 +1362,18 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
       }
 
       // Fallback Direct Telegram only if server-side notification was not delivered
-      if (!serverNotified && settings?.telegramBotToken && settings?.telegramChatId) {
-        const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗\n` +
+      if (!serverNotified) {
+        const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗⚡\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
           `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
           `👤 <b>العميل:</b> <code>${cleanPhone}</code>\n` +
           `🚘 <b>السيارة:</b> ${data.carMake} ${data.carModel} (${data.carYear})\n` +
           `🔧 <b>الخدمة:</b> ${serviceTitle}\n` +
+          `📍 <b>الموقع:</b> ${locationName || 'جدة'}\n` +
           `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
-          `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}`;
-        sendTelegramNotification(tgText, settings.telegramBotToken, settings.telegramChatId);
+          `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n` +
+          `━━━━━━━━━━━━━━━━━━`;
+        sendTelegramNotification(tgText, settings?.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN, settings?.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID);
       }
 
       // 3. Prepare WhatsApp Message with Unique Booking ID
@@ -2100,8 +2107,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
     maintenanceMode: settings.maintenanceMode ?? false,
     maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
-    telegramBotToken: settings.telegramBotToken || '',
-    telegramChatId: settings.telegramChatId || '',
+    telegramBotToken: settings.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN,
+    telegramChatId: settings.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
     enableSoundAlerts: settings.enableSoundAlerts ?? true
   });
 
@@ -2197,8 +2204,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
       maintenanceMode: settings.maintenanceMode ?? false,
       maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
-      telegramBotToken: settings.telegramBotToken || '',
-      telegramChatId: settings.telegramChatId || '',
+      telegramBotToken: settings.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN,
+      telegramChatId: settings.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
       enableSoundAlerts: settings.enableSoundAlerts ?? true
     });
   }, [settings]);
