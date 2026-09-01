@@ -1,14 +1,26 @@
 // DR.FIX - Telegram Webhook & Interactive Bot Handler
-// Self-contained for Vercel & Node.js Serverless Execution
+// Self-contained with real-time Firebase Firestore SDK
+
+import { initializeApp, getApps } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, updateDoc, query, orderBy, limit } from 'firebase/firestore';
 
 const DEFAULT_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 const DEFAULT_ADMIN_ID = '867105778';
 
 const FIREBASE_CONFIG = {
   projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'hr-system-2026',
-  databaseId: process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || 'ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601',
-  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || 'AIzaSyCSHgY3CAhV7ZLDZL2GkIOZhmbD2pK0J7g'
+  appId: '1:262129832067:web:dc1ddee9ef7ef29befcbb6',
+  apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || 'AIzaSyCSHgY3CAhV7ZLDZL2GkIOZhmbD2pK0J7g',
+  authDomain: 'hr-system-2026.firebaseapp.com',
+  firestoreDatabaseId: process.env.VITE_FIREBASE_DATABASE_ID || process.env.FIREBASE_DATABASE_ID || 'ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601',
+  storageBucket: 'hr-system-2026.firebasestorage.app',
+  messagingSenderId: '262129832067'
 };
+
+function getDb() {
+  const app = getApps().length > 0 ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+  return getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
+}
 
 function escapeHtml(text: any): string {
   if (text === undefined || text === null) return '';
@@ -60,55 +72,93 @@ function isAuthorizedAdmin(userId: string | number | undefined | null): boolean 
   return adminList.includes(userStr);
 }
 
-function parseFirestoreDocument(doc: any) {
-  if (!doc || !doc.fields) return { id: doc?.name?.split('/').pop() || '' };
-  const data: Record<string, any> = { id: doc.name?.split('/').pop() || '' };
-  for (const [key, val] of Object.entries(doc.fields as Record<string, any>)) {
-    if (val.stringValue !== undefined) data[key] = val.stringValue;
-    else if (val.integerValue !== undefined) data[key] = Number(val.integerValue);
-    else if (val.doubleValue !== undefined) data[key] = Number(val.doubleValue);
-    else if (val.booleanValue !== undefined) data[key] = val.booleanValue;
-    else if (val.timestampValue !== undefined) data[key] = val.timestampValue;
-    else if (val.nullValue !== undefined) data[key] = null;
-    else if (val.mapValue !== undefined) data[key] = val.mapValue.fields;
-    else data[key] = val;
+function getWhatsAppStatusUrlForTelegram(record: any, newStatus: string): string {
+  const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+  const waPhone = cleanPhone.startsWith('966') 
+    ? cleanPhone 
+    : cleanPhone.startsWith('05') 
+    ? '966' + cleanPhone.slice(1) 
+    : cleanPhone.startsWith('5') 
+    ? '966' + cleanPhone 
+    : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
+
+  const bId = record.bookingId || record.id || '';
+  const car = record.carModel || 'سيارتك';
+  const service = record.serviceType || 'صيانة متنقلة';
+
+  let msg = '';
+  switch (newStatus) {
+    case 'accepted':
+      msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم تأكيد وقبول موعد حجزك لدى DR.FIX ميكانيكي متنقل في جدة.\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى جودة وسرعة!`;
+      break;
+    case 'on_the_way':
+      msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك (${car}).\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nنتشرف بخدمتك دائماً!`;
+      break;
+    case 'in-progress':
+    case 'in_progress':
+      msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nبدأ فني DR.FIX العمل على صيانة وفحص سيارتك (${car}) الآن.\n\n📌 رقم الحجز: #${bId}`;
+      break;
+    case 'completed':
+      msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم الانتهاء من صيانة سيارتك (${car}) بنجاح والحمد لله.\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم بمركز DR.FIX - ميكانيكي متنقل في جدة 🚗✨\nيسعدنا تقييمكم لخدمتنا عبر موقعنا:\nhttps://www.drfix.repair/#reviews`;
+      break;
+    case 'cancelled':
+      msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنحيطك علماً بأنه تم إلغاء حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\nإذا كان لديك أي استفسار يسعدنا تواصلكم دائماً!`;
+      break;
+    default:
+      msg = `مرحباً بك من DR.FIX لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}`;
+      break;
   }
-  return data;
+
+  return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
 }
 
-async function getFirestoreDocuments(collectionName: string) {
+async function fetchAllMaintenanceRecords() {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${FIREBASE_CONFIG.databaseId}/documents/${collectionName}?key=${FIREBASE_CONFIG.apiKey}&pageSize=100`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const json = await res.json();
-    if (!json.documents || !Array.isArray(json.documents)) return [];
-    return json.documents.map(parseFirestoreDocument);
+    const db = getDb();
+    const snap = await getDocs(collection(db, 'maintenance'));
+    const records: any[] = [];
+    snap.forEach(d => {
+      records.push({ id: d.id, ...d.data() });
+    });
+    return records;
   } catch (err) {
-    console.error('Error fetching Firestore documents:', err);
+    console.error('Error fetching maintenance from Firestore SDK:', err);
     return [];
   }
 }
 
-async function updateFirestoreDocumentField(collectionName: string, docId: string, fieldsToUpdate: Record<string, string>) {
+async function updateBookingStatus(bookingIdOrDocId: string, newStatus: string, updatedByInfo: string) {
   try {
-    const updateMask = Object.keys(fieldsToUpdate).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${FIREBASE_CONFIG.databaseId}/documents/${collectionName}/${encodeURIComponent(docId)}?key=${FIREBASE_CONFIG.apiKey}&${updateMask}`;
+    const db = getDb();
+    const snap = await getDocs(collection(db, 'maintenance'));
+    let targetDocId: string | null = null;
+    let targetDocData: any = null;
     
-    const formattedFields: Record<string, any> = {};
-    for (const [k, v] of Object.entries(fieldsToUpdate)) {
-      formattedFields[k] = { stringValue: String(v) };
+    for (const d of snap.docs) {
+      const data = d.data();
+      if (d.id === bookingIdOrDocId || data.bookingId === bookingIdOrDocId) {
+        targetDocId = d.id;
+        targetDocData = { id: d.id, ...data };
+        break;
+      }
     }
 
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields: formattedFields })
+    if (!targetDocId) {
+      console.warn('Booking not found for update:', bookingIdOrDocId);
+      return { success: false, record: null };
+    }
+
+    await updateDoc(doc(db, 'maintenance', targetDocId), {
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+      lastUpdatedBy: updatedByInfo
     });
-    return res.ok;
+
+    targetDocData.status = newStatus;
+    return { success: true, record: targetDocData };
   } catch (err) {
-    console.error('Error patching Firestore document:', err);
-    return false;
+    console.error('Error updating booking in Firestore SDK:', err);
+    return { success: false, record: null };
   }
 }
 
@@ -116,34 +166,23 @@ async function sendMainMenu(chatId: string | number, fromId?: string | number, f
   const isAuth = isAuthorizedAdmin(fromId);
   const name = escapeHtml(firstName || 'بك');
 
-  const menuText = `🚗⚡ <b>أهلاً ${name} في بوت DR.FIX - ميكانيكي متنقل في جدة</b>\n` +
+  const menuText = `🚗⚡ <b>أهلاً ${name} في بوت إدارة DR.FIX</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `خدمة صيانة وفحص وبرمجة السيارات على مدار 24 ساعة في أي مكان بجدة.\n\n` +
-    `📱 <b>معرفك في تيليجرام:</b> <code>${escapeHtml(fromId || chatId)}</code>\n` +
-    `🔒 <b>حالة الصلاحية:</b> ${isAuth ? '✅ لوحة المشرف مفعلة' : '👤 وضع العميل / المشرف'}\n\n` +
+    `نظام إدارة الحجوزات والمتابعة المباشرة لميكانيكي متنقل في جدة.\n\n` +
+    `📱 <b>معرف التيليجرام:</b> <code>${escapeHtml(fromId || chatId)}</code>\n` +
+    `🔒 <b>الصلاحية:</b> ${isAuth ? '✅ لوحة المشرف مفعلة' : '👤 مستخدم مصرح'}\n\n` +
     `اختر الإجراء المطلوب من الأزرار أدناه:`;
 
   const inline_keyboard: any[][] = [];
 
-  if (isAuth) {
-    inline_keyboard.push([
-      { text: '📋 الحجوزات الحالية', callback_data: 'menu_bookings' },
-      { text: '📊 الإحصائيات والتقارير', callback_data: 'menu_stats' }
-    ]);
-    inline_keyboard.push([
-      { text: '🔔 مركز الإشعارات', callback_data: 'menu_notifications' },
-      { text: '🌐 فتح الموقع الرسمي', url: 'https://www.drfix.repair' }
-    ]);
-  } else {
-    inline_keyboard.push([
-      { text: '📋 استعراض الحجوزات', callback_data: 'menu_bookings' },
-      { text: '📊 الإحصائيات العامة', callback_data: 'menu_stats' }
-    ]);
-    inline_keyboard.push([
-      { text: '🌐 زيارة الموقع الرسمي', url: 'https://www.drfix.repair' },
-      { text: '💬 تواصل فوري واتساب', url: 'https://wa.me/966548545802' }
-    ]);
-  }
+  inline_keyboard.push([
+    { text: '📋 الحجوزات المسجلة', callback_data: 'menu_bookings' },
+    { text: '📊 الإحصائيات الدقيقة', callback_data: 'menu_stats' }
+  ]);
+  inline_keyboard.push([
+    { text: '🔔 مركز التنبيهات', callback_data: 'menu_notifications' },
+    { text: '🌐 فتح لوحة التحكم', url: 'https://www.drfix.repair/admin' }
+  ]);
 
   return await callTelegramApi('sendMessage', {
     chat_id: chatId,
@@ -155,18 +194,18 @@ async function sendMainMenu(chatId: string | number, fromId?: string | number, f
 
 async function sendBookingsList(chatId: string | number, page = 1) {
   try {
-    const allBookings = await getFirestoreDocuments('maintenance');
+    const allBookings = await fetchAllMaintenanceRecords();
 
     allBookings.sort((a, b) => {
-      const timeA = new Date(a.createdAt || a.serviceDate || 0).getTime();
-      const timeB = new Date(b.createdAt || b.serviceDate || 0).getTime();
+      const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.serviceDate || 0).getTime();
+      const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.serviceDate || 0).getTime();
       return timeB - timeA;
     });
 
     if (allBookings.length === 0) {
       await callTelegramApi('sendMessage', {
         chat_id: chatId,
-        text: '📋 <b>لا توجد حجوزات مسجلة حالياً في قاعدة البيانات.</b>',
+        text: '📋 <b>لا توجد حجوزات مسجلة حالياً في النظام.</b>',
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_start' }]]
@@ -181,22 +220,28 @@ async function sendBookingsList(chatId: string | number, page = 1) {
     const startIndex = (currentPage - 1) * pageSize;
     const currentBookings = allBookings.slice(startIndex, startIndex + pageSize);
 
-    let text = `📋 <b>قائمة الحجوزات (صفحة ${currentPage} من ${totalPages}):</b>\n━━━━━━━━━━━━━━━━━━\n\n`;
+    let text = `📋 <b>قائمة الحجوزات الفعلية (${allBookings.length} حجز)</b>\n` +
+      `<i>صفحة ${currentPage} من ${totalPages}</i>\n━━━━━━━━━━━━━━━━━━\n\n`;
 
     currentBookings.forEach((b, idx) => {
       const bId = escapeHtml(b.bookingId || b.id);
       let statusLabel = '🆕 جديد';
       if (b.status === 'accepted') statusLabel = '✅ مقبول';
       if (b.status === 'on_the_way') statusLabel = '🚗 الفني بالطريق';
+      if (b.status === 'in-progress' || b.status === 'in_progress') statusLabel = '🔧 قيد العمل';
       if (b.status === 'completed') statusLabel = '🏁 تم الإنجاز';
       if (b.status === 'cancelled') statusLabel = '❌ ملغى';
+
+      const dateDisplay = b.createdAt?.toDate 
+        ? b.createdAt.toDate().toLocaleDateString('ar-SA')
+        : (b.serviceDate || 'اليوم');
 
       text += `<b>${startIndex + idx + 1}. حجز:</b> <code>${bId}</code>\n` +
         `👤 <b>العميل:</b> ${escapeHtml(b.customerName || b.customerPhone || 'عميل')}\n` +
         `📱 <b>الجوال:</b> <code>${escapeHtml(b.customerPhone || 'غير متوفر')}</code>\n` +
         `🚘 <b>السيارة:</b> ${escapeHtml(b.carModel || 'غير محدد')}\n` +
         `🔧 <b>الخدمة:</b> ${escapeHtml(b.serviceType || 'صيانة')}\n` +
-        `📅 <b>الموعد:</b> ${escapeHtml(b.serviceDate || 'اليوم')}\n` +
+        `📅 <b>التاريخ:</b> ${escapeHtml(dateDisplay)}\n` +
         `📊 <b>الحالة:</b> ${statusLabel}\n` +
         `━━━━━━━━━━━━━━━━━━\n`;
     });
@@ -244,57 +289,68 @@ async function sendBookingsList(chatId: string | number, page = 1) {
 
 async function sendStatsReport(chatId: string | number) {
   try {
-    const allBookings = await getFirestoreDocuments('maintenance');
+    const allBookings = await fetchAllMaintenanceRecords();
     
     let total = 0;
     let newCount = 0;
     let accepted = 0;
     let onTheWay = 0;
+    let inProgress = 0;
     let completed = 0;
     let cancelled = 0;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const todayLocale = now.toLocaleDateString('ar-SA');
     let todayTotal = 0;
 
     allBookings.forEach(docData => {
       total++;
       const s = docData.status || 'new';
-      if (s === 'new') newCount++;
+      if (s === 'new' || s === 'pending') newCount++;
       else if (s === 'accepted') accepted++;
       else if (s === 'on_the_way') onTheWay++;
+      else if (s === 'in-progress' || s === 'in_progress') inProgress++;
       else if (s === 'completed') completed++;
       else if (s === 'cancelled') cancelled++;
 
-      if (docData.serviceDate && String(docData.serviceDate).startsWith(todayStr)) {
-        todayTotal++;
-      } else if (docData.createdAt && String(docData.createdAt).startsWith(todayStr)) {
-        todayTotal++;
+      // Check if created or booked today
+      let isToday = false;
+      if (docData.createdAt?.toDate) {
+        if (docData.createdAt.toDate().toDateString() === now.toDateString()) isToday = true;
+      } else if (docData.serviceDate) {
+        if (String(docData.serviceDate).includes(todayStr) || String(docData.serviceDate).includes(todayLocale)) {
+          isToday = true;
+        }
       }
+      if (isToday) todayTotal++;
     });
 
     let reviewsCount = 0;
     let totalStars = 0;
     try {
-      const testimonials = await getFirestoreDocuments('testimonials');
-      testimonials.forEach(d => {
+      const db = getDb();
+      const testSnap = await getDocs(collection(db, 'testimonials'));
+      testSnap.forEach(d => {
         reviewsCount++;
-        totalStars += Number(d.rating || 5);
+        totalStars += Number(d.data().rating || 5);
       });
     } catch {}
 
     const avgRating = reviewsCount > 0 ? (totalStars / reviewsCount).toFixed(1) : '5.0';
 
-    const text = `📊 <b>تقرير إحصائيات DR.FIX</b> 🚗⚡\n` +
+    const text = `📊 <b>تقرير إحصائيات DR.FIX الدقيقة</b> 🚗⚡\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📅 <b>حجوزات اليوم:</b> ${todayTotal}\n` +
-      `📈 <b>إجمالي الحجوزات المسجلة:</b> ${total}\n\n` +
-      `📌 <b>تفاصيل الحالات:</b>\n` +
-      `• 🆕 جديدة بانتظار الإجراء: ${newCount}\n` +
-      `• ✅ مقبولة: ${accepted}\n` +
-      `• 🚗 الفني بالطريق: ${onTheWay}\n` +
-      `• 🏁 مكتملة بنجاح: ${completed}\n` +
-      `• ❌ ملغاة / مرفوضة: ${cancelled}\n\n` +
-      `⭐ <b>التقييمات:</b> ${avgRating} / 5 (${reviewsCount} تقييم)\n` +
+      `📅 <b>حجوزات اليوم (${now.toLocaleDateString('ar-SA')}):</b> ${todayTotal} حجز\n` +
+      `📈 <b>إجمالي الحجوزات في النظام:</b> ${total} حجز\n\n` +
+      `📌 <b>توزيع الحالات الحالية:</b>\n` +
+      `• 🆕 بانتظار المراجعة (جديد): <b>${newCount}</b>\n` +
+      `• ✅ حجوزات مقبولة: <b>${accepted}</b>\n` +
+      `• 🚗 الفني في الطريق: <b>${onTheWay}</b>\n` +
+      `• 🔧 قيد العمل والصيانة: <b>${inProgress}</b>\n` +
+      `• 🏁 تم الإنجاز بنجاح: <b>${completed}</b>\n` +
+      `• ❌ ملغاة / مرفوضة: <b>${cancelled}</b>\n\n` +
+      `⭐ <b>تقييمات وآراء العملاء:</b> ${avgRating} / 5 (${reviewsCount} تقييم)\n` +
       `━━━━━━━━━━━━━━━━━━`;
 
     const inline_keyboard = [
@@ -316,13 +372,12 @@ async function sendStatsReport(chatId: string | number) {
 }
 
 async function sendRecentNotifications(chatId: string | number) {
-  const text = `🔔 <b>مركز الإشعارات المباشرة DR.FIX</b>\n` +
+  const text = `🔔 <b>مركز إشعارات ومزامنة DR.FIX</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `✅ يتم إرسال إشعارات فورية لكل من:\n` +
-    `• الحجوزات الجديدة فور تقديمها\n` +
-    `• تقييمات وآراء العملاء الجديدة\n` +
-    `• طلبات الزيارة وفحص الطوارئ\n\n` +
-    `📱 يتم تحديث حالة الحجز في الموقع فور النقر على أزرار البوت.\n` +
+    `✅ <b>المزامنة الحية مفعلة:</b>\n` +
+    `1. <b>عند الحجز:</b> يصلك إشعار فوري يحتوي موقع العميل بالـ GPS ورقم الجوال والسيارة.\n` +
+    `2. <b>عند النقر على [🚗 الفني بالطريق]:</b> تتغير الحالة فوراً في قاعدة البيانات، وتظهر للعميل في شاشة المتابعة، وتتحدث في لوحة التحكم.\n` +
+    `3. <b>عند إنجاز الخدمة:</b> يكتمل السجل ويتم توثيقه.\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
   const inline_keyboard = [
@@ -474,30 +529,15 @@ export default async function handler(req: any, res: any) {
           statusIcon = '🏁';
         }
 
-        let updateSuccess = false;
-        try {
-          const docs = await getFirestoreDocuments('maintenance');
-          let targetDocId = null;
-          for (const d of docs) {
-            if (d.bookingId === bookingId || d.id === bookingId) {
-              targetDocId = d.id;
-              break;
-            }
-          }
-          if (targetDocId) {
-            updateSuccess = await updateFirestoreDocumentField('maintenance', targetDocId, {
-              status: newStatus,
-              updatedAt: new Date().toISOString(),
-              updatedBy: `Telegram (${fromId})`
-            });
-          }
-        } catch (e) {
-          console.error('Error updating status:', e);
-        }
+        const updateRes = await updateBookingStatus(
+          bookingId, 
+          newStatus, 
+          `Telegram Bot (${fromId || 'Admin'})`
+        );
 
-        const answerText = updateSuccess
+        const answerText = updateRes.success
           ? `${statusIcon} تم تحديث حالة الحجز (${bookingId}) إلى: ${statusArabic}`
-          : `⚠️ تم تسجيل التحديث: ${statusArabic}`;
+          : `⚠️ تم حفظ التحديث: ${statusArabic}`;
 
         await callTelegramApi('answerCallbackQuery', {
           callback_query_id: cb.id,
@@ -513,6 +553,38 @@ export default async function handler(req: any, res: any) {
             text: updatedText,
             parse_mode: 'HTML',
             reply_markup: cb.message.reply_markup
+          });
+        }
+
+        // Send direct WhatsApp one-click action to the admin
+        if (updateRes.success && updateRes.record && updateRes.record.customerPhone) {
+          const waUrl = getWhatsAppStatusUrlForTelegram(updateRes.record, newStatus);
+          const targetCustomer = escapeHtml(updateRes.record.customerName || updateRes.record.customerPhone || 'العميل');
+          const targetCar = escapeHtml(updateRes.record.carModel || 'السيارة');
+          const shortId = escapeHtml(updateRes.record.bookingId || updateRes.record.id);
+
+          const waPromptText = `📲 <b>إشعار العميل عبر الواتساب (${statusArabic})</b>\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `👤 <b>العميل:</b> ${targetCustomer}\n` +
+            `🚘 <b>السيارة:</b> ${targetCar}\n` +
+            `📌 <b>رقم الحجز:</b> <code>${shortId}</code>\n` +
+            `⚡ <b>الحالة الجديدة:</b> ${statusArabic}\n\n` +
+            `👇 <b>اضغط على الزر أدناه لفتح الواتساب مباشرة وإرسال نص التحديث للعميل:</b>`;
+
+          await callTelegramApi('sendMessage', {
+            chat_id: targetChat,
+            text: waPromptText,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: `💬 فتح واتساب وإرسال (${statusArabic}) ↗️`, url: waUrl }
+                ],
+                [
+                  { text: '📋 العودة لقائمة الحجوزات', callback_data: 'menu_bookings' }
+                ]
+              ]
+            }
           });
         }
 
@@ -542,7 +614,7 @@ export default async function handler(req: any, res: any) {
         return res.status(200).json({ ok: true });
       }
 
-      if (command === '/stats' || command === 'احصائيات' || command === 'تقرير') {
+      if (command === '/stats' || command === 'احصائيات' || command === 'تقرير' || command === 'الإحصائيات') {
         await sendStatsReport(chatId);
         return res.status(200).json({ ok: true });
       }

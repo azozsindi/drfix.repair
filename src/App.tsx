@@ -1667,7 +1667,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 </motion.div>
                 <h3 className="text-2xl font-black italic">{t.booking.processing}</h3>
                 <p className="text-gray-400 mt-2">{t.booking.wait}</p>
-                <p className="text-xs text-brand-red mt-4 font-mono">يتم حفظ السجل في Firebase وإرسال إشعار الإدارة...</p>
+                <p className="text-xs text-brand-red mt-4 font-bold">{lang === 'ar' ? 'جاري تأكيد حجزك وإرسال الإشعار للفني المختص...' : 'Confirming your booking and dispatching...'}</p>
               </motion.div>
             )}
 
@@ -2112,6 +2112,53 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [isPWAInstalled, setIsPWAInstalled] = useState<boolean>(false);
   const [testTgLoading, setTestTgLoading] = useState<boolean>(false);
   const [testTgStatus, setTestTgStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [waBanner, setWaBanner] = useState<{
+    show: boolean;
+    url: string;
+    customerName: string;
+    statusLabel: string;
+    carModel: string;
+    bookingId: string;
+  } | null>(null);
+
+  const getWhatsAppStatusUrl = (record: MaintenanceRecord, targetStatus: MaintenanceRecord['status']): string => {
+    const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+    const waPhone = cleanPhone.startsWith('966') 
+      ? cleanPhone 
+      : cleanPhone.startsWith('05') 
+      ? '966' + cleanPhone.slice(1) 
+      : cleanPhone.startsWith('5') 
+      ? '966' + cleanPhone 
+      : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
+
+    const bId = record.bookingId || record.id || '';
+    const car = record.carModel || 'سيارتك';
+    const service = record.serviceType || 'صيانة متنقلة';
+
+    let msg = '';
+    switch (targetStatus) {
+      case 'accepted':
+        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم تأكيد وقبول موعد حجزك لدى DR.FIX ميكانيكي متنقل في جدة.\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى جودة وسرعة!`;
+        break;
+      case 'on_the_way':
+        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك (${car}).\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nنتشرف بخدمتك دائماً!`;
+        break;
+      case 'in-progress':
+        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nبدأ فني DR.FIX العمل على صيانة وفحص سيارتك (${car}) الآن.\n\n📌 رقم الحجز: #${bId}`;
+        break;
+      case 'completed':
+        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nتم الانتهاء من صيانة سيارتك (${car}) بنجاح والحمد لله.\n\n📌 رقم الحجز: #${bId}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم بمركز DR.FIX - ميكانيكي متنقل في جدة 🚗✨\nيسعدنا تقييمكم لخدمتنا عبر موقعنا:\nhttps://www.drfix.repair/#reviews`;
+        break;
+      case 'cancelled':
+        msg = `مرحباً بك أستاذنا العزيز 🚗⚡\nنحيطك علماً بأنه تم إلغاء حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\nإذا كان لديك أي استفسار يسعدنا تواصلكم دائماً!`;
+        break;
+      default:
+        msg = `مرحباً بك من DR.FIX لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}`;
+        break;
+    }
+
+    return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  };
 
   // Helper to parse dates safely
   const getRecordDate = (dateVal: any): Date => {
@@ -2605,14 +2652,64 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
     }
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: MaintenanceRecord['status']) => {
-    try {
-      await updateDoc(doc(db, 'maintenance', id), {
-        status: newStatus
+  const handleUpdateStatus = (id: string, newStatus: MaintenanceRecord['status']) => {
+    const target = records.find(r => r.id === id);
+    let waUrl = '';
+    let statusLabelAr = 'تحديث الحالة';
+    if (newStatus === 'accepted') statusLabelAr = 'تم القبول ✅';
+    if (newStatus === 'on_the_way') statusLabelAr = 'الفني بالطريق 🚗';
+    if (newStatus === 'in-progress') statusLabelAr = 'قيد العمل 🔧';
+    if (newStatus === 'completed') statusLabelAr = 'تم الإنجاز 🏁';
+    if (newStatus === 'cancelled') statusLabelAr = 'ملغي ❌';
+    if (newStatus === 'new') statusLabelAr = 'جديد 🆕';
+
+    if (target && target.customerPhone) {
+      waUrl = getWhatsAppStatusUrl(target, newStatus);
+      
+      // Synchronously open WhatsApp immediately in direct click context
+      let opened = false;
+      try {
+        const win = window.open(waUrl, '_blank');
+        if (win && !win.closed) {
+          opened = true;
+        }
+      } catch (e) {
+        console.warn('Direct popup window open was blocked:', e);
+      }
+
+      // If popup was blocked or inside restricted iframe, fallback to anchor click
+      if (!opened) {
+        try {
+          const a = document.createElement('a');
+          a.href = waUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          opened = true;
+        } catch (err) {
+          console.warn('Anchor fallback failed:', err);
+        }
+      }
+
+      setWaBanner({
+        show: true,
+        url: waUrl,
+        customerName: target.customerName || target.customerPhone,
+        statusLabel: statusLabelAr,
+        carModel: target.carModel || 'السيارة',
+        bookingId: target.bookingId || target.id
       });
-    } catch (error) {
-      console.error("Error updating status:", error);
     }
+
+    // Persist to Firestore in background
+    updateDoc(doc(db, 'maintenance', id), {
+      status: newStatus,
+      updatedAt: new Date().toISOString()
+    }).catch(error => {
+      console.error("Error updating status in Firestore:", error);
+    });
   };
 
   const handleReply = async (testimonialId: string) => {
@@ -3068,6 +3165,47 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
+              {/* WhatsApp Live Status Notice Banner */}
+              {waBanner && waBanner.show && (
+                <motion.div
+                  initial={{ opacity: 0, y: -15, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-emerald-900/70 to-black border-2 border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl shadow-emerald-950/40"
+                >
+                  <div className="flex items-center gap-3.5 text-right w-full sm:w-auto">
+                    <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 text-emerald-400 shadow-inner">
+                      <MessageSquare className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-sm flex items-center gap-2">
+                        <span>تم تحديث الحالة إلى:</span>
+                        <span className="text-emerald-400 font-extrabold">{waBanner.statusLabel}</span>
+                      </div>
+                      <div className="text-xs text-gray-300 mt-0.5">
+                        تم فتح الواتساب للتواصل مع <b>{waBanner.customerName}</b> ({waBanner.carModel}) رقم الحجز: <span className="font-mono text-emerald-300">#{waBanner.bookingId}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <a
+                      href={waBanner.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      <span>فتح واتساب العميل ↗️</span>
+                    </a>
+                    <button
+                      onClick={() => setWaBanner(null)}
+                      className="px-3 py-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 text-xs transition-colors cursor-pointer"
+                    >
+                      إغلاق
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Filter & Search Bar */}
               <div className="glass-card p-6 border-white/5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -3238,28 +3376,54 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                 )}
                               </td>
                               <td className="px-6 py-4">
-                                <select 
-                                  value={record.status}
-                                  onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
-                                  className={cn(
-                                    "text-xs font-bold px-3 py-1.5 rounded-full bg-black/50 border outline-none cursor-pointer",
-                                    record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
-                                    record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
-                                    record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
-                                    record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
-                                    record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
-                                    record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
-                                    "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
-                                  )}
-                                >
-                                  <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
-                                  <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
-                                  <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
-                                  <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
-                                  <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
-                                  <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
-                                  <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
-                                </select>
+                                <div className="space-y-1.5">
+                                  <select 
+                                    value={record.status}
+                                    onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
+                                    className={cn(
+                                      "text-xs font-bold px-3 py-1.5 rounded-full bg-black/50 border outline-none cursor-pointer w-full",
+                                      record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                      record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
+                                      record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
+                                      record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
+                                      record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                      record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
+                                      "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                                    )}
+                                  >
+                                    <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
+                                    <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                    <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
+                                    <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
+                                    <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
+                                    <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
+                                    <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
+                                  </select>
+
+                                  {/* Fast Direct WhatsApp Trigger Pills */}
+                                  <div className="flex items-center gap-1">
+                                    <a
+                                      href={getWhatsAppStatusUrl(record, 'on_the_way')}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
+                                      className="px-2 py-0.5 bg-indigo-500/15 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
+                                      title="تحديث الحالة إلى الفني بالطريق وفتح الواتساب مباشرة"
+                                    >
+                                      🚗 بالطريق
+                                    </a>
+                                    <a
+                                      href={getWhatsAppStatusUrl(record, 'accepted')}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => handleUpdateStatus(record.id, 'accepted')}
+                                      className="px-2 py-0.5 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
+                                      title="قبول الحجز وفتح الواتساب مباشرة"
+                                    >
+                                      ✅ قبول
+                                    </a>
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-6 py-4">
                                 <span className="font-display font-black text-brand-red text-base">
@@ -3268,6 +3432,15 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                               </td>
                               <td className="px-6 py-4">
                                 <div className="flex items-center justify-center gap-1">
+                                  <a
+                                    href={getWhatsAppStatusUrl(record, record.status)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                                    title="إرسال إشعار الحالة للعميل عبر الواتساب"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                  </a>
                                   <button 
                                     onClick={() => setSelectedBookingDetails(record)}
                                     className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
@@ -3378,20 +3551,40 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                             )}
                           </div>
 
-                          <div className="flex items-center justify-between gap-2 pt-1">
-                            <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <a
+                                href={getWhatsAppStatusUrl(record, 'on_the_way')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
+                                className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                title="الفني بالطريق وإرسال واتساب"
+                              >
+                                🚗 بالطريق
+                              </a>
+                              <a
+                                href={getWhatsAppStatusUrl(record, 'accepted')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => handleUpdateStatus(record.id, 'accepted')}
+                                className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                title="قبول الحجز وإرسال واتساب"
+                              >
+                                ✅ قبول
+                              </a>
                               <a 
                                 href={`https://wa.me/${waPhone}?text=${waMsg}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                               >
                                 <MessageCircle className="w-3.5 h-3.5" />
                                 واتساب
                               </a>
                               <a 
                                 href={`tel:${record.customerPhone}`}
-                                className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                               >
                                 <PhoneCall className="w-3.5 h-3.5" />
                                 اتصال
@@ -3401,7 +3594,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                                   href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                                  className="px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                                 >
                                   <Navigation className="w-3.5 h-3.5" />
                                   GPS
@@ -3410,6 +3603,15 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                             </div>
 
                             <div className="flex items-center gap-1">
+                              <a
+                                href={getWhatsAppStatusUrl(record, record.status)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 text-emerald-400 hover:text-white bg-emerald-500/10 border border-emerald-500/20 rounded-xl cursor-pointer"
+                                title="إرسال إشعار الحالة للعميل عبر الواتساب"
+                              >
+                                <MessageSquare className="w-4 h-4" />
+                              </a>
                               <button 
                                 onClick={() => setSelectedBookingDetails(record)}
                                 className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
@@ -5993,49 +6195,103 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     </div>
                   )}
 
-                  <div className="bg-white/5 p-4 rounded-xl flex items-center justify-between">
-                    <div className="text-xs text-gray-400">حالة الحجز</div>
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold",
-                      selectedBookingDetails.status === 'completed' ? "bg-green-500/20 text-green-400 border border-green-500/30" :
-                      selectedBookingDetails.status === 'in-progress' ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
-                      selectedBookingDetails.status === 'cancelled' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
-                      "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
-                    )}>
-                      {selectedBookingDetails.status === 'completed' ? 'مكتمل' :
-                       selectedBookingDetails.status === 'in-progress' ? 'قيد العمل' :
-                       selectedBookingDetails.status === 'cancelled' ? 'ملغي' : 'قيد الانتظار'}
-                    </span>
+                  <div className="bg-white/5 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-400">حالة الحجز الحالية:</div>
+                      <span className={cn(
+                        "px-3 py-1 rounded-full text-xs font-bold",
+                        selectedBookingDetails.status === 'completed' ? "bg-green-500/20 text-green-400 border border-green-500/30" :
+                        selectedBookingDetails.status === 'accepted' ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                        selectedBookingDetails.status === 'on_the_way' ? "bg-indigo-500/20 text-indigo-400 border border-indigo-500/30" :
+                        selectedBookingDetails.status === 'in-progress' ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
+                        selectedBookingDetails.status === 'cancelled' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                        selectedBookingDetails.status === 'new' ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" :
+                        "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                      )}>
+                        {selectedBookingDetails.status === 'completed' ? 'مكتمل 🏁' :
+                         selectedBookingDetails.status === 'accepted' ? 'تم القبول ✅' :
+                         selectedBookingDetails.status === 'on_the_way' ? 'الفني بالطريق 🚗' :
+                         selectedBookingDetails.status === 'in-progress' ? 'قيد العمل 🔧' :
+                         selectedBookingDetails.status === 'cancelled' ? 'ملغي ❌' :
+                         selectedBookingDetails.status === 'new' ? 'جديد 🆕' : 'قيد الانتظار ⏳'}
+                      </span>
+                    </div>
+
+                    {/* Quick Status Changers with WhatsApp Trigger */}
+                    <div className="pt-2 border-t border-white/5 space-y-1.5">
+                      <div className="text-[11px] text-gray-400 font-bold">تحديث الحالة والانتقال الفوري للواتساب:</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <a
+                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'accepted')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            handleUpdateStatus(selectedBookingDetails.id, 'accepted');
+                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'accepted' } : null);
+                          }}
+                          className="px-2 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          ✅ قبول الحجز
+                        </a>
+                        <a
+                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'on_the_way')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            handleUpdateStatus(selectedBookingDetails.id, 'on_the_way');
+                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'on_the_way' } : null);
+                          }}
+                          className="px-2 py-2 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          🚗 الفني بالطريق
+                        </a>
+                        <a
+                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'completed')}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            handleUpdateStatus(selectedBookingDetails.id, 'completed');
+                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'completed' } : null);
+                          }}
+                          className="px-2 py-2 bg-green-500/15 hover:bg-green-500/25 text-green-400 border border-green-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                        >
+                          🏁 تم الإنجاز
+                        </a>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Quick actions in modal */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  {(() => {
-                    const cleanPhone = (selectedBookingDetails.customerPhone || '').replace(/\D/g, '');
-                    const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
-                    const waMsg = encodeURIComponent(`مرحباً بك من مركز دكتور فيكس لصيانة السيارات 🚗 بخصوص حجزك (${selectedBookingDetails.carModel})`);
-                    return (
-                      <>
-                        <a 
-                          href={`https://wa.me/${waPhone}?text=${waMsg}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-600/20"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          محادثة واتساب
-                        </a>
-                        <a 
-                          href={`tel:${selectedBookingDetails.customerPhone}`}
-                          className="py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors"
-                        >
-                          <PhoneCall className="w-4 h-4" />
-                          اتصال هاتفي
-                        </a>
-                      </>
-                    );
-                  })()}
+                <div className="space-y-2 pt-2">
+                  <a 
+                    href={getWhatsAppStatusUrl(selectedBookingDetails, selectedBookingDetails.status)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>إرسال تحديث الحالة للعميل عبر الواتساب 📲</span>
+                  </a>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <a 
+                      href={`https://wa.me/${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}?text=${encodeURIComponent(`مرحباً بك من DR.FIX 🚗 بخصوص حجزك (${selectedBookingDetails.carModel})`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <MessageCircle className="w-4 h-4 text-emerald-400" />
+                      محادثة عامة
+                    </a>
+                    <a 
+                      href={`tel:${selectedBookingDetails.customerPhone}`}
+                      className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <PhoneCall className="w-4 h-4 text-blue-400" />
+                      اتصال هاتفي
+                    </a>
+                  </div>
                 </div>
               </motion.div>
             </div>
@@ -6061,45 +6317,55 @@ const MaintenanceHistory = () => {
     }
   }, []);
 
-  const performSearch = async (phoneNumber: string) => {
-    if (!phoneNumber.trim()) return;
+  const performSearch = async (searchTerm: string) => {
+    const term = searchTerm.trim();
+    if (!term) return;
 
     setLoading(true);
     setHasSearched(true);
     try {
-      // Try with orderBy first, if it fails (likely missing index), fallback to simple query
-      let q;
+      let results: MaintenanceRecord[] = [];
+      
+      // 1. Search by customerPhone
       try {
-        q = query(
+        const qPhone = query(
           collection(db, 'maintenance'),
-          where('customerPhone', '==', phoneNumber.trim()),
-          orderBy('serviceDate', 'desc')
+          where('customerPhone', '==', term)
         );
-        const querySnapshot = await getDocs(q);
-        const results: MaintenanceRecord[] = [];
-        querySnapshot.forEach((doc) => {
+        const snapPhone = await getDocs(qPhone);
+        snapPhone.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
         });
-        setRecords(results);
-      } catch (indexError) {
-        console.warn("Composite index might be missing, falling back to simple query:", indexError);
-        q = query(
-          collection(db, 'maintenance'),
-          where('customerPhone', '==', phoneNumber.trim())
-        );
-        const querySnapshot = await getDocs(q);
-        const results: MaintenanceRecord[] = [];
-        querySnapshot.forEach((doc) => {
-          results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
-        });
-        // Sort manually if index is missing
-        results.sort((a, b) => {
-          const dateA = a.serviceDate?.toMillis?.() || 0;
-          const dateB = b.serviceDate?.toMillis?.() || 0;
-          return dateB - dateA;
-        });
-        setRecords(results);
+      } catch (err) {
+        console.warn("Error querying by phone:", err);
       }
+
+      // 2. Also search by bookingId if results are empty or term looks like booking id
+      if (results.length === 0 || term.toUpperCase().startsWith('DRF-')) {
+        try {
+          const qId = query(
+            collection(db, 'maintenance'),
+            where('bookingId', '==', term.toUpperCase())
+          );
+          const snapId = await getDocs(qId);
+          snapId.forEach((doc) => {
+            if (!results.some(r => r.id === doc.id)) {
+              results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
+            }
+          });
+        } catch (err) {
+          console.warn("Error querying by bookingId:", err);
+        }
+      }
+
+      // Sort results by date descending
+      results.sort((a, b) => {
+        const timeA = (a.createdAt as any)?.toMillis?.() || (a.serviceDate as any)?.toMillis?.() || (a.serviceDate ? new Date(a.serviceDate as any).getTime() : 0);
+        const timeB = (b.createdAt as any)?.toMillis?.() || (b.serviceDate as any)?.toMillis?.() || (b.serviceDate ? new Date(b.serviceDate as any).getTime() : 0);
+        return timeB - timeA;
+      });
+
+      setRecords(results);
     } catch (error) {
       console.error("Error fetching maintenance records:", error);
     } finally {
@@ -6178,18 +6444,43 @@ const MaintenanceHistory = () => {
                           <Wrench className="w-5 h-5" />
                           {record.serviceType}
                         </div>
-                        <div className="text-gray-400 flex items-center gap-2 text-sm">
-                          <Calendar className="w-4 h-4" />
-                          {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                        <div className="text-gray-400 flex items-center gap-3 text-sm">
+                          <span className="flex items-center gap-1.5">
+                            <Calendar className="w-4 h-4" />
+                            {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : (record.serviceDate || '')}
+                          </span>
+                          {record.bookingId && (
+                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-white/10 text-gray-300 font-bold">
+                              #{record.bookingId}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Status Badge */}
+                        <div className={cn(
+                          "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border",
+                          record.status === 'on_the_way' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40 shadow-lg shadow-indigo-500/10 animate-pulse" :
+                          record.status === 'accepted' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-lg shadow-emerald-500/10" :
+                          record.status === 'in-progress' || record.status === 'in_progress' ? "bg-blue-500/20 text-blue-400 border-blue-500/40" :
+                          record.status === 'completed' ? "bg-green-500/20 text-green-400 border-green-500/40" :
+                          record.status === 'cancelled' ? "bg-red-500/20 text-red-400 border-red-500/40" :
+                          "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                        )}>
+                          {record.status === 'on_the_way' ? '🚗 الفني بالطريق إليك' :
+                           record.status === 'accepted' ? '✅ تم تأكيد الحجز' :
+                           record.status === 'in-progress' || record.status === 'in_progress' ? '🔧 قيد العمل' :
+                           record.status === 'completed' ? '🏁 تم الإنجاز' :
+                           record.status === 'cancelled' ? '❌ تم الإلغاء' :
+                           '⏳ قيد المراجعة'}
+                        </div>
+
                         {record.cost ? (
                           <div className="px-3 py-1.5 bg-white/5 rounded-lg border border-white/10 text-white text-xs font-bold font-mono">
                             {record.cost} {t.common.currency}
                           </div>
                         ) : null}
-                        <div className="px-4 py-2 bg-brand-red/10 rounded-lg border border-brand-red/20 text-brand-red font-bold">
+                        <div className="px-3 py-1.5 bg-brand-red/10 rounded-lg border border-brand-red/20 text-brand-red font-bold text-xs">
                           {record.carModel}
                         </div>
                       </div>

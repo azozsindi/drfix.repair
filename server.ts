@@ -1,13 +1,12 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import {
-  sendBookingNotification,
-  sendReviewNotification,
-  sendVisitNotification,
-  handleTelegramWebhook,
-  callTelegramApi
-} from './server/telegram';
+import telegramHandler from './api/telegram';
+import notifyBookingHandler from './api/notify-booking';
+import notifyReviewHandler from './api/notify-review';
+import notifyVisitHandler from './api/notify-visit';
+import setupWebhookHandler from './api/setup-webhook';
+import statusRedirectHandler from './api/status-redirect';
 
 async function startServer() {
   const app = express();
@@ -22,115 +21,42 @@ async function startServer() {
     res.json({
       status: 'ok',
       service: 'DR.FIX Backend Service',
-      canonicalDomain: 'https://drfix.repair',
+      canonicalDomain: 'https://www.drfix.repair',
       timestamp: new Date().toISOString()
     });
   });
 
   // Telegram Inbound Webhook
-  app.post('/api/telegram', async (req, res) => {
-    try {
-      const update = req.body;
-      const result = await handleTelegramWebhook(update);
-      res.json(result);
-    } catch (error) {
-      console.error('Error in /api/telegram:', error);
-      res.status(500).json({ ok: false, error: String(error) });
-    }
+  app.all('/api/telegram', async (req, res) => {
+    await telegramHandler(req, res);
   });
 
   // Setup / Register Webhook with Telegram
-  const handleSetupWebhook = async (req: any, res: any) => {
-    try {
-      const host = (req.headers['x-forwarded-host'] || req.headers.host || 'www.drfix.repair') as string;
-      const protocol = (req.headers['x-forwarded-proto'] || 'https') as string;
-      
-      let baseDomain = 'https://www.drfix.repair';
-      const customDomain = req.query.domain as string;
-      if (customDomain && customDomain.startsWith('http')) {
-        baseDomain = customDomain;
-      } else if (process.env.APP_URL && process.env.APP_URL.startsWith('http') && !process.env.APP_URL.includes('run.app')) {
-        baseDomain = process.env.APP_URL;
-      } else if (host && (host.includes('drfix.repair') || host.includes('vercel.app'))) {
-        baseDomain = `${protocol}://${host}`;
-      }
-
-      baseDomain = baseDomain.replace(/\/$/, '');
-      const webhookUrl = `${baseDomain}/api/telegram`;
-
-      const rawSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
-      const isValidSecret = /^[A-Za-z0-9_-]{1,256}$/.test(rawSecret);
-
-      const payload: Record<string, any> = {
-        url: webhookUrl,
-        drop_pending_updates: false
-      };
-
-      if (isValidSecret) {
-        payload.secret_token = rawSecret;
-      }
-
-      const setWebhookResult = await callTelegramApi('setWebhook', payload);
-      const getInfoResult = await callTelegramApi('getWebhookInfo', {});
-
-      const isUrlAlreadyActive = getInfoResult?.result?.url === webhookUrl;
-      const isSuccess = (setWebhookResult && setWebhookResult.ok === true) || isUrlAlreadyActive;
-
-      res.status(isSuccess ? 200 : 400).json({
-        ok: isSuccess,
-        message: isSuccess ? 'Telegram Webhook registered successfully' : 'Failed to register Telegram Webhook',
-        targetWebhookUrl: webhookUrl,
-        isUrlAlreadyActive,
-        hasSecretTokenConfigured: isValidSecret,
-        telegramSetResult: setWebhookResult,
-        currentWebhookInfo: getInfoResult,
-        configuredAt: new Date().toISOString()
-      });
-    } catch (error) {
-      res.status(500).json({ ok: false, error: String(error) });
-    }
-  };
-
-  app.all('/api/setup-webhook', handleSetupWebhook);
-  app.all('/api/telegram/setup-webhook', handleSetupWebhook);
+  app.all('/api/setup-webhook', async (req, res) => {
+    await setupWebhookHandler(req, res);
+  });
+  app.all('/api/telegram/setup-webhook', async (req, res) => {
+    await setupWebhookHandler(req, res);
+  });
 
   // Server-side New Booking Notification Trigger
-  app.post('/api/notify-booking', async (req, res) => {
-    try {
-      const booking = req.body;
-      if (!booking || !booking.bookingId) {
-        return res.status(400).json({ ok: false, message: 'Invalid booking data' });
-      }
-      const result = await sendBookingNotification(booking);
-      res.json({ ok: true, result });
-    } catch (error) {
-      console.error('Error in /api/notify-booking:', error);
-      res.status(500).json({ ok: false, error: String(error) });
-    }
+  app.all('/api/notify-booking', async (req, res) => {
+    await notifyBookingHandler(req, res);
   });
 
   // Server-side Review Notification Trigger
-  app.post('/api/notify-review', async (req, res) => {
-    try {
-      const review = req.body;
-      const result = await sendReviewNotification(review);
-      res.json({ ok: true, result });
-    } catch (error) {
-      console.error('Error in /api/notify-review:', error);
-      res.status(500).json({ ok: false, error: String(error) });
-    }
+  app.all('/api/notify-review', async (req, res) => {
+    await notifyReviewHandler(req, res);
   });
 
   // Server-side Emergency / Visit Request Notification Trigger
-  app.post('/api/notify-visit', async (req, res) => {
-    try {
-      const visit = req.body;
-      const result = await sendVisitNotification(visit);
-      res.json({ ok: true, result });
-    } catch (error) {
-      console.error('Error in /api/notify-visit:', error);
-      res.status(500).json({ ok: false, error: String(error) });
-    }
+  app.all('/api/notify-visit', async (req, res) => {
+    await notifyVisitHandler(req, res);
+  });
+
+  // Direct Status Update & WhatsApp Redirect Route
+  app.all('/api/status-redirect', async (req, res) => {
+    await statusRedirectHandler(req, res);
   });
 
   // Explicit Static Content-Type routes for SEO
@@ -144,7 +70,12 @@ async function startServer() {
     res.sendFile(path.join(process.cwd(), 'public', 'robots.txt'));
   });
 
-  // Vite Middleware & Static Serving
+  app.get('/manifest.webmanifest', (req, res) => {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.sendFile(path.join(process.cwd(), 'public', 'manifest.webmanifest'));
+  });
+
+  // Vite Middleware for SPA Development & Production Serving
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -160,8 +91,10 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`DR.FIX Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[DR.FIX Server] Running on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('Fatal Server Error:', err);
+});
