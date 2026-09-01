@@ -391,20 +391,29 @@ export const DEFAULT_TELEGRAM_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx
 export const DEFAULT_TELEGRAM_CHAT_ID = '867105778';
 
 // Telegram instant message dispatcher
-export const sendTelegramNotification = async (messageText: string, botToken?: string, chatId?: string): Promise<boolean> => {
+export const sendTelegramNotification = async (
+  messageText: string, 
+  botToken?: string, 
+  chatId?: string,
+  replyMarkup?: any
+): Promise<boolean> => {
   const activeToken = (botToken || DEFAULT_TELEGRAM_BOT_TOKEN).trim();
   const activeChatId = (chatId || DEFAULT_TELEGRAM_CHAT_ID).trim();
   if (!activeToken || !activeChatId) return false;
   try {
+    const payload: Record<string, any> = {
+      chat_id: activeChatId,
+      text: messageText,
+      parse_mode: 'HTML'
+    };
+    if (replyMarkup) {
+      payload.reply_markup = replyMarkup;
+    }
     const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: activeChatId,
-        text: messageText,
-        parse_mode: 'HTML'
-      })
+      body: JSON.stringify(payload)
     });
     return res.ok;
   } catch (err) {
@@ -1355,7 +1364,10 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           })
         });
         if (notifyRes.ok) {
-          serverNotified = true;
+          const resJson = await notifyRes.json();
+          if (resJson && resJson.ok && resJson.result && resJson.result.ok) {
+            serverNotified = true;
+          }
         }
       } catch (notifyErr) {
         console.warn('API notification error (will fallback to direct if configured):', notifyErr);
@@ -1363,6 +1375,12 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
       // Fallback Direct Telegram only if server-side notification was not delivered
       if (!serverNotified) {
+        const intPhone = cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '');
+        const waLink = `https://wa.me/${intPhone}`;
+        const mapsUrl = coords 
+          ? `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((locationName || 'جدة') + ' جدة')}`;
+
         const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
@@ -1373,7 +1391,28 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
           `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n` +
           `━━━━━━━━━━━━━━━━━━`;
-        sendTelegramNotification(tgText, settings?.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN, settings?.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID);
+
+        const inline_keyboard = [
+          [
+            { text: '📍 موقع العميل', url: mapsUrl },
+            { text: '💬 واتساب العميل', url: waLink }
+          ],
+          [
+            { text: '✅ قبول الحجز', callback_data: `act_accept_${uniqueBookingId}` },
+            { text: '❌ رفض الحجز', callback_data: `act_reject_${uniqueBookingId}` }
+          ],
+          [
+            { text: '🚗 الفني بالطريق', callback_data: `act_onway_${uniqueBookingId}` },
+            { text: '🏁 تم الإنجاز', callback_data: `act_done_${uniqueBookingId}` }
+          ]
+        ];
+
+        sendTelegramNotification(
+          tgText, 
+          settings?.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN, 
+          settings?.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
+          { inline_keyboard }
+        );
       }
 
       // 3. Prepare WhatsApp Message with Unique Booking ID
@@ -1843,8 +1882,9 @@ const AddTestimonialForm = () => {
       });
 
       // Notify Telegram Bot Admin
+      let reviewNotified = false;
       try {
-        await fetch('/api/notify-review', {
+        const reviewRes = await fetch('/api/notify-review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1853,8 +1893,26 @@ const AddTestimonialForm = () => {
             comment: data.comment.trim()
           })
         });
+        if (reviewRes.ok) {
+          const resJson = await reviewRes.json();
+          if (resJson && resJson.ok && resJson.result && resJson.result.ok) {
+            reviewNotified = true;
+          }
+        }
       } catch (err) {
         console.warn('Review notification API error:', err);
+      }
+
+      if (!reviewNotified) {
+        const stars = '⭐'.repeat(Math.min(5, Math.max(1, rating || 5)));
+        const tgReviewText = `🌟 <b>تقييم ورأي جديد في DR.FIX</b>\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 <b>العميل:</b> ${data.name.trim()}\n` +
+          `⭐ <b>التقييم:</b> ${stars} (${rating}/5)\n` +
+          `💬 <b>التعليق:</b> ${data.comment.trim()}\n` +
+          `⏱️ <b>الوقت:</b> ${new Date().toLocaleString('ar-SA')}\n` +
+          `━━━━━━━━━━━━━━━━━━`;
+        sendTelegramNotification(tgReviewText);
       }
 
       setIsSuccess(true);

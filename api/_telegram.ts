@@ -11,6 +11,15 @@ const TELEGRAM_ADMIN_ID = (process.env.TELEGRAM_ADMIN_ID || '867105778').trim();
 // Track sent booking IDs in memory to avoid duplicate alerts
 const processedBookingIds = new Set<string>();
 
+export function escapeHtml(text: any): string {
+  if (text === undefined || text === null) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export async function callTelegramApi(method: string, payload: Record<string, any>) {
   try {
     const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
@@ -20,6 +29,21 @@ export async function callTelegramApi(method: string, payload: Record<string, an
       body: JSON.stringify(payload)
     });
     const result = await response.json();
+    
+    // If HTML parsing failed for some reason, retry as plain text without parse_mode
+    if (!result.ok && payload.parse_mode && payload.text) {
+      console.warn(`Telegram API call with ${payload.parse_mode} failed, retrying plain text:`, result.description);
+      const plainPayload = { ...payload };
+      delete plainPayload.parse_mode;
+      plainPayload.text = String(payload.text).replace(/<[^>]*>/g, '');
+      const retryResponse = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(plainPayload)
+      });
+      return await retryResponse.json();
+    }
+
     return result;
   } catch (error) {
     console.error(`Telegram API Error (${method}):`, error);
@@ -123,7 +147,6 @@ export async function sendBookingNotification(booking: BookingPayload) {
     console.log(`Notification for booking ${booking.bookingId} already sent. Skipping duplicate.`);
     return { ok: true, duplicate: true };
   }
-  processedBookingIds.add(booking.bookingId);
 
   const cleanPhone = (booking.customerPhone || '').replace(/\D/g, '');
   const internationalPhone = cleanPhone ? (cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '')) : '';
@@ -138,18 +161,28 @@ export async function sendBookingNotification(booking: BookingPayload) {
     mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('جدة المملكة العربية السعودية')}`;
   }
 
-  const messageText = `🔔 *حجز جديد في DR.FIX* 🚗⚡\n` +
+  const safeBookingId = escapeHtml(booking.bookingId);
+  const safeCustomerName = escapeHtml(booking.customerName || 'عميل DR.FIX');
+  const safePhone = escapeHtml(booking.customerPhone || 'غير متوفر');
+  const safeCarModel = escapeHtml(booking.carModel || 'غير محدد');
+  const safeServiceType = escapeHtml(booking.serviceType || 'صيانة عامة');
+  const safeDate = escapeHtml(booking.serviceDate || new Date().toLocaleDateString('ar-SA'));
+  const safeLocation = escapeHtml(booking.location || (booking.coordinates ? 'إحداثيات GPS مرفقة' : 'جدة'));
+  const safeNotes = booking.notes ? escapeHtml(booking.notes) : '';
+  const safeTime = escapeHtml(new Date().toLocaleTimeString('ar-SA'));
+
+  const messageText = `🔔 <b>حجز جديد في DR.FIX</b> 🚗⚡\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `🔖 *رقم الحجز:* \`${booking.bookingId}\`\n` +
-    `👤 *العميل:* ${booking.customerName || 'عميل DR.FIX'}\n` +
-    `📱 *الجوال:* \`${booking.customerPhone || 'غير متوفر'}\`\n` +
-    `🚘 *السيارة:* ${booking.carModel || 'غير محدد'}\n` +
-    `🔧 *الخدمة:* ${booking.serviceType || 'صيانة عامة'}\n` +
-    `📅 *التاريخ:* ${booking.serviceDate || new Date().toLocaleDateString('ar-SA')}\n` +
-    `📍 *الموقع:* ${booking.location || (booking.coordinates ? 'إحداثيات GPS مرفقة' : 'جدة')}\n` +
-    (booking.notes ? `📝 *ملاحظات العميل:* ${booking.notes}\n` : '') +
-    `⏱️ *وقت الحجز:* ${new Date().toLocaleTimeString('ar-SA')}\n` +
-    `📊 *الحالة:* 🆕 جديد\n` +
+    `🔖 <b>رقم الحجز:</b> <code>${safeBookingId}</code>\n` +
+    `👤 <b>العميل:</b> ${safeCustomerName}\n` +
+    `📱 <b>الجوال:</b> <code>${safePhone}</code>\n` +
+    `🚘 <b>السيارة:</b> ${safeCarModel}\n` +
+    `🔧 <b>الخدمة:</b> ${safeServiceType}\n` +
+    `📅 <b>التاريخ:</b> ${safeDate}\n` +
+    `📍 <b>الموقع:</b> ${safeLocation}\n` +
+    (safeNotes ? `📝 <b>ملاحظات العميل:</b> ${safeNotes}\n` : '') +
+    `⏱️ <b>وقت الحجز:</b> ${safeTime}\n` +
+    `📊 <b>الحالة:</b> 🆕 جديد\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
   const inline_keyboard: any[][] = [];
@@ -178,23 +211,34 @@ export async function sendBookingNotification(booking: BookingPayload) {
 
   const adminChatId = (process.env.TELEGRAM_ADMIN_ID || TELEGRAM_ADMIN_ID).trim();
 
-  return await callTelegramApi('sendMessage', {
+  const sendResult = await callTelegramApi('sendMessage', {
     chat_id: adminChatId,
     text: messageText,
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard }
   });
+
+  if (sendResult && sendResult.ok) {
+    processedBookingIds.add(booking.bookingId);
+  }
+
+  return sendResult;
 }
 
 export async function sendReviewNotification(review: { name: string; rating: number; comment: string; phone?: string }) {
   const stars = '⭐'.repeat(Math.min(5, Math.max(1, review.rating || 5)));
-  const text = `🌟 *تقييم جديد في DR.FIX*\n` +
+  const safeName = escapeHtml(review.name || 'زائر');
+  const safeComment = escapeHtml(review.comment || 'لا يوجد نص');
+  const safePhone = review.phone ? escapeHtml(review.phone) : '';
+  const safeTime = escapeHtml(new Date().toLocaleString('ar-SA'));
+
+  const text = `🌟 <b>تقييم جديد في DR.FIX</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `👤 *العميل:* ${review.name || 'زائر'}\n` +
-    `⭐ *التقييم:* ${stars} (${review.rating || 5}/5)\n` +
-    `💬 *التعليق:* ${review.comment || 'لا يوجد نص'}\n` +
-    (review.phone ? `📱 *الجوال:* \`${review.phone}\`\n` : '') +
-    `⏱️ *الوقت:* ${new Date().toLocaleString('ar-SA')}\n` +
+    `👤 <b>العميل:</b> ${safeName}\n` +
+    `⭐ <b>التقييم:</b> ${stars} (${review.rating || 5}/5)\n` +
+    `💬 <b>التعليق:</b> ${safeComment}\n` +
+    (safePhone ? `📱 <b>الجوال:</b> <code>${safePhone}</code>\n` : '') +
+    `⏱️ <b>الوقت:</b> ${safeTime}\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
   const adminChatId = (process.env.TELEGRAM_ADMIN_ID || TELEGRAM_ADMIN_ID).trim();
@@ -202,19 +246,26 @@ export async function sendReviewNotification(review: { name: string; rating: num
   return await callTelegramApi('sendMessage', {
     chat_id: adminChatId,
     text,
-    parse_mode: 'Markdown'
+    parse_mode: 'HTML'
   });
 }
 
 export async function sendVisitNotification(visit: { customerName?: string; customerPhone: string; serviceType?: string; location?: string; notes?: string }) {
-  const text = `🚨 *طلب زيارة / طوارئ جديد في DR.FIX*\n` +
+  const safeName = escapeHtml(visit.customerName || 'عميل');
+  const safePhone = escapeHtml(visit.customerPhone || 'غير متوفر');
+  const safeServiceType = escapeHtml(visit.serviceType || 'فحص سريع');
+  const safeLocation = escapeHtml(visit.location || 'جدة');
+  const safeNotes = visit.notes ? escapeHtml(visit.notes) : '';
+  const safeTime = escapeHtml(new Date().toLocaleString('ar-SA'));
+
+  const text = `🚨 <b>طلب زيارة / طوارئ جديد في DR.FIX</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `👤 *العميل:* ${visit.customerName || 'عميل'}\n` +
-    `📱 *الجوال:* \`${visit.customerPhone}\`\n` +
-    `🔧 *نوع الخدمة:* ${visit.serviceType || 'فحص سريع'}\n` +
-    `📍 *الموقع:* ${visit.location || 'جدة'}\n` +
-    (visit.notes ? `📝 *الملاحظات:* ${visit.notes}\n` : '') +
-    `⏱️ *الوقت:* ${new Date().toLocaleString('ar-SA')}\n` +
+    `👤 <b>العميل:</b> ${safeName}\n` +
+    `📱 <b>الجوال:</b> <code>${safePhone}</code>\n` +
+    `🔧 <b>نوع الخدمة:</b> ${safeServiceType}\n` +
+    `📍 <b>الموقع:</b> ${safeLocation}\n` +
+    (safeNotes ? `📝 <b>الملاحظات:</b> ${safeNotes}\n` : '') +
+    `⏱️ <b>الوقت:</b> ${safeTime}\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
   const cleanPhone = (visit.customerPhone || '').replace(/\D/g, '');
@@ -235,7 +286,7 @@ export async function sendVisitNotification(visit: { customerName?: string; cust
   return await callTelegramApi('sendMessage', {
     chat_id: adminChatId,
     text,
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard }
   });
 }
@@ -365,12 +416,12 @@ export async function handleTelegramWebhook(update: any) {
 
         // Edit original message text if possible to reflect new status
         if (cb.message?.text) {
-          const updatedText = cb.message.text.replace(/📊 \*الحالة:\* .*/, `📊 *الحالة:* ${statusArabic} (تم التحديث)`);
+          const updatedText = cb.message.text.replace(/📊 (الحالة:|<b>الحالة:<\/b>|\*الحالة:\*) .*/, `📊 <b>الحالة:</b> ${statusArabic} (تم التحديث)`);
           await callTelegramApi('editMessageText', {
             chat_id: cb.message.chat.id,
             message_id: cb.message.message_id,
             text: updatedText,
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             reply_markup: cb.message.reply_markup
           });
         }
@@ -415,27 +466,27 @@ export async function handleTelegramWebhook(update: any) {
       if (command === '/id' || command === 'معرفي') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: `🆔 *معلومات حسابك في تيليجرام:*\n\n` +
-            `• *Telegram ID:* \`${fromId}\`\n` +
-            `• *الاسم:* ${firstName}\n` +
-            `• *حالة الإدارة:* ${isAuthorizedAdmin(fromId) ? '✅ مشرف معتمد' : '👤 مستخدم عادي'}\n\n` +
-            `إذا كنت صاحب الموقع، تأكد من تعيين هذا المعرف في \`TELEGRAM_ADMIN_ID\`.`,
-          parse_mode: 'Markdown'
+          text: `🆔 <b>معلومات حسابك في تيليجرام:</b>\n\n` +
+            `• <b>Telegram ID:</b> <code>${escapeHtml(fromId)}</code>\n` +
+            `• <b>الاسم:</b> ${escapeHtml(firstName)}\n` +
+            `• <b>حالة الإدارة:</b> ${isAuthorizedAdmin(fromId) ? '✅ مشرف معتمد' : '👤 مستخدم عادي'}\n\n` +
+            `إذا كنت صاحب الموقع، تأكد من تعيين هذا المعرف في <code>TELEGRAM_ADMIN_ID</code>.`,
+          parse_mode: 'HTML'
         });
         return { ok: true };
       }
 
       if (command === '/help' || command === 'مساعدة') {
         const isAuth = isAuthorizedAdmin(fromId);
-        const helpText = `🛠️ *أوامر بوت DR.FIX:*\n\n` +
+        const helpText = `🛠️ <b>أوامر بوت DR.FIX:</b>\n\n` +
           `• /start أو /menu - فتح القائمة الرئيسية والأزرار التفاعلية\n` +
           `• /bookings - عرض الحجوزات وإدارتها\n` +
           `• /stats - إحصائيات وتقارير الحجوزات والتقييمات\n` +
           `• /notifications - مركز التنبيهات\n` +
           `• /id - معرفة رقم الـ Telegram ID الخاص بك\n\n` +
-          `🔒 *صلاحية الإدارة:* ${isAuth ? 'مفعلة لحسابك ✅' : 'غير مفعلة (معرفك: ' + fromId + ')'}\n` +
-          `🌐 *الموقع الرسمي:* https://www.drfix.repair`;
-        await callTelegramApi('sendMessage', { chat_id: chatId, text: helpText, parse_mode: 'Markdown' });
+          `🔒 <b>صلاحية الإدارة:</b> ${isAuth ? 'مفعلة لحسابك ✅' : 'غير مفعلة (معرفك: ' + escapeHtml(fromId) + ')'}\n` +
+          `🌐 <b>الموقع الرسمي:</b> https://www.drfix.repair`;
+        await callTelegramApi('sendMessage', { chat_id: chatId, text: helpText, parse_mode: 'HTML' });
         return { ok: true };
       }
 
@@ -453,13 +504,13 @@ export async function handleTelegramWebhook(update: any) {
 
 async function sendMainMenu(chatId: string | number, fromId?: string | number, firstName?: string) {
   const isAuth = isAuthorizedAdmin(fromId);
-  const name = firstName || 'بك';
+  const name = escapeHtml(firstName || 'بك');
 
-  const menuText = `🚗⚡ *أهلاً ${name} في DR.FIX - ميكانيكي متنقل في جدة*\n` +
+  const menuText = `🚗⚡ <b>أهلاً ${name} في DR.FIX - ميكانيكي متنقل في جدة</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
     `خدمة صيانة وفحص وبرمجة السيارات على مدار 24 ساعة في أي مكان بجدة.\n\n` +
-    `📱 *معرفك في تيليجرام:* \`${fromId || chatId}\`\n` +
-    `🔒 *حالة الصلاحية:* ${isAuth ? '✅ لوحة المشرف مفعلة' : '👤 وضع العميل / المشرف'}\n\n` +
+    `📱 <b>معرفك في تيليجرام:</b> <code>${escapeHtml(fromId || chatId)}</code>\n` +
+    `🔒 <b>حالة الصلاحية:</b> ${isAuth ? '✅ لوحة المشرف مفعلة' : '👤 وضع العميل / المشرف'}\n\n` +
     `اختر الإجراء المطلوب من الأزرار أدناه:`;
 
   const inline_keyboard: any[][] = [];
@@ -487,7 +538,7 @@ async function sendMainMenu(chatId: string | number, fromId?: string | number, f
   return await callTelegramApi('sendMessage', {
     chat_id: chatId,
     text: menuText,
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard }
   });
 }
@@ -506,8 +557,8 @@ async function sendBookingsList(chatId: string | number, page = 1) {
     if (allBookings.length === 0) {
       await callTelegramApi('sendMessage', {
         chat_id: chatId,
-        text: '📋 *لا توجد حجوزات مسجلة حالياً في قاعدة البيانات.*',
-        parse_mode: 'Markdown',
+        text: '📋 <b>لا توجد حجوزات مسجلة حالياً في قاعدة البيانات.</b>',
+        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[{ text: '🔙 القائمة الرئيسية', callback_data: 'menu_start' }]]
         }
@@ -521,23 +572,23 @@ async function sendBookingsList(chatId: string | number, page = 1) {
     const startIndex = (currentPage - 1) * pageSize;
     const currentBookings = allBookings.slice(startIndex, startIndex + pageSize);
 
-    let text = `📋 *قائمة الحجوزات (صفحة ${currentPage} من ${totalPages}):*\n━━━━━━━━━━━━━━━━━━\n\n`;
+    let text = `📋 <b>قائمة الحجوزات (صفحة ${currentPage} من ${totalPages}):</b>\n━━━━━━━━━━━━━━━━━━\n\n`;
 
     currentBookings.forEach((b, idx) => {
-      const bId = b.bookingId || b.id;
+      const bId = escapeHtml(b.bookingId || b.id);
       let statusLabel = '🆕 جديد';
       if (b.status === 'accepted') statusLabel = '✅ مقبول';
       if (b.status === 'on_the_way') statusLabel = '🚗 الفني بالطريق';
       if (b.status === 'completed') statusLabel = '🏁 تم الإنجاز';
       if (b.status === 'cancelled') statusLabel = '❌ ملغى';
 
-      text += `*${startIndex + idx + 1}. حجز:* \`${bId}\`\n` +
-        `👤 *العميل:* ${b.customerName || 'عميل'}\n` +
-        `📱 *الجوال:* \`${b.customerPhone || 'غير متوفر'}\`\n` +
-        `🚘 *السيارة:* ${b.carModel || 'غير محدد'}\n` +
-        `🔧 *الخدمة:* ${b.serviceType || 'صيانة'}\n` +
-        `📅 *الموعد:* ${b.serviceDate || 'غير محدد'}\n` +
-        `📊 *الحالة:* ${statusLabel}\n` +
+      text += `<b>${startIndex + idx + 1}. حجز:</b> <code>${bId}</code>\n` +
+        `👤 <b>العميل:</b> ${escapeHtml(b.customerName || 'عميل')}\n` +
+        `📱 <b>الجوال:</b> <code>${escapeHtml(b.customerPhone || 'غير متوفر')}</code>\n` +
+        `🚘 <b>السيارة:</b> ${escapeHtml(b.carModel || 'غير محدد')}\n` +
+        `🔧 <b>الخدمة:</b> ${escapeHtml(b.serviceType || 'صيانة')}\n` +
+        `📅 <b>الموعد:</b> ${escapeHtml(b.serviceDate || 'غير محدد')}\n` +
+        `📊 <b>الحالة:</b> ${statusLabel}\n` +
         `━━━━━━━━━━━━━━━━━━\n`;
     });
 
@@ -571,7 +622,7 @@ async function sendBookingsList(chatId: string | number, page = 1) {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
       text,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: { inline_keyboard }
     });
   } catch (error) {
@@ -579,7 +630,7 @@ async function sendBookingsList(chatId: string | number, page = 1) {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
       text: '⚠️ حدث خطأ أثناء جلب الحجوزات من قاعدة البيانات.',
-      parse_mode: 'Markdown'
+      parse_mode: 'HTML'
     });
   }
 }
@@ -627,17 +678,17 @@ async function sendStatsReport(chatId: string | number) {
 
     const avgRating = reviewsCount > 0 ? (totalStars / reviewsCount).toFixed(1) : '5.0';
 
-    const text = `📊 *تقرير إحصائيات DR.FIX* 🚗⚡\n` +
+    const text = `📊 <b>تقرير إحصائيات DR.FIX</b> 🚗⚡\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📅 *حجوزات اليوم:* ${todayTotal}\n` +
-      `📈 *إجمالي الحجوزات المسجلة:* ${total}\n\n` +
-      `📌 *تفاصيل الحالات:*\n` +
+      `📅 <b>حجوزات اليوم:</b> ${todayTotal}\n` +
+      `📈 <b>إجمالي الحجوزات المسجلة:</b> ${total}\n\n` +
+      `📌 <b>تفاصيل الحالات:</b>\n` +
       `• 🆕 جديدة بانتظار الإجراء: ${newCount}\n` +
       `• ✅ مقبولة: ${accepted}\n` +
       `• 🚗 الفني بالطريق: ${onTheWay}\n` +
       `• 🏁 مكتملة بنجاح: ${completed}\n` +
       `• ❌ ملغاة / مرفوضة: ${cancelled}\n\n` +
-      `⭐ *التقييمات:* ${avgRating} / 5 (${reviewsCount} تقييم)\n` +
+      `⭐ <b>التقييمات:</b> ${avgRating} / 5 (${reviewsCount} تقييم)\n` +
       `━━━━━━━━━━━━━━━━━━`;
 
     const inline_keyboard = [
@@ -650,7 +701,7 @@ async function sendStatsReport(chatId: string | number) {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
       text,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: { inline_keyboard }
     });
   } catch (error) {
@@ -658,14 +709,14 @@ async function sendStatsReport(chatId: string | number) {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
       text: '⚠️ تعذر حساب الإحصائيات في الوقت الحالي.',
-      parse_mode: 'Markdown'
+      parse_mode: 'HTML'
     });
   }
 }
 
 async function sendRecentNotifications(chatId: string | number) {
   try {
-    const text = `🔔 *مركز الإشعارات المباشرة DR.FIX*\n` +
+    const text = `🔔 <b>مركز الإشعارات المباشرة DR.FIX</b>\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
       `✅ يتم إرسال إشعارات فورية لكل من:\n` +
       `• الحجوزات الجديدة فور حفظها في Firebase\n` +
@@ -687,7 +738,7 @@ async function sendRecentNotifications(chatId: string | number) {
     await callTelegramApi('sendMessage', {
       chat_id: chatId,
       text,
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       reply_markup: { inline_keyboard }
     });
   } catch (error) {
