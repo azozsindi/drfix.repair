@@ -9,7 +9,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  // Allow setup via query param (?setup=1 or ?action=setup)
+  // Allow setup or diagnostics via query param (?setup=1 or ?action=setup)
   if (req.method === 'GET') {
     const isSetup = req.query && (req.query.setup === '1' || req.query.setup === 'true' || req.query.action === 'setup');
     if (isSetup) {
@@ -78,7 +78,6 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Verify optional secret token header if configured
     const secretHeader = req.headers && req.headers['x-telegram-bot-api-secret-token'];
     const expectedSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
 
@@ -103,7 +102,8 @@ export default async function handler(req: any, res: any) {
     const result = await handleTelegramWebhook(update);
     return res.status(200).json(result || { ok: true });
   } catch (error: any) {
-    console.error('Telegram serverless function error:', error);
-    return res.status(500).json({ ok: false, error: error?.message || String(error) });
+    console.error('Telegram webhook handler exception:', error);
+    // Always return 200 to Telegram so it doesn't repeatedly hammer with failed retries
+    return res.status(200).json({ ok: true, handledWithError: error?.message || String(error) });
   }
 }
