@@ -390,7 +390,16 @@ export const playNotificationSound = () => {
 export const DEFAULT_TELEGRAM_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 export const DEFAULT_TELEGRAM_CHAT_ID = '867105778';
 
-// Telegram instant message dispatcher
+export const escapeTelegramHtml = (text: any): string => {
+  if (text === undefined || text === null) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+};
+
+// Telegram instant message dispatcher with auto-retry plain text fallback
 export const sendTelegramNotification = async (
   messageText: string, 
   botToken?: string, 
@@ -415,7 +424,26 @@ export const sendTelegramNotification = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    return res.ok;
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data.ok) return true;
+    }
+
+    // Fallback without HTML parse_mode if Telegram rejected formatting
+    const plainPayload: Record<string, any> = {
+      chat_id: activeChatId,
+      text: String(messageText).replace(/<[^>]*>/g, '')
+    };
+    if (replyMarkup) {
+      plainPayload.reply_markup = replyMarkup;
+    }
+    const retryRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(plainPayload)
+    });
+    return retryRes.ok;
   } catch (err) {
     console.error("Telegram notification error:", err);
     return false;
@@ -1381,15 +1409,23 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           ? `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
           : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((locationName || 'جدة') + ' جدة')}`;
 
+        const safeBkId = escapeTelegramHtml(uniqueBookingId);
+        const safePhone = escapeTelegramHtml(cleanPhone);
+        const safeCar = escapeTelegramHtml(`${data.carMake} ${data.carModel} (${data.carYear})`);
+        const safeService = escapeTelegramHtml(serviceTitle);
+        const safeLoc = escapeTelegramHtml(locationName || 'جدة');
+        const safeDesc = data.description ? escapeTelegramHtml(data.description) : 'بدون تفاصيل إضافية';
+        const safeTime = escapeTelegramHtml(new Date().toLocaleTimeString('ar-SA'));
+
         const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
-          `👤 <b>العميل:</b> <code>${cleanPhone}</code>\n` +
-          `🚘 <b>السيارة:</b> ${data.carMake} ${data.carModel} (${data.carYear})\n` +
-          `🔧 <b>الخدمة:</b> ${serviceTitle}\n` +
-          `📍 <b>الموقع:</b> ${locationName || 'جدة'}\n` +
-          `📝 <b>الوصف:</b> ${data.description || 'بدون تفاصيل إضافية'}\n` +
-          `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n` +
+          `🔖 <b>رقم الحجز:</b> <code>${safeBkId}</code>\n` +
+          `👤 <b>العميل:</b> <code>${safePhone}</code>\n` +
+          `🚘 <b>السيارة:</b> ${safeCar}\n` +
+          `🔧 <b>الخدمة:</b> ${safeService}\n` +
+          `📍 <b>الموقع:</b> ${safeLoc}\n` +
+          `📝 <b>الوصف:</b> ${safeDesc}\n` +
+          `⏰ <b>الوقت:</b> ${safeTime}\n` +
           `━━━━━━━━━━━━━━━━━━`;
 
         const inline_keyboard = [
