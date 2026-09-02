@@ -457,6 +457,9 @@ export async function handleTelegramWebhook(update: any) {
             }
           }
 
+          const appBase = process.env.APP_URL || 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+          const cleanBaseUrl = appBase.startsWith('http') ? appBase : `https://${appBase}`;
+
           const inline_keyboard: any[][] = [];
           const actionRow: any[] = [];
           if (mapsUrl) actionRow.push({ text: '📍 موقع العميل', url: mapsUrl });
@@ -464,12 +467,12 @@ export async function handleTelegramWebhook(update: any) {
           if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
           inline_keyboard.push([
-            { text: '✅ قبول الطلب', callback_data: `act_accept_${bookingId}` },
+            { text: '✅ قبول الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=accepted` },
             { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
           ]);
           inline_keyboard.push([
-            { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bookingId}` },
-            { text: '🏁 تم الإنجاز', callback_data: `act_done_${bookingId}` }
+            { text: '🚗 الفني بالطريق', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=on_the_way` },
+            { text: '🏁 تم الإنجاز', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=completed` }
           ]);
 
           let updatedText = cb.message.text;

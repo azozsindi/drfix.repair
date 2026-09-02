@@ -580,21 +580,11 @@ export default async function handler(req: any, res: any) {
           `Telegram Bot (${fromId || 'Admin'})`
         );
 
-        let answerText = updateRes.success
-          ? `${statusIcon} تم تحديث حالة الحجز إلى: ${statusArabic}`
-          : `⚠️ تم حفظ التحديث: ${statusArabic}`;
-
-        let showAlert = false;
-        if (action === 'accept') {
-          answerText = `✅ تم قبول الطلب بنجاح!\n\nاضغط الآن على زر:\n[💬 فتح واتساب العميل الآن]\nفي الرسالة لبدء المحادثة مباشرة 🚗⚡`;
-          showAlert = true;
-        }
-
-        // Answer callback query
+        // Answer callback query quietly without modal popup
         await callTelegramApi('answerCallbackQuery', {
           callback_query_id: cb.id,
-          text: answerText,
-          show_alert: showAlert
+          text: updateRes.success ? `✅ تم التحديث: ${statusArabic}` : `⚠️ تم التحديث`,
+          show_alert: false
         });
 
         // Resolve customer phone & maps URL to guarantee active WhatsApp & GPS buttons
@@ -625,6 +615,9 @@ export default async function handler(req: any, res: any) {
           }
         }
 
+        const appBase = process.env.APP_URL || 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+        const cleanBaseUrl = appBase.startsWith('http') ? appBase : `https://${appBase}`;
+
         const inline_keyboard: any[][] = [];
         const actionRow: any[] = [];
         if (mapsUrl) actionRow.push({ text: '📍 موقع العميل (GPS)', url: mapsUrl });
@@ -632,12 +625,12 @@ export default async function handler(req: any, res: any) {
         if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
         inline_keyboard.push([
-          { text: '✅ قبول الطلب', callback_data: `act_accept_${bookingId}` },
+          { text: '✅ قبول الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=accepted` },
           { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
         ]);
         inline_keyboard.push([
-          { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bookingId}` },
-          { text: '🏁 تم الإنجاز', callback_data: `act_done_${bookingId}` }
+          { text: '🚗 الفني بالطريق', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=on_the_way` },
+          { text: '🏁 تم الإنجاز', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=completed` }
         ]);
 
         // Edit the original booking message directly in Telegram
