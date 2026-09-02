@@ -11,6 +11,24 @@ function escapeHtml(text: any): string {
     .replace(/"/g, '&quot;');
 }
 
+function formatSaudiPhone(phone: string | undefined | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('05')) {
+    digits = '966' + digits.slice(1);
+  } else if (digits.startsWith('5') && digits.length === 9) {
+    digits = '966' + digits;
+  } else if (digits.startsWith('0') && !digits.startsWith('966')) {
+    digits = '966' + digits.replace(/^0+/, '');
+  } else if (!digits.startsWith('966') && digits.length === 9) {
+    digits = '966' + digits;
+  }
+  return digits;
+}
+
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -34,8 +52,7 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ ok: false, message: 'Missing booking ID' });
     }
 
-    const cleanPhone = (booking.customerPhone || '').replace(/\D/g, '');
-    const internationalPhone = cleanPhone ? (cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '')) : '';
+    const internationalPhone = formatSaudiPhone(booking.customerPhone || booking.phone);
     const bId = booking.bookingId || '';
     const customerName = booking.customerName && booking.customerName !== booking.customerPhone 
       ? booking.customerName 
@@ -79,6 +96,10 @@ export default async function handler(req: any, res: any) {
       `📊 <b>الحالة:</b> 🆕 جديد\n` +
       `━━━━━━━━━━━━━━━━━━`;
 
+    const host = req.headers?.['x-forwarded-host'] || req.headers?.host || 'ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+    const proto = req.headers?.['x-forwarded-proto'] || 'https';
+    const baseUrl = `${proto}://${host}`;
+
     const inline_keyboard: any[][] = [];
 
     const actionRow: any[] = [];
@@ -87,12 +108,12 @@ export default async function handler(req: any, res: any) {
     if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
     inline_keyboard.push([
-      { text: '✅ قبول الطلب', callback_data: `act_accept_${bId}` },
+      { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=accepted` },
       { text: '❌ رفض الطلب', callback_data: `act_reject_${bId}` }
     ]);
     inline_keyboard.push([
-      { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bId}` },
-      { text: '🏁 تم الإنجاز', callback_data: `act_done_${bId}` }
+      { text: '🚗 الفني بالطريق', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=on_the_way` },
+      { text: '🏁 تم الإنجاز', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=completed` }
     ]);
 
     const token = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();

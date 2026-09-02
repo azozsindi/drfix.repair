@@ -72,15 +72,26 @@ function isAuthorizedAdmin(userId: string | number | undefined | null): boolean 
   return adminList.includes(userStr);
 }
 
+function formatSaudiPhone(phone: string | undefined | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('05')) {
+    digits = '966' + digits.slice(1);
+  } else if (digits.startsWith('5') && digits.length === 9) {
+    digits = '966' + digits;
+  } else if (digits.startsWith('0') && !digits.startsWith('966')) {
+    digits = '966' + digits.replace(/^0+/, '');
+  } else if (!digits.startsWith('966') && digits.length === 9) {
+    digits = '966' + digits;
+  }
+  return digits;
+}
+
 function getWhatsAppStatusUrlForTelegram(record: any, newStatus: string): string {
-  const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
-  const waPhone = cleanPhone.startsWith('966') 
-    ? cleanPhone 
-    : cleanPhone.startsWith('05') 
-    ? '966' + cleanPhone.slice(1) 
-    : cleanPhone.startsWith('5') 
-    ? '966' + cleanPhone 
-    : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
+  const waPhone = formatSaudiPhone(record.customerPhone || record.phone);
 
   const bId = record.bookingId || record.id || '';
   const car = record.carModel ? (record.carYear ? `${record.carModel} (${record.carYear})` : record.carModel) : 'سيارتك';
@@ -569,16 +580,65 @@ export default async function handler(req: any, res: any) {
           `Telegram Bot (${fromId || 'Admin'})`
         );
 
-        const answerText = updateRes.success
+        let answerText = updateRes.success
           ? `${statusIcon} تم تحديث حالة الحجز إلى: ${statusArabic}`
           : `⚠️ تم حفظ التحديث: ${statusArabic}`;
 
-        // Answer callback query with a smooth confirmation toast
+        let showAlert = false;
+        if (action === 'accept') {
+          answerText = `✅ تم قبول الطلب بنجاح!\n\nاضغط الآن على زر:\n[💬 فتح واتساب العميل الآن]\nفي الرسالة لبدء المحادثة مباشرة 🚗⚡`;
+          showAlert = true;
+        }
+
+        // Answer callback query
         await callTelegramApi('answerCallbackQuery', {
           callback_query_id: cb.id,
           text: answerText,
-          show_alert: false
+          show_alert: showAlert
         });
+
+        // Resolve customer phone & maps URL to guarantee active WhatsApp & GPS buttons
+        let customerPhone = updateRes.record?.customerPhone || updateRes.record?.phone || '';
+        if (!customerPhone && cb.message?.text) {
+          const phoneMatch = cb.message.text.match(/(?:الجوال:|📱)\s*(?:<b>)?(?:<code>)?([0-9+\s]+)(?:<\/code>)?/);
+          if (phoneMatch) {
+            customerPhone = phoneMatch[1].trim();
+          }
+        }
+
+        const cleanPhone = formatSaudiPhone(customerPhone);
+        const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}` : null;
+
+        let mapsUrl = '';
+        if (updateRes.record?.coordinates?.latitude && updateRes.record?.coordinates?.longitude) {
+          mapsUrl = `https://www.google.com/maps?q=${updateRes.record.coordinates.latitude},${updateRes.record.coordinates.longitude}`;
+        } else if (updateRes.record?.location) {
+          mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(updateRes.record.location + ' جدة')}`;
+        } else if (cb.message?.reply_markup?.inline_keyboard) {
+          for (const row of cb.message.reply_markup.inline_keyboard) {
+            for (const btn of row) {
+              if (btn.text && (btn.text.includes('موقع') || btn.text.includes('GPS')) && btn.url) {
+                mapsUrl = btn.url;
+                break;
+              }
+            }
+          }
+        }
+
+        const inline_keyboard: any[][] = [];
+        const actionRow: any[] = [];
+        if (mapsUrl) actionRow.push({ text: '📍 موقع العميل (GPS)', url: mapsUrl });
+        if (waUrl) actionRow.push({ text: '💬 فتح واتساب العميل الآن', url: waUrl });
+        if (actionRow.length > 0) inline_keyboard.push(actionRow);
+
+        inline_keyboard.push([
+          { text: '✅ قبول الطلب', callback_data: `act_accept_${bookingId}` },
+          { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
+        ]);
+        inline_keyboard.push([
+          { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bookingId}` },
+          { text: '🏁 تم الإنجاز', callback_data: `act_done_${bookingId}` }
+        ]);
 
         // Edit the original booking message directly in Telegram
         if (cb.message?.text) {
@@ -596,7 +656,7 @@ export default async function handler(req: any, res: any) {
             message_id: cb.message.message_id,
             text: updatedText,
             parse_mode: 'HTML',
-            reply_markup: cb.message.reply_markup
+            reply_markup: { inline_keyboard }
           });
         }
 

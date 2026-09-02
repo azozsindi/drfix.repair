@@ -20,6 +20,24 @@ export function escapeHtml(text: any): string {
     .replace(/"/g, '&quot;');
 }
 
+export function formatSaudiPhone(phone: string | undefined | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('05')) {
+    digits = '966' + digits.slice(1);
+  } else if (digits.startsWith('5') && digits.length === 9) {
+    digits = '966' + digits;
+  } else if (digits.startsWith('0') && !digits.startsWith('966')) {
+    digits = '966' + digits.replace(/^0+/, '');
+  } else if (!digits.startsWith('966') && digits.length === 9) {
+    digits = '966' + digits;
+  }
+  return digits;
+}
+
 export async function callTelegramApi(method: string, payload: Record<string, any>) {
   try {
     const token = (process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN).trim();
@@ -148,8 +166,7 @@ export async function sendBookingNotification(booking: BookingPayload) {
     return { ok: true, duplicate: true };
   }
 
-  const cleanPhone = (booking.customerPhone || '').replace(/\D/g, '');
-  const internationalPhone = cleanPhone ? (cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '')) : '';
+  const internationalPhone = formatSaudiPhone(booking.customerPhone);
   const waLink = internationalPhone ? `https://wa.me/${internationalPhone}` : null;
   
   let mapsUrl = '';
@@ -185,6 +202,9 @@ export async function sendBookingNotification(booking: BookingPayload) {
     `📊 <b>الحالة:</b> 🆕 جديد\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
+  const host = process.env.APP_URL || 'ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+  const baseUrl = host.startsWith('http') ? host : `https://${host}`;
+
   const inline_keyboard: any[][] = [];
 
   // Row 1: Action Links (Maps & WhatsApp)
@@ -199,14 +219,14 @@ export async function sendBookingNotification(booking: BookingPayload) {
 
   // Row 2: Status Controls (Accept & Reject)
   inline_keyboard.push([
-    { text: '✅ قبول الطلب', callback_data: `act_accept_${booking.bookingId}` },
+    { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(booking.bookingId)}&status=accepted` },
     { text: '❌ رفض الطلب', callback_data: `act_reject_${booking.bookingId}` }
   ]);
 
   // Row 3: Progress Controls
   inline_keyboard.push([
-    { text: '🚗 الفني بالطريق', callback_data: `act_onway_${booking.bookingId}` },
-    { text: '🏁 تم الإنجاز', callback_data: `act_done_${booking.bookingId}` }
+    { text: '🚗 الفني بالطريق', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(booking.bookingId)}&status=on_the_way` },
+    { text: '🏁 تم الإنجاز', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(booking.bookingId)}&status=completed` }
   ]);
 
   const adminChatId = (process.env.TELEGRAM_ADMIN_ID || TELEGRAM_ADMIN_ID).trim();
@@ -416,6 +436,42 @@ export async function handleTelegramWebhook(update: any) {
 
         // Edit original message text directly to reflect updated status
         if (cb.message?.text) {
+          let customerPhone = '';
+          const phoneMatch = cb.message.text.match(/(?:الجوال:|📱)\s*(?:<b>)?(?:<code>)?([0-9+\s]+)(?:<\/code>)?/);
+          if (phoneMatch) {
+            customerPhone = phoneMatch[1].trim();
+          }
+
+          const cleanPhone = formatSaudiPhone(customerPhone);
+          const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}` : null;
+
+          let mapsUrl = '';
+          if (cb.message?.reply_markup?.inline_keyboard) {
+            for (const row of cb.message.reply_markup.inline_keyboard) {
+              for (const btn of row) {
+                if (btn.text && (btn.text.includes('موقع') || btn.text.includes('GPS')) && btn.url) {
+                  mapsUrl = btn.url;
+                  break;
+                }
+              }
+            }
+          }
+
+          const inline_keyboard: any[][] = [];
+          const actionRow: any[] = [];
+          if (mapsUrl) actionRow.push({ text: '📍 موقع العميل', url: mapsUrl });
+          if (waUrl) actionRow.push({ text: '💬 فتح واتساب العميل الآن', url: waUrl });
+          if (actionRow.length > 0) inline_keyboard.push(actionRow);
+
+          inline_keyboard.push([
+            { text: '✅ قبول الطلب', callback_data: `act_accept_${bookingId}` },
+            { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
+          ]);
+          inline_keyboard.push([
+            { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bookingId}` },
+            { text: '🏁 تم الإنجاز', callback_data: `act_done_${bookingId}` }
+          ]);
+
           let updatedText = cb.message.text;
           if (/📊\s*(?:<b>)?الحالة:(?:<\/b>)?/.test(updatedText)) {
             updatedText = updatedText.replace(/📊\s*(?:<b>)?الحالة:(?:<\/b>)?\s*.*/, `📊 <b>الحالة:</b> ${statusArabic}`);
@@ -430,7 +486,7 @@ export async function handleTelegramWebhook(update: any) {
             message_id: cb.message.message_id,
             text: updatedText,
             parse_mode: 'HTML',
-            reply_markup: cb.message.reply_markup
+            reply_markup: { inline_keyboard }
           });
         }
 

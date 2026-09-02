@@ -20,15 +20,26 @@ function getDb() {
   return getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
 }
 
-function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, waPhone: string, appUrl: string, webUrl: string } {
-  const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
-  const waPhone = cleanPhone.startsWith('966') 
-    ? cleanPhone 
-    : cleanPhone.startsWith('05') 
-    ? '966' + cleanPhone.slice(1) 
-    : cleanPhone.startsWith('5') 
-    ? '966' + cleanPhone 
-    : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
+function formatSaudiPhone(phone: string | undefined | null): string {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00966')) {
+    digits = digits.slice(2);
+  } else if (digits.startsWith('05')) {
+    digits = '966' + digits.slice(1);
+  } else if (digits.startsWith('5') && digits.length === 9) {
+    digits = '966' + digits;
+  } else if (digits.startsWith('0') && !digits.startsWith('966')) {
+    digits = '966' + digits.replace(/^0+/, '');
+  } else if (!digits.startsWith('966') && digits.length === 9) {
+    digits = '966' + digits;
+  }
+  return digits;
+}
+
+function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, waPhone: string, appUrl: string, webUrl: string, waMeUrl: string } {
+  const waPhone = formatSaudiPhone(record.customerPhone || record.phone);
 
   const bId = record.bookingId || record.id || '';
   const car = record.carModel ? (record.carYear ? `${record.carModel} (${record.carYear})` : record.carModel) : 'سيارتك';
@@ -96,13 +107,14 @@ function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, wa
     msg,
     waPhone,
     appUrl: `whatsapp://send?phone=${waPhone}&text=${encodedMsg}`,
-    webUrl: `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodedMsg}`
+    webUrl: `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodedMsg}`,
+    waMeUrl: `https://wa.me/${waPhone}?text=${encodedMsg}`
   };
 }
 
 export default async function handler(req: any, res: any) {
   const bookingIdOrDocId = req.query.id || req.body?.id;
-  let newStatus = req.query.status || req.body?.status || 'on_the_way';
+  let newStatus = req.query.status || req.body?.status || 'accepted';
 
   if (newStatus === 'onway') newStatus = 'on_the_way';
   if (newStatus === 'done') newStatus = 'completed';
@@ -140,17 +152,44 @@ export default async function handler(req: any, res: any) {
 
     const wa = buildWhatsAppMessage(targetData, newStatus);
 
+    // Optional Telegram message update if mid/cid provided
+    const cid = req.query.cid;
+    const mid = req.query.mid;
+    if (cid && mid) {
+      try {
+        const token = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();
+        const statusArabic = 
+          newStatus === 'accepted' ? 'مقبول ✅' :
+          newStatus === 'on_the_way' ? 'الفني بالطريق 🚗' :
+          newStatus === 'completed' ? 'تم الإنجاز 🏁' :
+          newStatus === 'cancelled' ? 'مرفوض / ملغى ❌' : 'قيد العمل 🔧';
+        
+        await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: cid,
+            message_id: mid,
+            text: `📊 <b>تم تحديث الحالة:</b> ${statusArabic}\n\nالحجز رقم <code>${targetData.bookingId || targetData.id}</code> لسيارة ${targetData.carModel || ''}`,
+            parse_mode: 'HTML'
+          })
+        });
+      } catch (tgErr) {
+        console.warn('Error updating telegram message from redirect handler:', tgErr);
+      }
+    }
+
     // If client requested JSON
     if (req.headers.accept?.includes('application/json') && !req.query.redirect) {
       return res.status(200).json({
         ok: true,
         updatedStatus: newStatus,
-        whatsAppUrl: wa.webUrl,
+        whatsAppUrl: wa.waMeUrl,
         whatsAppAppUrl: wa.appUrl
       });
     }
 
-    // Otherwise render instant auto-redirecting HTML with fallback button
+    // Render instant auto-redirecting HTML to WhatsApp
     const statusLabel = 
       newStatus === 'on_the_way' ? 'الفني بالطريق 🚗' :
       newStatus === 'accepted' ? 'تم القبول ✅' :
@@ -162,8 +201,8 @@ export default async function handler(req: any, res: any) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>جاري فتح تطبيق الواتساب - DR.FIX</title>
-  <meta http-equiv="refresh" content="0;url=${wa.appUrl}">
+  <title>فتح محادثة واتساب - DR.FIX</title>
+  <meta http-equiv="refresh" content="0;url=${wa.waMeUrl}">
   <style>
     body {
       background-color: #0b0f19;
@@ -231,13 +270,11 @@ export default async function handler(req: any, res: any) {
     }
   </style>
   <script>
-    // 1. Immediately trigger WhatsApp native mobile app
-    window.location.href = "${wa.appUrl}";
-
-    // 2. Fallback to API link if needed
+    // Automatically redirect to WhatsApp
+    window.location.href = "${wa.waMeUrl}";
     setTimeout(function() {
-      window.location.href = "${wa.webUrl}";
-    }, 1200);
+      window.location.href = "${wa.appUrl}";
+    }, 800);
   </script>
 </head>
 <body>
@@ -246,7 +283,7 @@ export default async function handler(req: any, res: any) {
     <div class="status-badge">تم التحديث: ${statusLabel}</div>
     <h2>جاري فتح تطبيق الواتساب...</h2>
     <p>تم تحديث الحجز رقم <b>#${targetData.bookingId || targetData.id}</b> بنجاح.</p>
-    <a href="${wa.appUrl}" class="btn">فتح تطبيق واتساب مباشرة 💬</a>
+    <a href="${wa.waMeUrl}" class="btn">فتح تطبيق واتساب مباشرة 💬</a>
   </div>
 </body>
 </html>`;
@@ -258,3 +295,4 @@ export default async function handler(req: any, res: any) {
     return res.status(500).send('Error updating status: ' + err.message);
   }
 }
+

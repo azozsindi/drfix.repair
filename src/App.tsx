@@ -1434,7 +1434,18 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
       // Fallback Direct Telegram only if server-side notification was not delivered
       if (!serverNotified) {
-        const intPhone = cleanPhone.startsWith('966') ? cleanPhone : '966' + cleanPhone.replace(/^0/, '');
+        let intPhone = cleanPhone.replace(/\D/g, '');
+        if (intPhone.startsWith('00966')) {
+          intPhone = intPhone.slice(2);
+        } else if (intPhone.startsWith('05')) {
+          intPhone = '966' + intPhone.slice(1);
+        } else if (intPhone.startsWith('5') && intPhone.length === 9) {
+          intPhone = '966' + intPhone;
+        } else if (intPhone.startsWith('0') && !intPhone.startsWith('966')) {
+          intPhone = '966' + intPhone.replace(/^0+/, '');
+        } else if (!intPhone.startsWith('966') && intPhone.length === 9) {
+          intPhone = '966' + intPhone;
+        }
         const waLink = `https://wa.me/${intPhone}`;
         const mapsUrl = coords 
           ? `https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`
@@ -1459,18 +1470,20 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           `⏰ <b>الوقت:</b> ${safeTime}\n` +
           `━━━━━━━━━━━━━━━━━━`;
 
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+
         const inline_keyboard = [
           [
             { text: '📍 موقع العميل', url: mapsUrl },
             { text: '💬 فتح واتساب العميل الآن', url: waLink }
           ],
           [
-            { text: '✅ قبول الطلب', callback_data: `act_accept_${uniqueBookingId}` },
+            { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=accepted` },
             { text: '❌ رفض الطلب', callback_data: `act_reject_${uniqueBookingId}` }
           ],
           [
-            { text: '🚗 الفني بالطريق', callback_data: `act_onway_${uniqueBookingId}` },
-            { text: '🏁 تم الإنجاز', callback_data: `act_done_${uniqueBookingId}` }
+            { text: '🚗 الفني بالطريق', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=on_the_way` },
+            { text: '🏁 تم الإنجاز', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=completed` }
           ]
         ];
 
