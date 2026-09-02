@@ -79,11 +79,23 @@ import {
   Compass,
   CalendarCheck,
   Printer,
-  DollarSign
+  DollarSign,
+  ShieldCheck,
+  Users,
+  UserCheck,
+  KeyRound
 } from 'lucide-react';
 import { ReportsView } from './components/ReportsView';
+import { StaffManagement } from './components/StaffManagement';
 import { ManualPaymentsManager } from './components/accounting/ManualPaymentsManager';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
+import { 
+  StaffUser, 
+  StaffRole, 
+  StaffPermissions, 
+  DEFAULT_SUPER_ADMIN_PERMISSIONS, 
+  ROLE_PRESETS 
+} from './types';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
 import { 
@@ -246,21 +258,77 @@ export const safeFormatDate = (dateVal: any, locale = 'ar-SA', options?: Intl.Da
 
 // --- Components ---
 
-const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
+const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-      onLogin();
-      setError('');
+    setError('');
+    setIsSubmitting(true);
+
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    // 1. Check Master Super Admin Credentials
+    if (cleanUser === ADMIN_CREDENTIALS.username && cleanPass === ADMIN_CREDENTIALS.password) {
+      const masterUser: StaffUser = {
+        id: 'master-super-admin',
+        username: 'DRFIX',
+        password: '••••••••',
+        fullName: 'المدير العام (Master Admin)',
+        role: 'super_admin',
+        roleTitleAr: 'المدير العام',
+        permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
+        isActive: true
+      };
+      onLogin(masterUser);
+      setIsSubmitting(false);
       navigate('/admin');
-    } else {
+      return;
+    }
+
+    // 2. Check Staff Collection in Firestore
+    try {
+      const staffQuery = query(
+        collection(db, 'staff'),
+        where('username', '==', cleanUser.toLowerCase())
+      );
+      const snap = await getDocs(staffQuery);
+
+      if (!snap.empty) {
+        const userDoc = snap.docs[0];
+        const staffData = { id: userDoc.id, ...userDoc.data() } as StaffUser;
+
+        if (staffData.password === cleanPass) {
+          if (staffData.isActive === false) {
+            setError(lang === 'ar' ? 'عذراً، هذا الحساب معطل حالياً من قِبل الإدارة.' : 'This account has been deactivated by admin.');
+            setIsSubmitting(false);
+            return;
+          }
+
+          // Update last login timestamp in background
+          updateDoc(doc(db, 'staff', userDoc.id), {
+            lastLogin: serverTimestamp()
+          }).catch(console.error);
+
+          onLogin(staffData);
+          setIsSubmitting(false);
+          navigate('/admin');
+          return;
+        }
+      }
+
       setError(t.login.error || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('حدث خطأ أثناء تسجيل الدخول. يرجى التأكد من اتصال الإنترنت.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -272,33 +340,38 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
         className="glass-card p-8 w-full max-w-md border-brand-red/20 shadow-2xl"
       >
         <div className="text-center mb-8">
+          <div className="w-14 h-14 bg-brand-red/20 border border-brand-red/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-brand-red shadow-lg shadow-brand-red/20">
+            <KeyRound className="w-7 h-7" />
+          </div>
           <h2 className="text-2xl font-display font-black italic uppercase">
             {t.login.title} <span className="text-brand-red">{t.login.titleAccent}</span>
           </h2>
-          <p className="text-gray-400 text-sm mt-2">{t.login.subtitle}</p>
+          <p className="text-gray-400 text-xs sm:text-sm mt-2">تسجيل دخول الإدارة وفريق العمل الفني</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">{t.login.username}</label>
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.login.username}</label>
             <input 
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all text-white"
               placeholder={t.login.usernamePlaceholder || "Username"}
               required
+              disabled={isSubmitting}
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest">{t.login.password}</label>
+            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.login.password}</label>
             <input 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all text-white"
               placeholder={t.login.passwordPlaceholder || "Password"}
               required
+              disabled={isSubmitting}
             />
           </div>
 
@@ -306,7 +379,7 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-brand-red/10 border border-brand-red/20 rounded-lg text-brand-red text-sm text-center"
+              className="p-3 bg-brand-red/10 border border-brand-red/20 rounded-lg text-brand-red text-xs sm:text-sm text-center"
             >
               {error}
             </motion.div>
@@ -314,9 +387,17 @@ const LoginPage = ({ onLogin }: { onLogin: () => void }) => {
 
           <button 
             type="submit"
-            className="w-full py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 text-white cursor-pointer"
+            disabled={isSubmitting}
+            className="w-full py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {t.login.login}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>جاري التحقق...</span>
+              </>
+            ) : (
+              t.login.login
+            )}
           </button>
         </form>
       </motion.div>
@@ -511,17 +592,39 @@ const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, qua
 
 const Ticker = ({ settings }: { settings: AppSettings }) => {
   const { t, lang } = useLanguage();
-  const tickerContent = (lang === 'ar' && settings.tickerText) 
-    ? settings.tickerText 
-    : `${t.hero.badge} • ${t.stats.wash} • ${t.footer.available} • DR. FIX AUTO SERVICES`;
+  
+  const items = (lang === 'ar' && settings.tickerText)
+    ? settings.tickerText.split('•').map(s => s.trim()).filter(Boolean)
+    : [
+        'خدمة صيانة متنقلة 24/7',
+        'غسيل مجاني مع كل صيانة',
+        'متاح 24 ساعة طوال الأسبوع',
+        'DR. FIX AUTO SERVICES',
+        'فنيين معتمدين حتى موقعك',
+        'خدمة سريعة وضمان معتمد'
+      ];
+
+  const renderList = (keyPrefix: string) => (
+    <div className="animate-ticker flex shrink-0 items-center justify-around gap-6 select-none will-change-transform">
+      {items.map((item, idx) => (
+        <span
+          key={`${keyPrefix}-${idx}`}
+          className="text-white font-display font-black text-xs sm:text-xs md:text-sm italic tracking-wide inline-flex items-center gap-3 drop-shadow-sm whitespace-nowrap px-2"
+        >
+          <span>{item}</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-white/80 shrink-0 inline-block" />
+        </span>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="bg-brand-red py-2 fixed top-0 left-0 right-0 z-[60] shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 text-center">
-        <span className="text-white font-bold text-[10px] md:text-xs italic uppercase tracking-widest whitespace-nowrap">
-          {tickerContent}
-        </span>
-      </div>
+    <div 
+      dir="ltr"
+      className="bg-brand-red py-2 fixed top-0 left-0 right-0 z-[60] shadow-md overflow-hidden flex items-center border-b border-red-600/40"
+    >
+      {renderList('set1')}
+      {renderList('set2')}
     </div>
   );
 };
@@ -2138,16 +2241,27 @@ interface ServiceItem {
   order?: number;
 }
 
-const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onLogout: () => void, settings: AppSettings }) => {
+const AdminDashboard = ({ 
+  isAdmin, 
+  onLogout, 
+  settings, 
+  currentStaffUser 
+}: { 
+  isAdmin: boolean; 
+  onLogout: () => void; 
+  settings: AppSettings;
+  currentStaffUser?: StaffUser | null;
+}) => {
   const [records, setRecords] = useState<MaintenanceRecord[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialData[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'payments' | 'reports' | 'content' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'payments' | 'reports' | 'content' | 'settings' | 'staff'>('dashboard');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -2520,12 +2634,23 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
         setGallery(results);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
 
+      // Staff Users
+      const qStaff = query(collection(db, 'staff'), orderBy('createdAt', 'desc'));
+      const unsubStaff = onSnapshot(qStaff, (snapshot) => {
+        const results: StaffUser[] = [];
+        snapshot.forEach((doc) => {
+          results.push({ id: doc.id, ...(doc.data() as any) } as StaffUser);
+        });
+        setStaffList(results);
+      }, (error) => handleFirestoreError(error, OperationType.LIST, 'staff'));
+
       return () => {
         unsubM();
         unsubT();
         unsubO();
         unsubS();
         unsubG();
+        unsubStaff();
       };
     }
   }, [isAdmin]);
@@ -2937,6 +3062,29 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
 
   const COLORS = ['#E31837', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#3B82F6', '#10B981'];
 
+  const userPermissions: StaffPermissions = currentStaffUser?.permissions || DEFAULT_SUPER_ADMIN_PERMISSIONS;
+
+  const allowedNavTabs = [
+    { id: 'dashboard', label: 'الإحصائيات ونظرة عامة', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
+    { id: 'bookings', label: 'الحجوزات والعمليات', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
+    { id: 'calendar', label: 'التقويم والمواعيد', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
+    { id: 'customers', label: 'العملاء وسجل السيارات', icon: User, allowed: userPermissions.canManageCustomers !== false },
+    { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
+    { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell, allowed: userPermissions.canManageNotifications !== false },
+    { id: 'analytics', label: 'التحليلات المالية والنمو', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
+    { id: 'payments', label: 'المدفوعات اليدوية والرقابة (RBAC)', icon: DollarSign, allowed: userPermissions.canManagePayments !== false },
+    { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
+    { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText, allowed: userPermissions.canManageContent !== false },
+    { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings, allowed: userPermissions.canManageSettings !== false },
+    { id: 'staff', label: 'فريق العمل والصلاحيات', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
+  ].filter(tab => tab.allowed);
+
+  useEffect(() => {
+    if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
+      setActiveTab(allowedNavTabs[0].id as any);
+    }
+  }, [currentStaffUser]);
+
   if (!isAdmin) {
     return <Navigate to="/login" replace />;
   }
@@ -2946,20 +3094,35 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-wrap justify-between items-center gap-6 mb-12">
           <div>
-            <h2 className="text-3xl font-display font-black italic mb-2">لوحة تحكم <span className="text-brand-red">المدير</span></h2>
+            <h2 className="text-3xl font-display font-black italic mb-2">لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></h2>
             <div className="flex items-center gap-4 text-gray-500 text-sm">
-              <span>إدارة المركز والخدمات</span>
+              <span>إدارة الخدمات وفريق العمل</span>
               <span className="w-1 h-1 bg-gray-700 rounded-full" />
               <span>{records.length} حجز إجمالي</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Logged-in Staff Badge */}
+            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-white/5 border border-white/10 rounded-2xl">
+              <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-bold text-xs">
+                {currentStaffUser?.fullName?.charAt(0) || 'D'}
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-white line-clamp-1">
+                  {currentStaffUser?.fullName || 'المدير العام'}
+                </div>
+                <div className="text-[10px] text-brand-red font-semibold">
+                  {currentStaffUser?.roleTitleAr || (currentStaffUser?.role === 'super_admin' ? 'مدير عام' : 'موظف')}
+                </div>
+              </div>
+            </div>
+
             <button 
               onClick={() => window.location.href = '/'}
-              className="flex items-center gap-2 px-4 py-3 bg-white/5 border border-white/10 rounded-xl font-bold text-sm hover:bg-white/10 transition-all text-gray-300"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl font-bold text-xs sm:text-sm hover:bg-white/10 transition-all text-gray-300"
             >
               <ArrowRight className="w-4 h-4" />
-              العودة للموقع
+              الموقع
             </button>
             
             {/* Sound alert toggle */}
@@ -2972,7 +3135,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                 }
               }}
               className={cn(
-                "p-3 border rounded-xl transition-all cursor-pointer",
+                "p-2.5 sm:p-3 border rounded-xl transition-all cursor-pointer",
                 settingsForm.enableSoundAlerts !== false 
                   ? "bg-brand-red/10 border-brand-red/30 text-brand-red" 
                   : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
@@ -2986,7 +3149,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
             <button
               onClick={handleInstallPWA}
               className={cn(
-                "hidden sm:flex items-center gap-2 px-4 py-3 border rounded-xl font-bold text-xs transition-all cursor-pointer",
+                "hidden sm:flex items-center gap-2 px-4 py-2.5 border rounded-xl font-bold text-xs transition-all cursor-pointer",
                 isPWAInstalled 
                   ? "bg-green-500/10 border-green-500/20 text-green-400" 
                   : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
@@ -3012,7 +3175,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                   }
                 }}
                 className={cn(
-                  "p-3 border rounded-xl transition-all cursor-pointer",
+                  "p-2.5 sm:p-3 border rounded-xl transition-all cursor-pointer",
                   notificationPermission === 'granted' ? "bg-green-500/10 border-green-500/20 text-green-500" : 
                   notificationPermission === 'denied' ? "bg-red-500/10 border-red-500/20 text-red-500" :
                   "bg-white/5 border-white/10 text-yellow-500 hover:bg-white/10"
@@ -3023,16 +3186,19 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
               </button>
             )}
 
-            <button 
-              onClick={() => setIsAdding(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white"
-            >
-              <PlusCircle className="w-5 h-5" />
-              إضافة جديد
-            </button>
+            {userPermissions.canManageBookings !== false && (
+              <button 
+                onClick={() => setIsAdding(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
+              >
+                <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                إضافة حجز
+              </button>
+            )}
+
             <button 
               onClick={onLogout}
-              className="p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
+              className="p-2.5 sm:p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
               title="تسجيل الخروج"
             >
               <LogOut className="w-5 h-5" />
@@ -3042,19 +3208,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
 
         {/* Main Navigation Tabs */}
         <div className="flex overflow-x-auto gap-2 mb-8 bg-white/5 p-2 rounded-2xl border border-white/5 no-scrollbar">
-          {[
-            { id: 'dashboard', label: 'الإحصائيات ونظرة عامة', icon: BarChart },
-            { id: 'bookings', label: 'الحجوزات والعمليات', icon: Calendar },
-            { id: 'calendar', label: 'التقويم والمواعيد', icon: CalendarCheck },
-            { id: 'customers', label: 'العملاء وسجل السيارات', icon: User },
-            { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare },
-            { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell },
-            { id: 'analytics', label: 'التحليلات المالية والنمو', icon: TrendingUp },
-            { id: 'payments', label: 'المدفوعات اليدوية والرقابة (RBAC)', icon: DollarSign },
-            { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer },
-            { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText },
-            { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings },
-          ].map((tab) => (
+          {allowedNavTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
@@ -6073,6 +6227,22 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
               </div>
             </motion.div>
           )}
+
+          {activeTab === 'staff' && (
+            <motion.div
+              key="staff"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <StaffManagement 
+                staffList={staffList} 
+                currentStaffUser={currentStaffUser || null} 
+                appUrl={window.location.origin} 
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Add New Modal */}
@@ -7325,22 +7495,59 @@ function MainContent() {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('drfix_current_staff');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error parsing saved staff session:', e);
+    }
+    return null;
+  });
+
   useEffect(() => {
     const savedAdmin = sessionStorage.getItem('drfix_admin_logged_in');
     if (savedAdmin === 'true') {
       setIsAdminLoggedIn(true);
+      if (!currentStaffUser) {
+        // Fallback default master admin
+        setCurrentStaffUser({
+          id: 'master-super-admin',
+          username: 'DRFIX',
+          password: '••••••••',
+          fullName: 'المدير العام (Master Admin)',
+          role: 'super_admin',
+          roleTitleAr: 'المدير العام',
+          permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
+          isActive: true
+        });
+      }
     }
   }, []);
 
-  const handleAdminLoginSuccess = () => {
+  const handleAdminLoginSuccess = (staff?: StaffUser) => {
     setIsAdminLoggedIn(true);
     sessionStorage.setItem('drfix_admin_logged_in', 'true');
+    const userToSave: StaffUser = staff || {
+      id: 'master-super-admin',
+      username: 'DRFIX',
+      password: '••••••••',
+      fullName: 'المدير العام (Master Admin)',
+      role: 'super_admin',
+      roleTitleAr: 'المدير العام',
+      permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
+      isActive: true
+    };
+    setCurrentStaffUser(userToSave);
+    sessionStorage.setItem('drfix_current_staff', JSON.stringify(userToSave));
     navigate('/admin');
   };
 
   const handleAdminLogout = () => {
     setIsAdminLoggedIn(false);
+    setCurrentStaffUser(null);
     sessionStorage.removeItem('drfix_admin_logged_in');
+    sessionStorage.removeItem('drfix_current_staff');
     navigate('/');
   };
 
@@ -7385,7 +7592,7 @@ function MainContent() {
           <Route path="/offers" element={<Offers />} />
           <Route path="/booking" element={<BookingForm selectedService={selectedService} settings={settings} />} />
           <Route path="/history" element={<MaintenanceHistory />} />
-          <Route path="/admin" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} />} />
+          <Route path="/admin" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />
           <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} />} />
         </Routes>
       </main>

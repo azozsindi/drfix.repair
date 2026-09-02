@@ -66,3 +66,136 @@ export interface Offer {
   createdAt: Timestamp;
   order?: number;
 }
+
+export type StaffRole = 'super_admin' | 'dispatcher' | 'technician' | 'support' | 'custom';
+
+export interface StaffPermissions {
+  canViewDashboard: boolean;
+  canManageBookings: boolean;
+  canChangeStatus: boolean;
+  canViewCalendar: boolean;
+  canManageCustomers: boolean;
+  canManageTestimonials: boolean;
+  canManageNotifications: boolean;
+  canViewAnalytics: boolean;
+  canManagePayments: boolean;
+  canViewReports: boolean;
+  canManageContent: boolean;
+  canManageSettings: boolean;
+  canManageStaff: boolean;
+}
+
+export interface StaffUser {
+  id: string;
+  username: string;
+  password: string;
+  fullName: string;
+  phone?: string;
+  role: StaffRole;
+  roleTitleAr: string;
+  permissions: StaffPermissions;
+  isActive: boolean;
+  createdAt?: any;
+  lastLogin?: any;
+  notes?: string;
+}
+
+export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
+  canViewDashboard: true,
+  canManageBookings: true,
+  canChangeStatus: true,
+  canViewCalendar: true,
+  canManageCustomers: true,
+  canManageTestimonials: true,
+  canManageNotifications: true,
+  canViewAnalytics: true,
+  canManagePayments: true,
+  canViewReports: true,
+  canManageContent: true,
+  canManageSettings: true,
+  canManageStaff: true,
+};
+
+export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string; permissions: StaffPermissions }> = {
+  super_admin: {
+    titleAr: 'مدير عام (كافة الصلاحيات)',
+    titleEn: 'Super Admin',
+    permissions: { ...DEFAULT_SUPER_ADMIN_PERMISSIONS }
+  },
+  dispatcher: {
+    titleAr: 'مسؤول عمليات واستقبال',
+    titleEn: 'Dispatcher / Operations',
+    permissions: {
+      canViewDashboard: true,
+      canManageBookings: true,
+      canChangeStatus: true,
+      canViewCalendar: true,
+      canManageCustomers: true,
+      canManageTestimonials: false,
+      canManageNotifications: true,
+      canViewAnalytics: false,
+      canManagePayments: false,
+      canViewReports: true,
+      canManageContent: false,
+      canManageSettings: false,
+      canManageStaff: false,
+    }
+  },
+  technician: {
+    titleAr: 'فني صيانة ميداني',
+    titleEn: 'Field Technician',
+    permissions: {
+      canViewDashboard: false,
+      canManageBookings: true,
+      canChangeStatus: true,
+      canViewCalendar: true,
+      canManageCustomers: false,
+      canManageTestimonials: false,
+      canManageNotifications: false,
+      canViewAnalytics: false,
+      canManagePayments: false,
+      canViewReports: true,
+      canManageContent: false,
+      canManageSettings: false,
+      canManageStaff: false,
+    }
+  },
+  support: {
+    titleAr: 'خدمة عملاء واستفسارات',
+    titleEn: 'Customer Support',
+    permissions: {
+      canViewDashboard: false,
+      canManageBookings: true,
+      canChangeStatus: false,
+      canViewCalendar: false,
+      canManageCustomers: true,
+      canManageTestimonials: true,
+      canManageNotifications: false,
+      canViewAnalytics: false,
+      canManagePayments: false,
+      canViewReports: false,
+      canManageContent: false,
+      canManageSettings: false,
+      canManageStaff: false,
+    }
+  },
+  custom: {
+    titleAr: 'صلاحيات مخصصة',
+    titleEn: 'Custom Permissions',
+    permissions: {
+      canViewDashboard: false,
+      canManageBookings: true,
+      canChangeStatus: true,
+      canViewCalendar: true,
+      canManageCustomers: false,
+      canManageTestimonials: false,
+      canManageNotifications: false,
+      canViewAnalytics: false,
+      canManagePayments: false,
+      canViewReports: false,
+      canManageContent: false,
+      canManageSettings: false,
+      canManageStaff: false,
+    }
+  }
+};
