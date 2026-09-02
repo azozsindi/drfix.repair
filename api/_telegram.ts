@@ -220,7 +220,7 @@ export async function sendBookingNotification(booking: BookingPayload) {
   // Row 2: Status Controls (Accept & Reject)
   inline_keyboard.push([
     { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(booking.bookingId)}&status=accepted` },
-    { text: '❌ رفض الطلب', callback_data: `act_reject_${booking.bookingId}` }
+    { text: '❌ رفض الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(booking.bookingId)}&status=cancelled` }
   ]);
 
   // Row 3: Progress Controls
@@ -468,7 +468,7 @@ export async function handleTelegramWebhook(update: any) {
 
           inline_keyboard.push([
             { text: '✅ قبول الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=accepted` },
-            { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
+            { text: '❌ رفض الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=cancelled` }
           ]);
           inline_keyboard.push([
             { text: '🚗 الفني بالطريق', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=on_the_way` },

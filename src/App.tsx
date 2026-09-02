@@ -1479,7 +1479,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           ],
           [
             { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=accepted` },
-            { text: '❌ رفض الطلب', callback_data: `act_reject_${uniqueBookingId}` }
+            { text: '❌ رفض الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=cancelled` }
           ],
           [
             { text: '🚗 الفني بالطريق', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=on_the_way` },

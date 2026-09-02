@@ -626,7 +626,7 @@ export default async function handler(req: any, res: any) {
 
         inline_keyboard.push([
           { text: '✅ قبول الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=accepted` },
-          { text: '❌ رفض الطلب', callback_data: `act_reject_${bookingId}` }
+          { text: '❌ رفض الطلب', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=cancelled` }
         ]);
         inline_keyboard.push([
           { text: '🚗 الفني بالطريق', url: `${cleanBaseUrl}/api/status-redirect?id=${encodeURIComponent(bookingId)}&status=on_the_way` },

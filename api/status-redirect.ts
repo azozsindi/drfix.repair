@@ -194,7 +194,7 @@ export default async function handler(req: any, res: any) {
       newStatus === 'on_the_way' ? 'الفني بالطريق 🚗' :
       newStatus === 'accepted' ? 'تم القبول ✅' :
       newStatus === 'completed' ? 'تم الإنجاز 🏁' :
-      newStatus === 'cancelled' ? 'ملغي ❌' : 'قيد العمل 🔧';
+      (newStatus === 'cancelled' || newStatus === 'reject' || newStatus === 'rejected') ? 'تم رفض / إلغاء الطلب ❌' : 'قيد العمل 🔧';
 
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">

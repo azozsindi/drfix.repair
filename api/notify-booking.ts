@@ -109,7 +109,7 @@ export default async function handler(req: any, res: any) {
 
     inline_keyboard.push([
       { text: '✅ قبول الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=accepted` },
-      { text: '❌ رفض الطلب', callback_data: `act_reject_${bId}` }
+      { text: '❌ رفض الطلب', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=cancelled` }
     ]);
     inline_keyboard.push([
       { text: '🚗 الفني بالطريق', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=on_the_way` },
