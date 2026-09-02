@@ -105,3 +105,69 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Print Styles for A4 Reports & Work Orders */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+    direction: rtl !important;
+  }
+
+  /* Hide regular UI elements when printing */
+  nav, footer, .no-print, [role="dialog"] > div:not(.printable-report),
+  .whatsapp-float-btn, .action-buttons-bar, button:not(.allow-print) {
+    display: none !important;
+  }
+
+  /* Show only printable containers */
+  .printable-report {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .printable-report * {
+    color: #000000 !important;
+    border-color: #cccccc !important;
+  }
+
+  .printable-report .brand-red-text {
+    color: #E31837 !important;
+  }
+
+  .printable-report table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  .printable-report tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .printable-report thead {
+    display: table-header-group;
+    background-color: #f3f4f6 !important;
+  }
+
+  .printable-report th,
+  .printable-report td {
+    padding: 8px 10px !important;
+    border: 1px solid #d1d5db !important;
+  }
+}

@@ -193,14 +193,14 @@ export async function sendBookingNotification(booking: BookingPayload) {
     actionRow.push({ text: '📍 موقع العميل', url: mapsUrl });
   }
   if (waLink) {
-    actionRow.push({ text: '💬 واتساب العميل', url: waLink });
+    actionRow.push({ text: '💬 فتح واتساب العميل الآن', url: waLink });
   }
   if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
   // Row 2: Status Controls (Accept & Reject)
   inline_keyboard.push([
-    { text: '✅ قبول الحجز', callback_data: `act_accept_${booking.bookingId}` },
-    { text: '❌ رفض الحجز', callback_data: `act_reject_${booking.bookingId}` }
+    { text: '✅ قبول الطلب', callback_data: `act_accept_${booking.bookingId}` },
+    { text: '❌ رفض الطلب', callback_data: `act_reject_${booking.bookingId}` }
   ]);
 
   // Row 3: Progress Controls
@@ -374,7 +374,7 @@ export async function handleTelegramWebhook(update: any) {
             break;
           case 'done':
             newStatus = 'completed';
-            statusArabic = 'تم الإنجاز بنجاح 🏁';
+            statusArabic = 'تم الإنجاز 🏁';
             statusIcon = '🏁';
             break;
           default:
@@ -405,18 +405,26 @@ export async function handleTelegramWebhook(update: any) {
         }
 
         const answerText = updateSuccess
-          ? `${statusIcon} تم تحديث حالة الحجز (${bookingId}) إلى: ${statusArabic}`
+          ? `${statusIcon} تم تحديث حالة الحجز إلى: ${statusArabic}`
           : `⚠️ تم تسجيل التحديث: ${statusArabic}`;
 
         await callTelegramApi('answerCallbackQuery', {
           callback_query_id: cb.id,
           text: answerText,
-          show_alert: true
+          show_alert: false
         });
 
-        // Edit original message text if possible to reflect new status
+        // Edit original message text directly to reflect updated status
         if (cb.message?.text) {
-          const updatedText = cb.message.text.replace(/📊 (الحالة:|<b>الحالة:<\/b>|\*الحالة:\*) .*/, `📊 <b>الحالة:</b> ${statusArabic} (تم التحديث)`);
+          let updatedText = cb.message.text;
+          if (/📊\s*(?:<b>)?الحالة:(?:<\/b>)?/.test(updatedText)) {
+            updatedText = updatedText.replace(/📊\s*(?:<b>)?الحالة:(?:<\/b>)?\s*.*/, `📊 <b>الحالة:</b> ${statusArabic}`);
+          } else if (/الحالة:/.test(updatedText)) {
+            updatedText = updatedText.replace(/الحالة:\s*.*/, `الحالة: ${statusArabic}`);
+          } else {
+            updatedText += `\n📊 <b>الحالة:</b> ${statusArabic}`;
+          }
+
           await callTelegramApi('editMessageText', {
             chat_id: cb.message.chat.id,
             message_id: cb.message.message_id,

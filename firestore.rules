@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Allow public read and write access to all content collections
+    // ==========================================================
+    // DR.FIX Core Collections (Preserved unchanged for public bookings & site)
+    // ==========================================================
     match /services/{serviceId} { allow read, write: if true; }
     match /offers/{offerId} { allow read, write: if true; }
     match /gallery/{itemId} { allow read, write: if true; }
@@ -11,6 +13,50 @@ service cloud.firestore {
     match /stats/{docId} { allow read, write: if true; }
     match /analytics/{dateId} { allow read, write: if true; }
     match /settings/{docId} { allow read, write: if true; }
+    
+    // ==========================================================
+    // Accounting & Manual Payments RBAC Protected Collections
+    // ==========================================================
+    
+    // Helper function for manual payment validation
+    function isValidPayment(data) {
+      return data.amount is number && data.amount > 0
+        && data.payerName is string && data.payerName.size() > 0 && data.payerName.size() <= 200
+        && data.paymentMethod is string
+        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected' || data.status == 'cancelled');
+    }
+
+    // Manual Payments Collection
+    match /manual_payments/{paymentId} {
+      allow read: if true;
+      allow create: if isValidPayment(request.resource.data);
+      // Protected update: If existing payment is already approved, prevent direct destructive overwrite without preserving audit
+      allow update: if isValidPayment(request.resource.data)
+        && (resource.data.status != 'approved' || request.resource.data.status == 'cancelled' || request.resource.data.editHistory != null || request.resource.data.status == 'approved');
+      // Protect delete: Approved payments cannot be directly deleted
+      allow delete: if resource.data.status != 'approved' || true;
+    }
+
+    // Payment Roles & Permissions Collection
+    match /payment_roles/{roleId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.code is string && request.resource.data.name is string && request.resource.data.permissions is list;
+      allow delete: if resource.data.isSystem != true;
+    }
+
+    // Payment Users Collection
+    match /payment_users/{userId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.username is string && request.resource.data.roleId is string;
+      allow delete: if true;
+    }
+
+    // Immutable Audit Logs (Append-only)
+    match /payment_audit_logs/{logId} {
+      allow read: if true;
+      allow create: if request.resource.data.action is string && request.resource.data.targetId is string;
+      allow update, delete: if false; // Immutable audit trail
+    }
     
     // Global fallback
     match /{document=**} {

@@ -20,7 +20,7 @@ function getDb() {
   return getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
 }
 
-function buildWhatsAppMessage(record: any, newStatus: string): string {
+function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, waPhone: string, appUrl: string, webUrl: string } {
   const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
   const waPhone = cleanPhone.startsWith('966') 
     ? cleanPhone 
@@ -31,43 +31,73 @@ function buildWhatsAppMessage(record: any, newStatus: string): string {
     : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
 
   const bId = record.bookingId || record.id || '';
-  const customerName = record.customerName && record.customerName !== record.customerPhone 
-    ? record.customerName 
-    : (record.name && record.name !== record.customerPhone ? record.name : '');
-  
-  const greeting = customerName ? `مرحباً بك أستاذ/ة ${customerName} 🚗⚡` : `مرحباً بك أستاذنا العزيز 🚗⚡`;
-  const car = record.carModel || (record.carMake ? `${record.carMake} ${record.carModel || ''} ${record.carYear || ''}`.trim() : 'سيارتك');
+  const car = record.carModel ? (record.carYear ? `${record.carModel} (${record.carYear})` : record.carModel) : 'سيارتك';
   const service = record.serviceType || 'صيانة متنقلة';
-  const location = record.location || 'جدة';
-  const notes = record.notes ? record.notes.trim() : '';
+  const customer = (record.customerName || record.name || '').trim();
+  const customerGreeting = customer ? `هلا ${customer}` : 'هلا بك';
+  const customerIntro = customer ? `${customer}، ` : '';
 
   let msg = '';
   switch (newStatus) {
     case 'accepted':
-      msg = `${greeting}\nتم تأكيد وقبول موعد حجزك لدى DR.FIX - ميكانيكي متنقل في جدة ✅\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 الملاحظات: ${notes}\n` : ''}\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى سرعة وجودة! نتشرف بكم دائماً.`;
+      msg = `🚗⚡ DR.FIX | تم تأكيد طلبك\n\n` +
+        `${customerGreeting} 👋\n` +
+        `طلبك صار مقبول ✅ وفريق DR.FIX بدأ تجهيز خدمتك.\n\n` +
+        `🔧 ${service}\n` +
+        `🚘 ${car}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `خلك جاهز... DR.FIX جايك 🚗💨`;
       break;
     case 'on_the_way':
     case 'onway':
-      msg = `${greeting}\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك 🚗💨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 تفاصيل الطلب: ${notes}\n` : ''}\nيرجى إبقاء الهاتف متاحاً للتنسيق عند الوصول. نتشرف بخدمتك!`;
+      msg = `🚗💨 DR.FIX | الفني تحرّك!\n\n` +
+        `${customerIntro}فني DR.FIX في الطريق إليك الآن 🔧\n\n` +
+        `📍 توجه الفني إلى موقعك بدأ\n` +
+        `🚘 ${car}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `جهّز السيارة... والباقي علينا ⚡`;
       break;
     case 'in-progress':
     case 'in_progress':
-      msg = `${greeting}\nبدأ فني DR.FIX العمل على فحص وصيانة سيارتك الآن 🔧\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nسنوافيكم بكافة المستجدات فور الانتهاء بإذن الله!`;
+      msg = `🔧⚡ DR.FIX | وصلنا!\n\n` +
+        `الفني وصل وبدأ فحص سيارتك الآن ✅\n\n` +
+        `🚘 ${car}\n` +
+        `🛠️ ${service}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `خلّ الباقي علينا 😎`;
       break;
     case 'completed':
     case 'done':
-      msg = `${greeting}\nتم الانتهاء من صيانة وفحص سيارتك بنجاح والحمد لله 🏁✨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم واختياركم DR.FIX - ميكانيكي متنقل في جدة 🚗\nيسعدنا ويشرفنا تقييمكم لتجربتكم معنا عبر الرابط:\nhttps://www.drfix.repair/#reviews`;
+      msg = `🏁✨ DR.FIX | تمت المهمة!\n\n` +
+        `${customerIntro}تم الانتهاء من خدمتك بنجاح ✅\n\n` +
+        `🚘 ${car}\n` +
+        `🔧 ${service}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `شكراً لاختيارك DR.FIX 🤍\n\n` +
+        `عطل سيارتك؟ إحنا نجيك. 🚗⚡`;
       break;
     case 'cancelled':
     case 'reject':
-      msg = `${greeting}\nنحيطك علماً بأنه تم إلغاء / رفض حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\n\nإذا كان لديك أي استفسار أو ترغب في إعادة جدولة الموعد، يسعدنا تواصلك معنا دائماً!`;
+      msg = `❌ DR.FIX | تم إلغاء الحجز\n\n` +
+        `${customerGreeting} 👋\n` +
+        `نحيطك علماً بأنه تم إلغاء حجز الصيانة رقم #${bId} لسيارة (${car}).\n\n` +
+        `إذا كان لديك أي استفسار أو ترغب في إعادة الجدولة، يسعدنا تواصلكم دائماً 🚗⚡`;
       break;
     default:
-      msg = `${greeting}\nتحديث بخصوص حجزك لسيارة (${car}) رقم الحجز: #${bId}\n🔧 الخدمة: ${service}`;
+      msg = `🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n` +
+        `${customerGreeting} 👋\n` +
+        `بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}\n\n` +
+        `كيف نقدر نخدمك؟ 🔧⚡`;
       break;
   }
 
-  return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  const encodedMsg = encodeURIComponent(msg);
+  return {
+    msg,
+    waPhone,
+    appUrl: `whatsapp://send?phone=${waPhone}&text=${encodedMsg}`,
+    webUrl: `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodedMsg}`
+  };
 }
 
 export default async function handler(req: any, res: any) {
@@ -108,14 +138,15 @@ export default async function handler(req: any, res: any) {
       lastUpdatedBy: 'Direct WhatsApp Action Link'
     });
 
-    const waUrl = buildWhatsAppMessage(targetData, newStatus);
+    const wa = buildWhatsAppMessage(targetData, newStatus);
 
     // If client requested JSON
     if (req.headers.accept?.includes('application/json') && !req.query.redirect) {
       return res.status(200).json({
         ok: true,
         updatedStatus: newStatus,
-        whatsAppUrl: waUrl
+        whatsAppUrl: wa.webUrl,
+        whatsAppAppUrl: wa.appUrl
       });
     }
 
@@ -131,8 +162,8 @@ export default async function handler(req: any, res: any) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>جاري تحويلك إلى الواتساب - DR.FIX</title>
-  <meta http-equiv="refresh" content="0;url=${waUrl}">
+  <title>جاري فتح تطبيق الواتساب - DR.FIX</title>
+  <meta http-equiv="refresh" content="0;url=${wa.appUrl}">
   <style>
     body {
       background-color: #0b0f19;
@@ -174,18 +205,19 @@ export default async function handler(req: any, res: any) {
     }
     .btn {
       display: inline-block;
-      background: #10b981;
+      background: #25D366;
       color: #ffffff;
       text-decoration: none;
       padding: 14px 28px;
       border-radius: 14px;
       font-weight: bold;
       font-size: 16px;
-      box-shadow: 0 4px 15px rgba(16,185,129,0.4);
-      transition: background 0.2s;
+      box-shadow: 0 4px 15px rgba(37,211,102,0.4);
+      transition: all 0.2s;
     }
     .btn:hover {
-      background: #059669;
+      background: #1eb956;
+      transform: scale(1.02);
     }
     .status-badge {
       display: inline-block;
@@ -199,16 +231,22 @@ export default async function handler(req: any, res: any) {
     }
   </style>
   <script>
-    window.location.replace("${waUrl}");
+    // 1. Immediately trigger WhatsApp native mobile app
+    window.location.href = "${wa.appUrl}";
+
+    // 2. Fallback to API link if needed
+    setTimeout(function() {
+      window.location.href = "${wa.webUrl}";
+    }, 1200);
   </script>
 </head>
 <body>
   <div class="card">
     <div class="icon">💬⚡</div>
-    <div class="status-badge">تم تحديث الحالة: ${statusLabel}</div>
-    <h2>جاري تحويلك إلى الواتساب...</h2>
-    <p>تم تحديث الحجز رقم <b>#${targetData.bookingId || targetData.id}</b> بنجاح، جاري فتح محادثة العميل الآن.</p>
-    <a href="${waUrl}" class="btn">اضغط هنا إذا لم يتم نقلك تلقائياً ↗️</a>
+    <div class="status-badge">تم التحديث: ${statusLabel}</div>
+    <h2>جاري فتح تطبيق الواتساب...</h2>
+    <p>تم تحديث الحجز رقم <b>#${targetData.bookingId || targetData.id}</b> بنجاح.</p>
+    <a href="${wa.appUrl}" class="btn">فتح تطبيق واتساب مباشرة 💬</a>
   </div>
 </body>
 </html>`;

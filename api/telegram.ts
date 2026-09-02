@@ -83,43 +83,67 @@ function getWhatsAppStatusUrlForTelegram(record: any, newStatus: string): string
     : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
 
   const bId = record.bookingId || record.id || '';
-  const customerName = record.customerName && record.customerName !== record.customerPhone 
-    ? record.customerName 
-    : (record.name && record.name !== record.customerPhone ? record.name : '');
-  
-  const greeting = customerName ? `مرحباً بك أستاذ/ة ${customerName} 🚗⚡` : `مرحباً بك أستاذنا العزيز 🚗⚡`;
-  const car = record.carModel || (record.carMake ? `${record.carMake} ${record.carModel || ''} ${record.carYear || ''}`.trim() : 'سيارتك');
+  const car = record.carModel ? (record.carYear ? `${record.carModel} (${record.carYear})` : record.carModel) : 'سيارتك';
   const service = record.serviceType || 'صيانة متنقلة';
-  const location = record.location || 'جدة';
-  const notes = record.notes ? record.notes.trim() : '';
+  const customer = (record.customerName || record.name || '').trim();
+  const customerGreeting = customer ? `هلا ${customer}` : 'هلا بك';
+  const customerIntro = customer ? `${customer}، ` : '';
 
   let msg = '';
   switch (newStatus) {
     case 'accepted':
-      msg = `${greeting}\nتم تأكيد وقبول موعد حجزك لدى DR.FIX - ميكانيكي متنقل في جدة ✅\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 الملاحظات: ${notes}\n` : ''}\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى سرعة وجودة! نتشرف بكم دائماً.`;
+      msg = `🚗⚡ DR.FIX | تم تأكيد طلبك\n\n` +
+        `${customerGreeting} 👋\n` +
+        `طلبك صار مقبول ✅ وفريق DR.FIX بدأ تجهيز خدمتك.\n\n` +
+        `🔧 ${service}\n` +
+        `🚘 ${car}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `خلك جاهز... DR.FIX جايك 🚗💨`;
       break;
     case 'on_the_way':
     case 'onway':
-      msg = `${greeting}\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك 🚗💨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 تفاصيل الطلب: ${notes}\n` : ''}\nيرجى إبقاء الهاتف متاحاً للتنسيق عند الوصول. نتشرف بخدمتك!`;
+      msg = `🚗💨 DR.FIX | الفني تحرّك!\n\n` +
+        `${customerIntro}فني DR.FIX في الطريق إليك الآن 🔧\n\n` +
+        `📍 توجه الفني إلى موقعك بدأ\n` +
+        `🚘 ${car}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `جهّز السيارة... والباقي علينا ⚡`;
       break;
     case 'in-progress':
     case 'in_progress':
-      msg = `${greeting}\nبدأ فني DR.FIX العمل على فحص وصيانة سيارتك الآن 🔧\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nسنوافيكم بكافة المستجدات فور الانتهاء بإذن الله!`;
+      msg = `🔧⚡ DR.FIX | وصلنا!\n\n` +
+        `الفني وصل وبدأ فحص سيارتك الآن ✅\n\n` +
+        `🚘 ${car}\n` +
+        `🛠️ ${service}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `خلّ الباقي علينا 😎`;
       break;
     case 'completed':
     case 'done':
-      msg = `${greeting}\nتم الانتهاء من صيانة وفحص سيارتك بنجاح والحمد لله 🏁✨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم واختياركم DR.FIX - ميكانيكي متنقل في جدة 🚗\nيسعدنا ويشرفنا تقييمكم لتجربتكم معنا عبر الرابط:\nhttps://www.drfix.repair/#reviews`;
+      msg = `🏁✨ DR.FIX | تمت المهمة!\n\n` +
+        `${customerIntro}تم الانتهاء من خدمتك بنجاح ✅\n\n` +
+        `🚘 ${car}\n` +
+        `🔧 ${service}\n` +
+        `🎫 رقم الحجز: #${bId}\n\n` +
+        `شكراً لاختيارك DR.FIX 🤍\n\n` +
+        `عطل سيارتك؟ إحنا نجيك. 🚗⚡`;
       break;
     case 'cancelled':
     case 'reject':
-      msg = `${greeting}\nنحيطك علماً بأنه تم إلغاء / رفض حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\n\nإذا كان لديك أي استفسار أو ترغب في إعادة جدولة الموعد، يسعدنا تواصلك معنا دائماً!`;
+      msg = `❌ DR.FIX | تم إلغاء الحجز\n\n` +
+        `${customerGreeting} 👋\n` +
+        `نحيطك علماً بأنه تم إلغاء حجز الصيانة رقم #${bId} لسيارة (${car}).\n\n` +
+        `إذا كان لديك أي استفسار أو ترغب في إعادة الجدولة، يسعدنا تواصلكم دائماً 🚗⚡`;
       break;
     default:
-      msg = `${greeting}\nتحديث بخصوص حجزك لسيارة (${car}) رقم الحجز: #${bId}\n🔧 الخدمة: ${service}`;
+      msg = `🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n` +
+        `${customerGreeting} 👋\n` +
+        `بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}\n\n` +
+        `كيف نقدر نخدمك؟ 🔧⚡`;
       break;
   }
 
-  return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+  return `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
 }
 
 async function fetchAllMaintenanceRecords() {
@@ -535,7 +559,7 @@ export default async function handler(req: any, res: any) {
           statusIcon = '🚗';
         } else if (action === 'done') {
           newStatus = 'completed';
-          statusArabic = 'تم الإنجاز بنجاح 🏁';
+          statusArabic = 'تم الإنجاز 🏁';
           statusIcon = '🏁';
         }
 
@@ -546,77 +570,33 @@ export default async function handler(req: any, res: any) {
         );
 
         const answerText = updateRes.success
-          ? `${statusIcon} تم التحديث: ${statusArabic} (افتح الواتساب أدناه 💬)`
+          ? `${statusIcon} تم تحديث حالة الحجز إلى: ${statusArabic}`
           : `⚠️ تم حفظ التحديث: ${statusArabic}`;
 
-        // Answer callback query with a smooth non-blocking banner
+        // Answer callback query with a smooth confirmation toast
         await callTelegramApi('answerCallbackQuery', {
           callback_query_id: cb.id,
           text: answerText,
           show_alert: false
         });
 
-        const waUrl = (updateRes.record && updateRes.record.customerPhone)
-          ? getWhatsAppStatusUrlForTelegram(updateRes.record, newStatus)
-          : null;
-
-        // Update the original message buttons immediately so the top button is a direct WhatsApp link
+        // Edit the original booking message directly in Telegram
         if (cb.message?.text) {
-          const updatedText = cb.message.text.replace(/📊 (الحالة:|<b>الحالة:<\/b>|\*الحالة:\*) .*/, `📊 <b>الحالة:</b> ${statusArabic} (تم التحديث)`);
-          
-          const newInlineKeyboard: any[][] = [];
-          if (waUrl) {
-            newInlineKeyboard.push([
-              { text: `💬 فتح واتساب العميل الآن (${statusArabic}) ↗️`, url: waUrl }
-            ]);
+          let updatedText = cb.message.text;
+          if (/📊\s*(?:<b>)?الحالة:(?:<\/b>)?/.test(updatedText)) {
+            updatedText = updatedText.replace(/📊\s*(?:<b>)?الحالة:(?:<\/b>)?\s*.*/, `📊 <b>الحالة:</b> ${statusArabic}`);
+          } else if (/الحالة:/.test(updatedText)) {
+            updatedText = updatedText.replace(/الحالة:\s*.*/, `الحالة: ${statusArabic}`);
+          } else {
+            updatedText += `\n📊 <b>الحالة:</b> ${statusArabic}`;
           }
-
-          newInlineKeyboard.push([
-            { text: '🚗 الفني بالطريق', callback_data: `act_onway_${bookingId}` },
-            { text: '🏁 تم الإنجاز', callback_data: `act_done_${bookingId}` }
-          ]);
-          newInlineKeyboard.push([
-            { text: '📋 قائمة الحجوزات', callback_data: 'menu_bookings' },
-            { text: '🔙 القائمة الرئيسية', callback_data: 'menu_start' }
-          ]);
 
           await callTelegramApi('editMessageText', {
             chat_id: cb.message.chat.id,
             message_id: cb.message.message_id,
             text: updatedText,
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: newInlineKeyboard }
-          });
-        }
-
-        // Send a dedicated high-priority WhatsApp direct action message
-        if (updateRes.success && updateRes.record && updateRes.record.customerPhone && waUrl) {
-          const targetCustomer = escapeHtml(updateRes.record.customerName || updateRes.record.customerPhone || 'العميل');
-          const targetCar = escapeHtml(updateRes.record.carModel || 'السيارة');
-          const shortId = escapeHtml(updateRes.record.bookingId || updateRes.record.id);
-
-          const waPromptText = `📲 <b>جاهز للإرسال على الواتساب (${statusArabic})</b>\n` +
-            `━━━━━━━━━━━━━━━━━━\n` +
-            `👤 <b>العميل:</b> ${targetCustomer}\n` +
-            `🚘 <b>السيارة:</b> ${targetCar}\n` +
-            `📌 <b>رقم الحجز:</b> <code>${shortId}</code>\n` +
-            `⚡ <b>الحالة المحدثة:</b> ${statusArabic}\n\n` +
-            `👇 <b>اضغط على الزر الكبير أدناه لفتح محادثة العميل فوراً:</b>`;
-
-          await callTelegramApi('sendMessage', {
-            chat_id: targetChat,
-            text: waPromptText,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: `💬 فتح واتساب العميل الآن (${statusArabic}) ↗️`, url: waUrl }
-                ],
-                [
-                  { text: '📋 العودة لقائمة الحجوزات', callback_data: 'menu_bookings' }
-                ]
-              ]
-            }
+            reply_markup: cb.message.reply_markup
           });
         }
 

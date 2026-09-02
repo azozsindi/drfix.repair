@@ -7,6 +7,7 @@ import notifyReviewHandler from './api/notify-review';
 import notifyVisitHandler from './api/notify-visit';
 import setupWebhookHandler from './api/setup-webhook';
 import statusRedirectHandler from './api/status-redirect';
+import accountingHandler from './api/accounting';
 
 async function startServer() {
   const app = express();
@@ -57,6 +58,11 @@ async function startServer() {
   // Direct Status Update & WhatsApp Redirect Route
   app.all('/api/status-redirect', async (req, res) => {
     await statusRedirectHandler(req, res);
+  });
+
+  // Manual Payments & Accounting RBAC API Handler
+  app.all('/api/accounting*', async (req, res) => {
+    await accountingHandler(req, res);
   });
 
   // Explicit Static Content-Type routes for SEO

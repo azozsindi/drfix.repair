@@ -85,6 +85,59 @@
         "bookings": { "type": "number" }
       },
       "required": ["date", "visitors", "bookings"]
+    },
+    "manualPayment": {
+      "title": "Manual Payment",
+      "description": "A manual payment voucher or entry in the accounting system.",
+      "type": "object",
+      "properties": {
+        "paymentNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "payerName": { "type": "string" },
+        "payerPhone": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["paymentNumber", "amount", "payerName", "paymentMethod", "status"]
+    },
+    "paymentRole": {
+      "title": "Payment Role",
+      "description": "Role definition for accounting and manual payment RBAC.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "permissions": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["code", "name", "permissions"]
+    },
+    "accountingUser": {
+      "title": "Accounting User",
+      "description": "A user in the accounting module with assigned role and permissions.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "roleId": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["username", "name", "roleId", "isActive"]
+    },
+    "paymentAuditLog": {
+      "title": "Payment Audit Log",
+      "description": "Immutable audit trail of all manual payment operations and permission changes.",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "title": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "title", "targetId", "targetType"]
     }
   },
   "firestore": {
@@ -115,6 +168,22 @@
     "/analytics/{dateId}": {
       "schema": "dailyStat",
       "description": "Collection of daily analytics data."
+    },
+    "/manual_payments/{paymentId}": {
+      "schema": "manualPayment",
+      "description": "Collection of manual payment vouchers and receipts."
+    },
+    "/payment_roles/{roleId}": {
+      "schema": "paymentRole",
+      "description": "Collection of custom and standard payment RBAC roles."
+    },
+    "/payment_users/{userId}": {
+      "schema": "accountingUser",
+      "description": "Collection of accounting users and role assignments."
+    },
+    "/payment_audit_logs/{logId}": {
+      "schema": "paymentAuditLog",
+      "description": "Collection of immutable accounting audit trail entries."
     }
   }
 }

@@ -77,8 +77,13 @@ import {
   TrendingUp,
   Navigation,
   Compass,
-  CalendarCheck
+  CalendarCheck,
+  Printer,
+  DollarSign
 } from 'lucide-react';
+import { ReportsView } from './components/ReportsView';
+import { ManualPaymentsManager } from './components/accounting/ManualPaymentsManager';
+import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
 import { 
@@ -214,6 +219,29 @@ interface BookingFormData {
 const ADMIN_CREDENTIALS = {
   username: 'DRFIX',
   password: 'ADMIN2468'
+};
+
+export const safeFormatDate = (dateVal: any, locale = 'ar-SA', options?: Intl.DateTimeFormatOptions): string => {
+  if (!dateVal) return '';
+  if (typeof dateVal === 'string') return dateVal;
+  if (dateVal.toDate && typeof dateVal.toDate === 'function') {
+    try {
+      return dateVal.toDate().toLocaleDateString(locale, options);
+    } catch {
+      return '';
+    }
+  }
+  if (dateVal.seconds) {
+    try {
+      return new Date(dateVal.seconds * 1000).toLocaleDateString(locale, options);
+    } catch {
+      return '';
+    }
+  }
+  if (dateVal instanceof Date) {
+    return isNaN(dateVal.getTime()) ? '' : dateVal.toLocaleDateString(locale, options);
+  }
+  return '';
 };
 
 // --- Components ---
@@ -1434,11 +1462,11 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         const inline_keyboard = [
           [
             { text: '📍 موقع العميل', url: mapsUrl },
-            { text: '💬 واتساب العميل', url: waLink }
+            { text: '💬 فتح واتساب العميل الآن', url: waLink }
           ],
           [
-            { text: '✅ قبول الحجز', callback_data: `act_accept_${uniqueBookingId}` },
-            { text: '❌ رفض الحجز', callback_data: `act_reject_${uniqueBookingId}` }
+            { text: '✅ قبول الطلب', callback_data: `act_accept_${uniqueBookingId}` },
+            { text: '❌ رفض الطلب', callback_data: `act_reject_${uniqueBookingId}` }
           ],
           [
             { text: '🚗 الفني بالطريق', callback_data: `act_onway_${uniqueBookingId}` },
@@ -2106,7 +2134,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'content' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'payments' | 'reports' | 'content' | 'settings'>('dashboard');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -2147,39 +2175,63 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
       : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
 
     const bId = record.bookingId || record.id || '';
-    const customerName = record.customerName && record.customerName !== record.customerPhone 
-      ? record.customerName 
-      : (record.name && record.name !== record.customerPhone ? record.name : '');
-    
-    const greeting = customerName ? `مرحباً بك أستاذ/ة ${customerName} 🚗⚡` : `مرحباً بك أستاذنا العزيز 🚗⚡`;
-    const car = record.carModel || (record.carMake ? `${record.carMake} ${record.carModel || ''} ${record.carYear || ''}`.trim() : 'سيارتك');
+    const car = record.carModel ? (record.carYear ? `${record.carModel} (${record.carYear})` : record.carModel) : 'سيارتك';
     const service = record.serviceType || 'صيانة متنقلة';
-    const location = record.location || 'جدة';
-    const notes = record.notes ? record.notes.trim() : '';
+    const customer = (record.customerName || record.name || '').trim();
+    const customerGreeting = customer ? `هلا ${customer}` : 'هلا بك';
+    const customerIntro = customer ? `${customer}، ` : '';
 
     let msg = '';
     switch (targetStatus) {
       case 'accepted':
-        msg = `${greeting}\nتم تأكيد وقبول موعد حجزك لدى DR.FIX - ميكانيكي متنقل في جدة ✅\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 الملاحظات: ${notes}\n` : ''}\nفريقنا يجهز المعدات اللازمة لخدمتكم بأعلى سرعة وجودة! نتشرف بكم دائماً.`;
+        msg = `🚗⚡ DR.FIX | تم تأكيد طلبك\n\n` +
+          `${customerGreeting} 👋\n` +
+          `طلبك صار مقبول ✅ وفريق DR.FIX بدأ تجهيز خدمتك.\n\n` +
+          `🔧 ${service}\n` +
+          `🚘 ${car}\n` +
+          `🎫 رقم الحجز: #${bId}\n\n` +
+          `خلك جاهز... DR.FIX جايك 🚗💨`;
         break;
       case 'on_the_way':
-        msg = `${greeting}\nنود إعلامك بأن فني DR.FIX المتنقل في الطريق إليك الآن لمباشرة صيانة سيارتك 🚗💨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n📍 الموقع: ${location}\n${notes ? `📝 تفاصيل الطلب: ${notes}\n` : ''}\nيرجى إبقاء الهاتف متاحاً للتنسيق عند الوصول. نتشرف بخدمتك!`;
+        msg = `🚗💨 DR.FIX | الفني تحرّك!\n\n` +
+          `${customerIntro}فني DR.FIX في الطريق إليك الآن 🔧\n\n` +
+          `📍 توجه الفني إلى موقعك بدأ\n` +
+          `🚘 ${car}\n` +
+          `🎫 رقم الحجز: #${bId}\n\n` +
+          `جهّز السيارة... والباقي علينا ⚡`;
         break;
       case 'in-progress':
-        msg = `${greeting}\nبدأ فني DR.FIX العمل على فحص وصيانة سيارتك الآن 🔧\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nسنوافيكم بكافة المستجدات فور الانتهاء بإذن الله!`;
+        msg = `🔧⚡ DR.FIX | وصلنا!\n\n` +
+          `الفني وصل وبدأ فحص سيارتك الآن ✅\n\n` +
+          `🚘 ${car}\n` +
+          `🛠️ ${service}\n` +
+          `🎫 رقم الحجز: #${bId}\n\n` +
+          `خلّ الباقي علينا 😎`;
         break;
       case 'completed':
-        msg = `${greeting}\nتم الانتهاء من صيانة وفحص سيارتك بنجاح والحمد لله 🏁✨\n\n📌 رقم الحجز: #${bId}\n🚘 السيارة: ${car}\n🔧 الخدمة: ${service}\n\nشكراً لثقتكم واختياركم DR.FIX - ميكانيكي متنقل في جدة 🚗\nيسعدنا ويشرفنا تقييمكم لتجربتكم معنا عبر الرابط:\nhttps://www.drfix.repair/#reviews`;
+        msg = `🏁✨ DR.FIX | تمت المهمة!\n\n` +
+          `${customerIntro}تم الانتهاء من خدمتك بنجاح ✅\n\n` +
+          `🚘 ${car}\n` +
+          `🔧 ${service}\n` +
+          `🎫 رقم الحجز: #${bId}\n\n` +
+          `شكراً لاختيارك DR.FIX 🤍\n\n` +
+          `عطل سيارتك؟ إحنا نجيك. 🚗⚡`;
         break;
       case 'cancelled':
-        msg = `${greeting}\nنحيطك علماً بأنه تم إلغاء / رفض حجز الصيانة لسيارة (${car}) رقم الحجز: #${bId}.\n\nإذا كان لديك أي استفسار أو ترغب في إعادة جدولة الموعد، يسعدنا تواصلك معنا دائماً!`;
+        msg = `❌ DR.FIX | تم إلغاء الحجز\n\n` +
+          `${customerGreeting} 👋\n` +
+          `نحيطك علماً بأنه تم إلغاء حجز الصيانة رقم #${bId} لسيارة (${car}).\n\n` +
+          `إذا كان لديك أي استفسار أو ترغب في إعادة الجدولة، يسعدنا تواصلكم دائماً 🚗⚡`;
         break;
       default:
-        msg = `${greeting}\nتحديث بخصوص حجزك لسيارة (${car}) رقم الحجز: #${bId}\n🔧 الخدمة: ${service}`;
+        msg = `🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n` +
+          `${customerGreeting} 👋\n` +
+          `بخصوص حجزك لسيارة (${car}) رقم الحجز #${bId}\n\n` +
+          `كيف نقدر نخدمك؟ 🔧⚡`;
         break;
     }
 
-    return `https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`;
+    return `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
   };
 
   // Helper to parse dates safely
@@ -2985,6 +3037,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
             { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare },
             { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell },
             { id: 'analytics', label: 'التحليلات المالية والنمو', icon: TrendingUp },
+            { id: 'payments', label: 'المدفوعات اليدوية والرقابة (RBAC)', icon: DollarSign },
+            { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer },
             { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText },
             { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings },
           ].map((tab) => (
@@ -3263,17 +3317,47 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     ))}
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
-                      setEditingItem(null);
-                      setIsAdding(true);
-                    }}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    إضافة حجز جديد
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => {
+                        const summary = {
+                          title: 'تقرير حجوزات DR.FIX - ميكانيكي متنقل بجدة',
+                          periodLabel: bookingStatusFilter === 'all' ? 'جميع الحالات' : `حالة: ${bookingStatusFilter}`,
+                          generatedAt: new Date().toLocaleString('ar-SA'),
+                          totalBookings: records.length,
+                          completedBookings: records.filter(r => r.status === 'completed').length,
+                          totalRevenue: records.reduce((sum, r) => sum + (Number(r.cost) || 0), 0),
+                          avgTicket: Math.round(records.reduce((sum, r) => sum + (Number(r.cost) || 0), 0) / (records.length || 1)),
+                          items: records.filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
+                        };
+                        exportBookingsToWord(summary);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600/90 hover:bg-blue-600 rounded-xl text-xs font-bold text-white transition-all shadow-md shadow-blue-600/20 cursor-pointer"
+                      title="تصدير الحجوزات المعروضة لملف وورد رسمي"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>تصدير Word (.doc)</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('reports')}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold text-white transition-all cursor-pointer"
+                      title="فتح قسم التقارير الشامل والطباعة"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-brand-red" />
+                      <span>التقارير الشاملة</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
+                        setEditingItem(null);
+                        setIsAdding(true);
+                      }}
+                      className="flex items-center gap-2 px-5 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      إضافة حجز جديد
+                    </button>
+                  </div>
                 </div>
 
                 {/* Search Field */}
@@ -3330,7 +3414,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                         .map((record) => {
                           const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                           const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
-                          const waMsg = encodeURIComponent(`مرحباً بك من مركز DR.FIX 🚗 بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel}) لخدمة (${record.serviceType})`);
+                          const waCustomer = (record.customerName || record.name || '').trim();
+                          const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel}) لخدمة (${record.serviceType || 'صيانة متنقلة'})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
                           const rDate = getRecordDate(record.serviceDate);
 
                           return (
@@ -3511,7 +3596,8 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                     .map((record) => {
                       const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                       const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
-                      const waMsg = encodeURIComponent(`مرحباً بك من مركز دكتور فيكس لصيانة السيارات 🚗 بخصوص حجزك لسيارة (${record.carModel})`);
+                      const waCustomer = (record.customerName || record.name || '').trim();
+                      const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
                       const rDate = getRecordDate(record.serviceDate);
 
                       return (
@@ -4149,6 +4235,28 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
             </motion.div>
           )}
 
+          {activeTab === 'payments' && (
+            <motion.div 
+              key="payments"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <ManualPaymentsManager />
+            </motion.div>
+          )}
+
+          {activeTab === 'reports' && (
+            <motion.div 
+              key="reports"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+            >
+              <ReportsView records={records} />
+            </motion.div>
+          )}
+
           {activeTab === 'content' && (
             <motion.div 
               key="content"
@@ -4415,7 +4523,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                       <div>
                         <div className="font-bold text-lg">{record.carModel}</div>
                         <div className="text-sm text-gray-500">
-                          {record.customerPhone} • {record.serviceDate?.toDate().toLocaleDateString('ar-SA')}
+                          {record.customerPhone} • {getRecordDate(record.serviceDate || record.createdAt).toLocaleDateString('ar-SA')}
                         </div>
                       </div>
                       <div className="text-brand-red font-display font-black text-xl">{record.cost} ريال</div>
@@ -6206,7 +6314,7 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                   <div className="bg-white/5 p-4 rounded-xl space-y-1">
                     <div className="text-xs text-gray-400">تاريخ وساعة التسجيل</div>
                     <div className="font-bold text-white">
-                      {selectedBookingDetails.serviceDate?.toDate ? selectedBookingDetails.serviceDate.toDate().toLocaleString('ar-SA') : 'غير متوفر'}
+                      {safeFormatDate(selectedBookingDetails.serviceDate || selectedBookingDetails.createdAt, 'ar-SA', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) || 'غير متوفر'}
                     </div>
                   </div>
 
@@ -6297,8 +6405,25 @@ const AdminDashboard = ({ isAdmin, onLogout, settings }: { isAdmin: boolean, onL
                   </a>
 
                   <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => exportSingleBookingWord(selectedBookingDetails as any)}
+                      className="py-2.5 bg-blue-600/90 hover:bg-blue-600 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md shadow-blue-600/20"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>تصدير سند Word (.doc)</span>
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md shadow-brand-red/20"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>طباعة السند / PDF</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <a 
-                      href={`https://wa.me/${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}?text=${encodeURIComponent(`مرحباً بك من DR.FIX 🚗 بخصوص حجزك (${selectedBookingDetails.carModel})`)}`}
+                      href={`https://wa.me/${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}?text=${encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim() ? `هلا ${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim()} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${selectedBookingDetails.carModel || 'السيارة'}) رقم #${selectedBookingDetails.bookingId || selectedBookingDetails.id || ''}\n\nكيف نقدر نخدمك؟ 🔧⚡`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -6469,7 +6594,7 @@ const MaintenanceHistory = () => {
                         <div className="text-gray-400 flex items-center gap-3 text-sm">
                           <span className="flex items-center gap-1.5">
                             <Calendar className="w-4 h-4" />
-                            {record.serviceDate?.toDate ? record.serviceDate.toDate().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : (record.serviceDate || '')}
+                            {safeFormatDate(record.serviceDate || record.createdAt, lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                           </span>
                           {record.bookingId && (
                             <span className="font-mono text-xs px-2 py-0.5 rounded bg-white/10 text-gray-300 font-bold">
@@ -6505,6 +6630,14 @@ const MaintenanceHistory = () => {
                         <div className="px-3 py-1.5 bg-brand-red/10 rounded-lg border border-brand-red/20 text-brand-red font-bold text-xs">
                           {record.carModel}
                         </div>
+                        <button
+                          onClick={() => exportSingleBookingWord(record as any)}
+                          className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                          title="تحميل سند الصيانة والفاتورة ملف Word"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>سند الصيانة (.doc)</span>
+                        </button>
                       </div>
                     </div>
                     {record.notes && (
