@@ -7366,7 +7366,7 @@ function MainContent() {
       <Ticker settings={settings} />
       <Navbar settings={settings} />
       
-      <main className="pt-20 sm:pt-24 md:pt-28 pb-16 md:pb-0">
+      <main className="pt-20 sm:pt-24 md:pt-28 pb-24 md:pb-0">
         <Routes>
           <Route path="/" element={
             <>

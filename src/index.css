@@ -64,16 +64,26 @@
   }
 }
 
-/* Safe area padding utilities for mobile phones */
+/* Safe area padding utilities for mobile phones & tablets */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 16px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
 }
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), 12px);
+}
+
+/* Fluid responsive utilities */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.overflow-touch {
+  -webkit-overflow-scrolling: touch;
 }
 
 .glass-card {
-  @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl md:rounded-3xl;
+  @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl md:rounded-3xl transition-all duration-300;
 }
 
 .red-glow {
