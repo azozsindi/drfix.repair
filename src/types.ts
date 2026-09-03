@@ -78,7 +78,6 @@ export interface StaffPermissions {
   canManageTestimonials: boolean;
   canManageNotifications: boolean;
   canViewAnalytics: boolean;
-  canManagePayments: boolean;
   canViewReports: boolean;
   canManageContent: boolean;
   canManageSettings: boolean;
@@ -109,7 +108,6 @@ export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   canManageTestimonials: true,
   canManageNotifications: true,
   canViewAnalytics: true,
-  canManagePayments: true,
   canViewReports: true,
   canManageContent: true,
   canManageSettings: true,
@@ -134,7 +132,6 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageTestimonials: false,
       canManageNotifications: true,
       canViewAnalytics: false,
-      canManagePayments: false,
       canViewReports: true,
       canManageContent: false,
       canManageSettings: false,
@@ -153,7 +150,6 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageTestimonials: false,
       canManageNotifications: false,
       canViewAnalytics: false,
-      canManagePayments: false,
       canViewReports: true,
       canManageContent: false,
       canManageSettings: false,
@@ -172,7 +168,6 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageTestimonials: true,
       canManageNotifications: false,
       canViewAnalytics: false,
-      canManagePayments: false,
       canViewReports: false,
       canManageContent: false,
       canManageSettings: false,
@@ -191,7 +186,6 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageTestimonials: false,
       canManageNotifications: false,
       canViewAnalytics: false,
-      canManagePayments: false,
       canViewReports: false,
       canManageContent: false,
       canManageSettings: false,

@@ -65,7 +65,13 @@ async function startServer() {
     await accountingHandler(req, res);
   });
 
-  // Explicit Static Content-Type routes for SEO
+  // Explicit Static Content-Type routes for SEO & Social Previews
+  app.get('/logo.png', (req, res) => {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(process.cwd(), 'public', 'logo.png'));
+  });
+
   app.get('/sitemap.xml', (req, res) => {
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.sendFile(path.join(process.cwd(), 'public', 'sitemap.xml'));

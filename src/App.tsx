@@ -43,6 +43,7 @@ import {
   LogOut,
   LogIn,
   Trash2,
+  Plus,
   PlusCircle,
   User,
   MessageSquare,
@@ -88,7 +89,7 @@ import {
 } from 'lucide-react';
 import { ReportsView } from './components/ReportsView';
 import { StaffManagement } from './components/StaffManagement';
-import { ManualPaymentsManager } from './components/accounting/ManualPaymentsManager';
+import { CustomerManager } from './components/CustomerManager';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
 import { 
   StaffUser, 
@@ -695,6 +696,42 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
 
+  const logoClicksRef = useRef(0);
+  const lastLogoClickTimeRef = useRef(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Secret keyboard shortcut: Alt + L or Ctrl + Shift + A
+      if ((e.altKey && (e.key === 'L' || e.key === 'l')) ||
+          (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a'))) {
+        e.preventDefault();
+        navigate(isAdmin ? '/admin' : '/login');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAdmin, navigate]);
+
+  const handleLogoClick = (e: React.MouseEvent) => {
+    const now = Date.now();
+    if (now - lastLogoClickTimeRef.current > 2500) {
+      logoClicksRef.current = 1;
+    } else {
+      logoClicksRef.current += 1;
+    }
+    lastLogoClickTimeRef.current = now;
+
+    // Secret: 5 rapid clicks on logo opens /login (or /admin if already logged in)
+    if (logoClicksRef.current >= 5) {
+      logoClicksRef.current = 0;
+      e.preventDefault();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(60);
+      }
+      navigate(isAdmin ? '/admin' : '/login');
+    }
+  };
+
   const navLinks = [
     { name: t.nav.home, path: '/' },
     { name: t.nav.services, path: '/#services' },
@@ -737,7 +774,7 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   return (
     <nav className="fixed top-7 md:top-8 left-0 right-0 z-50 bg-brand-black/90 backdrop-blur-xl border-b border-white/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 md:py-4 flex justify-between items-center">
-        <Link to="/" className="flex items-center gap-3 group">
+        <Link to="/" onClick={handleLogoClick} className="flex items-center gap-3 group select-none">
           <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
             {settings.logoUrl ? (
               <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
@@ -766,15 +803,6 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
               {link.name}
             </button>
           ))}
-          <div className="h-5 w-px bg-white/10" />
-          <button 
-            onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
-            className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-200 hover:text-white hover:border-brand-red/40 hover:bg-brand-red/10 transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-            title={isAdmin ? (lang === 'ar' ? 'لوحة التحكم' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}
-          >
-            {isAdmin ? <Shield className="w-3.5 h-3.5 text-brand-red" /> : <LogIn className="w-3.5 h-3.5 text-brand-red" />}
-            <span>{isAdmin ? (lang === 'ar' ? 'الإدارة' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}</span>
-          </button>
           <LanguageToggle />
           <div className="flex items-center gap-2">
             <a 
@@ -805,14 +833,6 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
 
         {/* Mobile / Tablet Menu Toggle */}
         <div className="flex items-center gap-2 lg:hidden">
-          <button
-            onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
-            className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-200 hover:text-brand-red hover:border-brand-red/30 transition-all cursor-pointer flex items-center justify-center"
-            title={isAdmin ? (lang === 'ar' ? 'لوحة التحكم' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}
-            aria-label={isAdmin ? "لوحة التحكم" : "تسجيل الدخول"}
-          >
-            {isAdmin ? <Shield className="w-4 h-4 text-brand-red" /> : <LogIn className="w-4 h-4 text-brand-red" />}
-          </button>
           <LanguageToggle />
           <button 
             onClick={() => setIsOpen(!isOpen)}
@@ -875,28 +895,9 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
                 {t.nav.bookNow}
               </button>
 
-              <div className="pt-3 border-t border-white/10 space-y-2">
-                <button 
-                  type="button"
-                  onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
-                  className="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-brand-red/10 border border-white/10 hover:border-brand-red/30 flex items-center justify-between text-sm font-bold text-gray-100 transition-all cursor-pointer active:scale-98"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-brand-red/20 text-brand-red flex items-center justify-center">
-                      {isAdmin ? <Shield className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
-                    </div>
-                    <span>
-                      {isAdmin 
-                        ? (lang === 'ar' ? 'لوحة تحكم المركز (Admin)' : 'Admin Dashboard')
-                        : (lang === 'ar' ? 'تسجيل دخول الإدارة وفريق العمل' : 'Staff & Admin Login')}
-                    </span>
-                  </div>
-                  <ChevronLeft className="w-4 h-4 text-gray-400" />
-                </button>
-                <div className="flex justify-between items-center text-[10px] text-gray-500 px-1 font-mono">
-                  <span>Dr. Fix Auto Services</span>
-                  <span>v2.5 • Verified</span>
-                </div>
+              <div className="flex justify-between items-center text-[10px] text-gray-500 pt-2 px-1 font-mono border-t border-white/5">
+                <span>Dr. Fix Auto Services</span>
+                <span>v2.5 • Verified</span>
               </div>
             </div>
           </motion.div>
@@ -1312,10 +1313,7 @@ interface Offer {
   createdAt: Timestamp;
 }
 
-const STATIC_OFFERS: Offer[] = [
-  { id: 'o1', title: 'فحص شامل للسيارة', titleEn: 'Comprehensive Inspection', price: '199', subtitle: 'ريال فقط', subtitleEn: 'SAR only', features: ['فحص الميكانيكا', 'فحص الكهرباء', 'فحص البودي', 'تقرير مفصل'], featuresEn: ['Mechanical check', 'Electrical check', 'Body check', 'Detailed report'], icon: 'zap', createdAt: Timestamp.now(), active: true },
-  { id: 'o2', title: 'تغيير زيت وفلتر', titleEn: 'Oil & Filter Change', price: '250', subtitle: 'ريال شامل', subtitleEn: 'SAR inclusive', features: ['زيت أصلي', 'فلتر وكالة', 'فحص السوائل', 'غسيل مجاني'], featuresEn: ['Original oil', 'Genuine filter', 'Fluids check', 'Free wash'], icon: 'tag', createdAt: Timestamp.now(), active: true },
-];
+const STATIC_OFFERS: Offer[] = [];
 
 const Offers = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -1342,16 +1340,10 @@ const Offers = () => {
   }, []);
 
   const allOffers = React.useMemo(() => {
-    const merged = [...offers];
-    STATIC_OFFERS.forEach(staticOffer => {
-      if (!offers.some(o => o.title === staticOffer.title)) {
-        merged.push(staticOffer);
-      }
-    });
-    return merged;
+    return offers;
   }, [offers]);
 
-  if (loading) return null;
+  if (loading || allOffers.length === 0) return null;
 
   return (
     <section id="offers" className="py-24 bg-brand-black relative overflow-hidden">
@@ -2350,7 +2342,8 @@ const AdminDashboard = ({
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'payments' | 'reports' | 'content' | 'settings' | 'staff'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff'>('dashboard');
+  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -2943,12 +2936,78 @@ const AdminDashboard = ({
     }
   };
 
+  const handleDeleteAllOffers = async () => {
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف جميع العروض بالكامل لإعادة بنائها من جديد؟')) {
+      try {
+        setLoading(true);
+        for (const o of offers) {
+          await deleteDoc(doc(db, 'offers', o.id));
+        }
+        alert('تم حذف جميع العروض بنجاح. يمكنك الآن إضافة وبناء عروضك الجديدة.');
+      } catch (error) {
+        console.error("Error deleting all offers:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const handleDelete = async (collectionName: string, id: string) => {
     if (window.confirm('هل أنت متأكد من الحذف؟')) {
       try {
         await deleteDoc(doc(db, collectionName, id));
+        if (collectionName === 'maintenance') {
+          setSelectedBookingIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        }
       } catch (error) {
         console.error(`Error deleting from ${collectionName}:`, error);
+      }
+    }
+  };
+
+  const handleToggleSelectBooking = (id: string) => {
+    setSelectedBookingIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFilteredBookings = (allIds: string[]) => {
+    if (allIds.length === 0) return;
+    const allSelected = allIds.every(id => selectedBookingIds.has(id));
+    if (allSelected) {
+      setSelectedBookingIds(new Set());
+    } else {
+      setSelectedBookingIds(new Set(allIds));
+    }
+  };
+
+  const handleDeleteSelectedBookings = async () => {
+    if (selectedBookingIds.size === 0) return;
+    const count = selectedBookingIds.size;
+    if (window.confirm(`هل أنت متأكد من رغبتك في حذف (${count}) حجز محدد نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`)) {
+      try {
+        setLoading(true);
+        const ids: string[] = Array.from(selectedBookingIds);
+        for (const id of ids) {
+          await deleteDoc(doc(db, 'maintenance', String(id)));
+        }
+        setSelectedBookingIds(new Set());
+        alert(`تم حذف (${count}) حجز بنجاح.`);
+      } catch (error) {
+        console.error("Error deleting selected bookings:", error);
+        alert('حدث خطأ أثناء محاولة حذف الحجوزات.');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -3160,8 +3219,7 @@ const AdminDashboard = ({
     { id: 'customers', label: 'العملاء وسجل السيارات', icon: User, allowed: userPermissions.canManageCustomers !== false },
     { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
     { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell, allowed: userPermissions.canManageNotifications !== false },
-    { id: 'analytics', label: 'التحليلات المالية والنمو', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
-    { id: 'payments', label: 'المدفوعات اليدوية والرقابة (RBAC)', icon: DollarSign, allowed: userPermissions.canManagePayments !== false },
+    { id: 'analytics', label: 'التحليلات ومؤشرات الأداء', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
     { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
     { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText, allowed: userPermissions.canManageContent !== false },
     { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings, allowed: userPermissions.canManageSettings !== false },
@@ -3353,12 +3411,12 @@ const AdminDashboard = ({
                 </div>
               </div>
               <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">إجمالي الإيرادات</div>
-                <div className="text-4xl font-display font-black text-brand-red">
-                  {records.reduce((acc, curr) => acc + (curr.cost || 0), 0).toLocaleString()} <span className="text-sm">ريال</span>
+                <div className="text-gray-500 text-sm mb-2">الحجوزات المكتملة</div>
+                <div className="text-4xl font-display font-black text-emerald-400">
+                  {records.filter(r => r.status === 'completed').length}
                 </div>
                 <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '85%' }} />
+                  <div className="h-full bg-emerald-500" style={{ width: `${records.length > 0 ? Math.round((records.filter(r => r.status === 'completed').length / records.length) * 100) : 0}%` }} />
                 </div>
               </div>
               <div className="glass-card p-6 border-brand-red/20">
@@ -3637,390 +3695,451 @@ const AdminDashboard = ({
                 </div>
               </div>
 
-              {/* Bookings Table (Desktop) / Cards (Mobile) */}
-              <div className="glass-card overflow-hidden border-white/5">
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-right">
-                    <thead>
-                      <tr className="bg-white/5 border-b border-white/10">
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">السيارة والتاريخ</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">العميل والموقع</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الخدمة والملاحظات</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الحالة</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">التكلفة</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500 text-center">الإجراءات</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {records
-                        .filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
-                        .filter(r => {
-                          if (!bookingSearch.trim()) return true;
-                          const q = bookingSearch.toLowerCase().trim();
-                          return (
-                            (r.bookingId || '').toLowerCase().includes(q) ||
-                            (r.customerPhone || '').toLowerCase().includes(q) ||
-                            (r.carModel || '').toLowerCase().includes(q) ||
-                            (r.serviceType || '').toLowerCase().includes(q) ||
-                            (r.location || '').toLowerCase().includes(q) ||
-                            (r.notes || '').toLowerCase().includes(q)
-                          );
-                        })
-                        .map((record) => {
+              {/* Bookings Selection & Batch Controls */}
+              {(() => {
+                const displayedBookings = records
+                  .filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
+                  .filter(r => {
+                    if (!bookingSearch.trim()) return true;
+                    const q = bookingSearch.toLowerCase().trim();
+                    return (
+                      (r.bookingId || '').toLowerCase().includes(q) ||
+                      (r.customerPhone || '').toLowerCase().includes(q) ||
+                      (r.carModel || '').toLowerCase().includes(q) ||
+                      (r.serviceType || '').toLowerCase().includes(q) ||
+                      (r.location || '').toLowerCase().includes(q) ||
+                      (r.notes || '').toLowerCase().includes(q)
+                    );
+                  });
+
+                const allDisplayedSelected = displayedBookings.length > 0 && displayedBookings.every(b => selectedBookingIds.has(b.id));
+                const selectedCount = selectedBookingIds.size;
+
+                return (
+                  <div className="space-y-4">
+                    {/* Batch Selection Toolbar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-gray-300 hover:text-white">
+                          <input 
+                            type="checkbox"
+                            checked={allDisplayedSelected}
+                            onChange={() => handleSelectAllFilteredBookings(displayedBookings.map(b => b.id))}
+                            className="w-4 h-4 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red"
+                          />
+                          <span>تحديد الكل ({displayedBookings.length})</span>
+                        </label>
+                        {selectedCount > 0 && (
+                          <span className="text-xs px-2.5 py-1 rounded-lg bg-brand-red/20 text-brand-red font-bold border border-brand-red/30">
+                            تم تحديد {selectedCount} حجز
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {selectedCount > 0 && (
+                          <>
+                            <button
+                              onClick={() => setSelectedBookingIds(new Set())}
+                              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-bold transition-all cursor-pointer"
+                            >
+                              إلغاء التحديد
+                            </button>
+                            <button
+                              onClick={handleDeleteSelectedBookings}
+                              className="flex items-center gap-1.5 px-4 py-1.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black shadow-lg shadow-brand-red/20 transition-all cursor-pointer"
+                              title="حذف جميع الحجوزات المحددة نهائياً"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف الحجوزات المحددة ({selectedCount})</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bookings Table (Desktop) / Cards (Mobile) */}
+                    <div className="glass-card overflow-hidden border-white/5">
+                      {/* Desktop Table View */}
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-right">
+                          <thead>
+                            <tr className="bg-white/5 border-b border-white/10">
+                              <th className="px-4 py-4 w-12 text-center">
+                                <input 
+                                  type="checkbox"
+                                  checked={allDisplayedSelected}
+                                  onChange={() => handleSelectAllFilteredBookings(displayedBookings.map(b => b.id))}
+                                  className="w-4 h-4 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red"
+                                  title="تحديد الكل"
+                                />
+                              </th>
+                              <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">السيارة والتاريخ</th>
+                              <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">العميل والموقع</th>
+                              <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الخدمة والملاحظات</th>
+                              <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500">الحالة</th>
+                              <th className="px-6 py-4 text-xs font-bold uppercase tracking-widest text-gray-500 text-center">الإجراءات</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            {displayedBookings.map((record) => {
+                              const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+                              const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
+                              const waCustomer = (record.customerName || record.name || '').trim();
+                              const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel}) لخدمة (${record.serviceType || 'صيانة متنقلة'})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
+                              const rDate = getRecordDate(record.serviceDate);
+                              const isSelected = selectedBookingIds.has(record.id);
+
+                              return (
+                                <tr key={record.id} className={cn("transition-colors", isSelected ? "bg-brand-red/10 border-l-2 border-brand-red" : "hover:bg-white/5")}>
+                                  <td className="px-4 py-4 text-center">
+                                    <input 
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleToggleSelectBooking(record.id)}
+                                      className="w-4 h-4 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red"
+                                      title="تحديد الحجز"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                                      <span>{record.carModel}</span>
+                                      {record.bookingId && (
+                                        <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
+                                          {record.bookingId}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-gray-500" />
+                                      {rDate.toLocaleDateString('ar-SA')}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="font-bold text-sm text-gray-200" dir="ltr">{record.customerPhone}</div>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                      <a 
+                                        href={`https://wa.me/${waPhone}?text=${waMsg}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                        title="محادثة واتساب مباشرة"
+                                      >
+                                        <MessageCircle className="w-3 h-3" />
+                                        واتساب
+                                      </a>
+                                      <a 
+                                        href={`tel:${record.customerPhone}`}
+                                        className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                        title="اتصال هاتفي"
+                                      >
+                                        <PhoneCall className="w-3 h-3" />
+                                        اتصال
+                                      </a>
+                                      {record.coordinates?.latitude && record.coordinates?.longitude ? (
+                                        <a
+                                          href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                          title="فتح موقع العميل GPS على خرائط جوجل"
+                                        >
+                                          <Navigation className="w-3 h-3" />
+                                          GPS
+                                        </a>
+                                      ) : record.location ? (
+                                        <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
+                                          <MapPin className="w-3 h-3 text-brand-red" />
+                                          {record.location}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="text-sm font-bold text-white">{record.serviceType}</div>
+                                    {record.notes && (
+                                      <div className="text-xs text-gray-400 italic line-clamp-1 max-w-xs mt-0.5" title={record.notes}>
+                                        "{record.notes}"
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="space-y-1.5">
+                                      <select 
+                                        value={record.status}
+                                        onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
+                                        className={cn(
+                                          "text-xs font-bold px-3 py-1.5 rounded-full bg-black/50 border outline-none cursor-pointer w-full",
+                                          record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                          record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
+                                          record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
+                                          record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
+                                          record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                          record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
+                                          "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                                        )}
+                                      >
+                                        <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
+                                        <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                        <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
+                                        <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
+                                        <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
+                                        <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
+                                        <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
+                                      </select>
+
+                                      {/* Fast Direct WhatsApp Trigger Pills */}
+                                      <div className="flex items-center gap-1">
+                                        <a
+                                          href={getWhatsAppStatusUrl(record, 'on_the_way')}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
+                                          className="px-2 py-0.5 bg-indigo-500/15 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
+                                          title="تحديث الحالة إلى الفني بالطريق وفتح الواتساب مباشرة"
+                                        >
+                                          🚗 بالطريق
+                                        </a>
+                                        <a
+                                          href={getWhatsAppStatusUrl(record, 'accepted')}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={() => handleUpdateStatus(record.id, 'accepted')}
+                                          className="px-2 py-0.5 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
+                                          title="قبول الحجز وفتح الواتساب مباشرة"
+                                        >
+                                          ✅ قبول
+                                        </a>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <a
+                                        href={getWhatsAppStatusUrl(record, record.status)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                                        title="إرسال إشعار الحالة للعميل عبر الواتساب"
+                                      >
+                                        <MessageSquare className="w-4 h-4" />
+                                      </a>
+                                      <button 
+                                        onClick={() => setSelectedBookingDetails(record)}
+                                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        title="عرض التفاصيل الكاملة"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={() => handleEdit('booking', record)}
+                                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        title="تعديل الحجز"
+                                      >
+                                        <Edit3 className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDelete('maintenance', record.id)}
+                                        className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        title="حذف هذا الحجز"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile Cards View (Optimized for Mobile App PWA) */}
+                      <div className="md:hidden divide-y divide-white/5">
+                        {displayedBookings.map((record) => {
                           const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                           const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
                           const waCustomer = (record.customerName || record.name || '').trim();
-                          const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel}) لخدمة (${record.serviceType || 'صيانة متنقلة'})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
+                          const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
                           const rDate = getRecordDate(record.serviceDate);
+                          const isSelected = selectedBookingIds.has(record.id);
 
                           return (
-                            <tr key={record.id} className="hover:bg-white/5 transition-colors">
-                              <td className="px-6 py-4">
-                                <div className="font-bold text-white text-sm flex items-center gap-1.5">
-                                  <span>{record.carModel}</span>
-                                  {record.bookingId && (
-                                    <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
-                                      {record.bookingId}
-                                    </span>
+                            <div key={record.id} className={cn("p-4 space-y-3 transition-colors", isSelected ? "bg-brand-red/10 border-r-4 border-brand-red" : "bg-black/20")}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-start gap-3">
+                                  <input 
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelectBooking(record.id)}
+                                    className="w-4 h-4 mt-1 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red"
+                                    title="تحديد هذا الحجز"
+                                  />
+                                  <div>
+                                    <div className="font-bold text-white text-base flex items-center gap-1.5">
+                                      <span>{record.carModel}</span>
+                                      {record.bookingId && (
+                                        <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
+                                          {record.bookingId}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                      <Clock className="w-3 h-3 text-gray-500" />
+                                      {rDate.toLocaleDateString('ar-SA')}
+                                    </div>
+                                  </div>
+                                </div>
+                                <select 
+                                  value={record.status}
+                                  onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
+                                  className={cn(
+                                    "text-xs font-bold px-3 py-1 rounded-full bg-black/60 border outline-none cursor-pointer",
+                                    record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
+                                    record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
+                                    record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
+                                    record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
+                                    record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
+                                    record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
+                                    "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
                                   )}
+                                >
+                                  <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
+                                  <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                  <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
+                                  <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
+                                  <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
+                                  <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
+                                  <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
+                                </select>
+                              </div>
+
+                              <div className="bg-white/5 p-3 rounded-xl space-y-1 text-xs">
+                                <div className="flex justify-between text-gray-300">
+                                  <span className="text-gray-500">الخدمة:</span>
+                                  <span className="font-bold text-white">{record.serviceType}</span>
                                 </div>
-                                <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-gray-500" />
-                                  {rDate.toLocaleDateString('ar-SA')}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="font-bold text-sm text-gray-200" dir="ltr">{record.customerPhone}</div>
-                                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                {record.notes && (
+                                  <div className="text-gray-400 italic pt-1 border-t border-white/5">
+                                    "{record.notes}"
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <a
+                                    href={getWhatsAppStatusUrl(record, 'on_the_way')}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
+                                    className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                    title="الفني بالطريق وإرسال واتساب"
+                                  >
+                                    🚗 بالطريق
+                                  </a>
+                                  <a
+                                    href={getWhatsAppStatusUrl(record, 'accepted')}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => handleUpdateStatus(record.id, 'accepted')}
+                                    className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                    title="قبول الحجز وإرسال واتساب"
+                                  >
+                                    ✅ قبول
+                                  </a>
                                   <a 
                                     href={`https://wa.me/${waPhone}?text=${waMsg}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                                    title="محادثة واتساب مباشرة"
+                                    className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                                   >
-                                    <MessageCircle className="w-3 h-3" />
+                                    <MessageCircle className="w-3.5 h-3.5" />
                                     واتساب
                                   </a>
                                   <a 
                                     href={`tel:${record.customerPhone}`}
-                                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                                    title="اتصال هاتفي"
+                                    className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                                   >
-                                    <PhoneCall className="w-3 h-3" />
+                                    <PhoneCall className="w-3.5 h-3.5" />
                                     اتصال
                                   </a>
-                                  {record.coordinates?.latitude && record.coordinates?.longitude ? (
-                                    <a
+                                  {record.coordinates?.latitude && record.coordinates?.longitude && (
+                                    <a 
                                       href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                                      title="فتح موقع العميل GPS على خرائط جوجل"
+                                      className="px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                                     >
-                                      <Navigation className="w-3 h-3" />
+                                      <Navigation className="w-3.5 h-3.5" />
                                       GPS
                                     </a>
-                                  ) : record.location ? (
-                                    <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
-                                      <MapPin className="w-3 h-3 text-brand-red" />
-                                      {record.location}
-                                    </span>
-                                  ) : null}
+                                  )}
                                 </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-sm font-bold text-white">{record.serviceType}</div>
-                                {record.notes && (
-                                  <div className="text-xs text-gray-400 italic line-clamp-1 max-w-xs mt-0.5" title={record.notes}>
-                                    "{record.notes}"
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="space-y-1.5">
-                                  <select 
-                                    value={record.status}
-                                    onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
-                                    className={cn(
-                                      "text-xs font-bold px-3 py-1.5 rounded-full bg-black/50 border outline-none cursor-pointer w-full",
-                                      record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
-                                      record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
-                                      record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
-                                      record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
-                                      record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
-                                      record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
-                                      "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
-                                    )}
-                                  >
-                                    <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
-                                    <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
-                                    <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
-                                    <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
-                                    <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
-                                    <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
-                                    <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
-                                  </select>
 
-                                  {/* Fast Direct WhatsApp Trigger Pills */}
-                                  <div className="flex items-center gap-1">
-                                    <a
-                                      href={getWhatsAppStatusUrl(record, 'on_the_way')}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
-                                      className="px-2 py-0.5 bg-indigo-500/15 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
-                                      title="تحديث الحالة إلى الفني بالطريق وفتح الواتساب مباشرة"
-                                    >
-                                      🚗 بالطريق
-                                    </a>
-                                    <a
-                                      href={getWhatsAppStatusUrl(record, 'accepted')}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={() => handleUpdateStatus(record.id, 'accepted')}
-                                      className="px-2 py-0.5 bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-0.5"
-                                      title="قبول الحجز وفتح الواتساب مباشرة"
-                                    >
-                                      ✅ قبول
-                                    </a>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="font-display font-black text-brand-red text-base">
-                                  {record.cost ? `${record.cost} ريال` : 'غير محدد'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center justify-center gap-1">
+                                <div className="flex items-center gap-1">
                                   <a
                                     href={getWhatsAppStatusUrl(record, record.status)}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                                    className="p-2 text-emerald-400 hover:text-white bg-emerald-500/10 border border-emerald-500/20 rounded-xl cursor-pointer"
                                     title="إرسال إشعار الحالة للعميل عبر الواتساب"
                                   >
                                     <MessageSquare className="w-4 h-4" />
                                   </a>
                                   <button 
                                     onClick={() => setSelectedBookingDetails(record)}
-                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-                                    title="عرض التفاصيل الكاملة"
+                                    className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
+                                    title="عرض التفاصيل"
                                   >
                                     <Eye className="w-4 h-4" />
                                   </button>
                                   <button 
                                     onClick={() => handleEdit('booking', record)}
-                                    className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                    className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
                                     title="تعديل الحجز"
                                   >
                                     <Edit3 className="w-4 h-4" />
                                   </button>
                                   <button 
                                     onClick={() => handleDelete('maintenance', record.id)}
-                                    className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                    className="p-2 text-gray-400 hover:text-brand-red bg-white/5 rounded-xl cursor-pointer"
                                     title="حذف الحجز"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 </div>
-                              </td>
-                            </tr>
+                              </div>
+                            </div>
                           );
                         })}
-                    </tbody>
-                  </table>
-                </div>
+                      </div>
 
-                {/* Mobile Cards View (Optimized for Mobile App PWA) */}
-                <div className="md:hidden divide-y divide-white/5">
-                  {records
-                    .filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
-                    .filter(r => {
-                      if (!bookingSearch.trim()) return true;
-                      const q = bookingSearch.toLowerCase().trim();
-                      return (
-                        (r.bookingId || '').toLowerCase().includes(q) ||
-                        (r.customerPhone || '').toLowerCase().includes(q) ||
-                        (r.carModel || '').toLowerCase().includes(q) ||
-                        (r.serviceType || '').toLowerCase().includes(q) ||
-                        (r.notes || '').toLowerCase().includes(q)
-                      );
-                    })
-                    .map((record) => {
-                      const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
-                      const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
-                      const waCustomer = (record.customerName || record.name || '').trim();
-                      const waMsg = encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${waCustomer ? `هلا ${waCustomer} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${record.bookingId || ''}) لسيارة (${record.carModel})\n\nكيف نقدر نخدمك؟ 🔧⚡`);
-                      const rDate = getRecordDate(record.serviceDate);
-
-                      return (
-                        <div key={record.id} className="p-4 space-y-3 bg-black/20">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <div className="font-bold text-white text-base flex items-center gap-1.5">
-                                <span>{record.carModel}</span>
-                                {record.bookingId && (
-                                  <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
-                                    {record.bookingId}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                <Clock className="w-3 h-3 text-gray-500" />
-                                {rDate.toLocaleDateString('ar-SA')}
-                              </div>
-                            </div>
-                            <select 
-                              value={record.status}
-                              onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
-                              className={cn(
-                                "text-xs font-bold px-3 py-1 rounded-full bg-black/60 border outline-none cursor-pointer",
-                                record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
-                                record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
-                                record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
-                                record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
-                                record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
-                                record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
-                                "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
-                              )}
+                      {displayedBookings.length === 0 && (
+                        <div className="py-16 text-center text-gray-500 space-y-3">
+                          <Calendar className="w-12 h-12 text-gray-700 mx-auto" />
+                          <p className="font-bold">
+                            {records.length === 0 ? 'لا توجد أي حجوزات مسجلة حتى الآن' : 'لا توجد أي حجوزات مطابقة للبحث أو الفلتر المختار'}
+                          </p>
+                          {records.length === 0 && (
+                            <button 
+                              onClick={() => {
+                                setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
+                                setEditingItem(null);
+                                setIsAdding(true);
+                              }}
+                              className="px-6 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer inline-flex items-center gap-2"
                             >
-                              <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
-                              <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
-                              <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
-                              <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
-                              <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
-                              <option value="completed" className="bg-brand-dark text-green-400">مكتمل</option>
-                              <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
-                            </select>
-                          </div>
-
-                          <div className="bg-white/5 p-3 rounded-xl space-y-1 text-xs">
-                            <div className="flex justify-between text-gray-300">
-                              <span className="text-gray-500">الخدمة:</span>
-                              <span className="font-bold text-white">{record.serviceType}</span>
-                            </div>
-                            {record.cost && (
-                              <div className="flex justify-between text-gray-300">
-                                <span className="text-gray-500">التكلفة:</span>
-                                <span className="font-bold text-brand-red">{record.cost} ريال</span>
-                              </div>
-                            )}
-                            {record.notes && (
-                              <div className="text-gray-400 italic pt-1 border-t border-white/5">
-                                "{record.notes}"
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <a
-                                href={getWhatsAppStatusUrl(record, 'on_the_way')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
-                                className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
-                                title="الفني بالطريق وإرسال واتساب"
-                              >
-                                🚗 بالطريق
-                              </a>
-                              <a
-                                href={getWhatsAppStatusUrl(record, 'accepted')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => handleUpdateStatus(record.id, 'accepted')}
-                                className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
-                                title="قبول الحجز وإرسال واتساب"
-                              >
-                                ✅ قبول
-                              </a>
-                              <a 
-                                href={`https://wa.me/${waPhone}?text=${waMsg}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                واتساب
-                              </a>
-                              <a 
-                                href={`tel:${record.customerPhone}`}
-                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <PhoneCall className="w-3.5 h-3.5" />
-                                اتصال
-                              </a>
-                              {record.coordinates?.latitude && record.coordinates?.longitude && (
-                                <a 
-                                  href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Navigation className="w-3.5 h-3.5" />
-                                  GPS
-                                </a>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <a
-                                href={getWhatsAppStatusUrl(record, record.status)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-2 text-emerald-400 hover:text-white bg-emerald-500/10 border border-emerald-500/20 rounded-xl cursor-pointer"
-                                title="إرسال إشعار الحالة للعميل عبر الواتساب"
-                              >
-                                <MessageSquare className="w-4 h-4" />
-                              </a>
-                              <button 
-                                onClick={() => setSelectedBookingDetails(record)}
-                                className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
-                                title="عرض التفاصيل"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleEdit('booking', record)}
-                                className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
-                                title="تعديل الحجز"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button 
-                                onClick={() => handleDelete('maintenance', record.id)}
-                                className="p-2 text-gray-400 hover:text-brand-red bg-white/5 rounded-xl cursor-pointer"
-                                title="حذف الحجز"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
+                              <Plus className="w-4 h-4" />
+                              إضافة أول حجز
+                            </button>
+                          )}
                         </div>
-                      );
-                    })}
-                </div>
-
-                {records.length === 0 && (
-                  <div className="py-16 text-center text-gray-500 space-y-3">
-                    <Calendar className="w-12 h-12 text-gray-700 mx-auto" />
-                    <p className="font-bold">لا توجد أي حجوزات مسجلة حتى الآن</p>
-                    <button 
-                      onClick={() => {
-                        setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
-                        setEditingItem(null);
-                        setIsAdding(true);
-                      }}
-                      className="px-6 py-2.5 bg-brand-red rounded-xl text-xs font-bold text-white hover:bg-red-700 transition-all shadow-md shadow-brand-red/20 cursor-pointer"
-                    >
-                      إضافة أول حجز
-                    </button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })()}
             </motion.div>
           )}
 
@@ -4329,77 +4448,74 @@ const AdminDashboard = ({
               {/* Financial & Performance KPIs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {(() => {
-                  const totalRevenue = records.reduce((acc, curr) => acc + (Number(curr.cost) || 0), 0);
                   const completedBookings = records.filter(r => r.status === 'completed').length;
+                  const inProgressBookings = records.filter(r => r.status === 'in-progress' || r.status === 'on_the_way').length;
+                  const newOrPendingBookings = records.filter(r => r.status === 'new' || r.status === 'pending').length;
                   const completionRate = records.length > 0 ? Math.round((completedBookings / records.length) * 100) : 100;
-                  const avgTicket = completedBookings > 0 ? Math.round(totalRevenue / completedBookings) : (totalRevenue > 0 ? Math.round(totalRevenue / records.length) : 0);
 
                   return (
                     <>
                       <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">إجمالي الإيرادات</div>
-                        <div className="text-3xl font-black font-display text-white">{totalRevenue.toLocaleString()} <span className="text-sm font-normal text-brand-red">ريال</span></div>
-                        <div className="mt-3 flex items-center gap-1 text-xs text-green-400">
+                        <div className="text-xs text-gray-400 mb-1">إجمالي الحجوزات</div>
+                        <div className="text-3xl font-black font-display text-white">{records.length} <span className="text-sm font-normal text-brand-red">طلب</span></div>
+                        <div className="mt-3 flex items-center gap-1 text-xs text-brand-red">
                           <TrendingUp className="w-3.5 h-3.5" />
-                          <span>إيرادات كل العمليات المنجزة</span>
+                          <span>جميع الطلبات المسجلة في النظام</span>
                         </div>
                       </div>
 
                       <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">متوسط قيمة الحجز</div>
-                        <div className="text-3xl font-black font-display text-white">{avgTicket} <span className="text-sm font-normal text-brand-red">ريال</span></div>
-                        <div className="mt-3 text-xs text-gray-400">لكل عملية صيانة</div>
+                        <div className="text-xs text-gray-400 mb-1">الحجوزات المكتملة</div>
+                        <div className="text-3xl font-black font-display text-emerald-400">{completedBookings} <span className="text-sm font-normal text-gray-400">حجز</span></div>
+                        <div className="mt-3 text-xs text-gray-400">تمت خدمتهم بنجاح</div>
                       </div>
 
                       <div className="glass-card p-6 border-white/5 relative overflow-hidden">
                         <div className="text-xs text-gray-400 mb-1">نسبة إنجاز الحجوزات</div>
                         <div className="text-3xl font-black font-display text-green-400">{completionRate}%</div>
-                        <div className="mt-3 text-xs text-gray-400">{completedBookings} حجز مكتمل من {records.length}</div>
+                        <div className="mt-3 text-xs text-gray-400">{completedBookings} من أصل {records.length}</div>
                       </div>
 
                       <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">إجمالي الحجوزات</div>
-                        <div className="text-3xl font-black font-display text-white">{records.length} <span className="text-sm font-normal text-gray-400">طلب</span></div>
-                        <div className="mt-3 text-xs text-blue-400">طلبات الصيانة المتنقلة بجدة</div>
+                        <div className="text-xs text-gray-400 mb-1">قيد العمل والانتظار</div>
+                        <div className="text-3xl font-black font-display text-amber-400">{inProgressBookings + newOrPendingBookings} <span className="text-sm font-normal text-gray-400">طلب</span></div>
+                        <div className="mt-3 text-xs text-blue-400">بحاجة للمتابعة والتنفيذ</div>
                       </div>
                     </>
                   );
                 })()}
               </div>
 
-              {/* 7-Day Revenue & Volume Trend Chart */}
+              {/* 7-Day Volume Trend Chart */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 glass-card p-6 border-white/5">
                   <div className="flex items-center justify-between mb-6">
                     <div>
-                      <h3 className="text-lg font-bold text-white">منحنى الإيرادات الأسبوعية (آخر 7 أيام)</h3>
-                      <p className="text-xs text-gray-400">تتبع يومي للمبيعات وعدد الحجوزات</p>
+                      <h3 className="text-lg font-bold text-white">منحنى حركة الحجوزات (آخر 7 أيام)</h3>
+                      <p className="text-xs text-gray-400">تتبع يومي لعدد الطلبات والحجوزات</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full bg-brand-red" />
-                      <span className="text-xs text-gray-400">الإيراد (ريال)</span>
+                      <span className="text-xs text-gray-400">عدد الحجوزات</span>
                     </div>
                   </div>
                   <div className="h-[280px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={getChartData()}>
                         <defs>
-                          <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                          <linearGradient id="bookingsGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#E31837" stopOpacity={0.4}/>
                             <stop offset="95%" stopColor="#E31837" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#222" />
                         <XAxis dataKey="name" stroke="#666" />
-                        <YAxis stroke="#666" />
+                        <YAxis stroke="#666" allowDecimals={false} />
                         <Tooltip 
                           contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                          formatter={(val: any, name: string) => [
-                            name === 'revenue' ? `${val} ريال` : `${val} حجز`,
-                            name === 'revenue' ? 'الإيراد' : 'عدد الحجوزات'
-                          ]}
+                          formatter={(val: any) => [`${val} حجز`, 'الحجوزات']}
                         />
-                        <Area type="monotone" dataKey="revenue" stroke="#E31837" strokeWidth={3} fillOpacity={1} fill="url(#revenueGrad)" />
+                        <Area type="monotone" dataKey="bookings" stroke="#E31837" strokeWidth={3} fillOpacity={1} fill="url(#bookingsGrad)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -4491,17 +4607,6 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'payments' && (
-            <motion.div 
-              key="payments"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-            >
-              <ManualPaymentsManager />
-            </motion.div>
-          )}
-
           {activeTab === 'reports' && (
             <motion.div 
               key="reports"
@@ -4578,54 +4683,100 @@ const AdminDashboard = ({
               )}
 
               {contentTab === 'offers' && (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[...offers, ...STATIC_OFFERS.filter(so => !offers.some(o => o.title === so.title)).map(so => ({ ...so, id: 'static-' + so.id, isStatic: true }))].map((o) => (
-                    <div key={o.id} className="glass-card p-6 border-white/5">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="font-display font-black text-brand-red text-xl">{o.price}</div>
-                          <button 
-                            onClick={() => ! (o as any).isStatic && handleToggleOfferStatus(o.id, o.active !== false)}
-                            disabled={(o as any).isStatic}
-                            className={cn(
-                              "text-[10px] px-2 py-1 rounded-full font-bold",
-                              o.active !== false ? "bg-green-500/10 text-green-500 border border-green-500/20" : "bg-gray-500/10 text-gray-500 border border-gray-500/20",
-                              (o as any).isStatic && "opacity-50 cursor-not-allowed"
-                            )}
-                          >
-                            {o.active !== false ? 'نشط' : 'متوقف'}
-                          </button>
-                          {(o as any).isStatic && (
-                            <span className="text-[10px] bg-brand-red/20 text-brand-red px-2 py-1 rounded-full font-bold">افتراضي</span>
-                          )}
+                <div className="space-y-6">
+                  {/* Offers Action Toolbar */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 glass-card p-4 border-white/5">
+                    <div>
+                      <h4 className="font-bold text-white text-base">باقات وعروض الصيانة الخاصة</h4>
+                      <p className="text-xs text-gray-400">إدارة العروض والخصومات المتاحة لزوار الموقع ({offers.length} عرض نشط)</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => {
+                          setEditingItem(null);
+                          setOfferForm({ title: '', price: '', subtitle: '', features: '', icon: 'tag' });
+                          setIsAdding(true);
+                        }}
+                        className="px-4 py-2 bg-brand-red hover:bg-brand-red/90 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-lg shadow-brand-red/20 transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>إضافة عرض جديد</span>
+                      </button>
+
+                      {offers.length > 0 && (
+                        <button 
+                          onClick={handleDeleteAllOffers}
+                          className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>حذف كامل العروض</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Offers Grid */}
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {offers.map((o) => (
+                      <div key={o.id} className="glass-card p-6 border-white/5 flex flex-col justify-between hover:border-brand-red/30 transition-all group">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="font-display font-black text-brand-red text-2xl">{o.price}</div>
+                              <span className="text-xs text-gray-400">{o.subtitle || 'ريال'}</span>
+                              <button 
+                                onClick={() => handleToggleOfferStatus(o.id, o.active !== false)}
+                                className={cn(
+                                  "text-[10px] px-2.5 py-0.5 rounded-full font-bold transition-all cursor-pointer",
+                                  o.active !== false ? "bg-green-500/10 text-green-500 border border-green-500/20" : "bg-gray-500/10 text-gray-500 border border-gray-500/20"
+                                )}
+                              >
+                                {o.active !== false ? 'نشط' : 'متوقف'}
+                              </button>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleEdit('offer', o)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer" title="تعديل">
+                                <FileText className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDelete('offers', o.id)} className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors cursor-pointer" title="حذف">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <h4 className="font-bold text-white text-base mb-2">{o.title}</h4>
+                          <div className="space-y-1 mb-4">
+                            {Array.isArray(o.features) && o.features.map((feat, fIdx) => (
+                              <div key={fIdx} className="text-xs text-gray-400 flex items-center gap-1.5">
+                                <Check className="w-3 h-3 text-brand-red shrink-0" />
+                                <span>{feat}</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleEdit('offer', o)} className="text-gray-600 hover:text-white transition-colors">
-                            <FileText className="w-4 h-4" />
-                          </button>
-                          {! (o as any).isStatic && (
-                            <button onClick={() => handleDelete('offers', o.id)} className="text-gray-600 hover:text-brand-red transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                        <div className="text-[10px] text-gray-500 pt-3 border-t border-white/5">
+                          رمز الأيقونة: {o.icon || 'tag'}
                         </div>
                       </div>
-                      <h4 className="font-bold mb-2">{o.title}</h4>
-                      <div className="text-xs text-gray-500">{o.features.length} مميزات</div>
-                    </div>
-                  ))}
-                  {offers.length === 0 && STATIC_OFFERS.length === 0 && (
-                    <div className="md:col-span-2 lg:col-span-3 py-12 text-center glass-card border-dashed border-white/10">
-                      <Tag className="w-12 h-12 text-gray-700 mx-auto mb-4" />
-                      <p className="text-gray-500 mb-6">لا توجد عروض مضافة حالياً</p>
-                      <button 
-                        onClick={() => setIsAdding(true)}
-                        className="px-6 py-2 bg-brand-red/10 text-brand-red border border-brand-red/20 rounded-lg font-bold text-sm hover:bg-brand-red hover:text-white transition-all"
-                      >
-                        إضافة أول عرض
-                      </button>
-                    </div>
-                  )}
+                    ))}
+                    {offers.length === 0 && (
+                      <div className="md:col-span-2 lg:col-span-3 py-16 text-center glass-card border-dashed border-white/10 space-y-4">
+                        <Tag className="w-12 h-12 text-gray-600 mx-auto" />
+                        <h4 className="text-lg font-bold text-gray-300">تم تفريغ كامل العروض بنجاح</h4>
+                        <p className="text-gray-500 text-xs max-w-md mx-auto">لا توجد أي عروض مضافة حالياً. يمكنك الآن إعادة بناء باقاتك وعروضك المخصصة من جديد بالأسعار والمميزات التي تناسبك.</p>
+                        <button 
+                          onClick={() => {
+                            setEditingItem(null);
+                            setOfferForm({ title: '', price: '', subtitle: '', features: '', icon: 'tag' });
+                            setIsAdding(true);
+                          }}
+                          className="px-6 py-3 bg-brand-red hover:bg-brand-red/90 text-white rounded-xl font-bold text-xs shadow-lg shadow-brand-red/20 cursor-pointer inline-flex items-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>إضافة أول عرض خاص جديد</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -4747,72 +4898,9 @@ const AdminDashboard = ({
               key="customers"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="space-y-8"
+              className="space-y-6"
             >
-              <div className="glass-card p-8 border-white/5">
-                <h3 className="text-xl font-bold mb-6">البحث عن سجل عميل</h3>
-                <div className="flex gap-4">
-                  <input 
-                    type="tel"
-                    value={searchPhone}
-                    onChange={(e) => setSearchPhone(e.target.value)}
-                    placeholder="أدخل رقم الجوال..."
-                    className="flex-1 bg-black/50 border border-white/10 rounded-xl px-6 py-4 outline-none focus:border-brand-red transition-all"
-                  />
-                  <button 
-                    className="px-8 bg-brand-red rounded-xl font-bold flex items-center gap-2"
-                  >
-                    <Search className="w-5 h-5" />
-                    بحث
-                  </button>
-                </div>
-              </div>
-
-              {/* Customer History List */}
-              <div className="space-y-4">
-                <h4 className="font-bold text-gray-500">
-                  {searchPhone.trim() ? `نتائج البحث (${records.filter(r => r.customerPhone.includes(searchPhone.trim())).length})` : `جميع السجلات (${records.length})`}
-                </h4>
-                {(searchPhone.trim() ? records.filter(r => r.customerPhone.includes(searchPhone.trim())) : records).map((record) => (
-                  <div key={record.id} className="glass-card p-6 border-white/5 space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-bold text-lg">{record.carModel}</div>
-                        <div className="text-sm text-gray-500">
-                          {record.customerPhone} • {getRecordDate(record.serviceDate || record.createdAt).toLocaleDateString('ar-SA')}
-                        </div>
-                      </div>
-                      <div className="text-brand-red font-display font-black text-xl">{record.cost} ريال</div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="bg-white/5 p-3 rounded-lg">
-                        <div className="text-gray-500 text-xs mb-1">الخدمة</div>
-                        <div className="font-bold">{record.serviceType}</div>
-                      </div>
-                      <div className="bg-white/5 p-3 rounded-lg">
-                        <div className="text-gray-500 text-xs mb-1">الحالة</div>
-                        <div className={cn(
-                          "font-bold",
-                          record.status === 'completed' ? "text-green-500" : "text-yellow-500"
-                        )}>
-                          {record.status === 'completed' ? 'مكتمل' : 'قيد المعالجة'}
-                        </div>
-                      </div>
-                    </div>
-                    {record.notes && (
-                      <div className="bg-white/5 p-3 rounded-lg">
-                        <div className="text-gray-500 text-xs mb-1">ملاحظات الفني</div>
-                        <p className="text-gray-400 italic text-xs">{record.notes}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {(searchPhone.trim() ? records.filter(r => r.customerPhone.includes(searchPhone.trim())) : records).length === 0 && (
-                  <div className="text-center py-12 glass-card border-white/5 text-gray-500 italic">
-                    لا توجد سجلات مطابقة
-                  </div>
-                )}
-              </div>
+              <CustomerManager records={records} />
             </motion.div>
           )}
 
@@ -7157,15 +7245,8 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
         </div>
       </div>
     </div>
-    <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-400 text-sm font-mono">
+    <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-500 text-xs sm:text-sm font-mono">
       <div className="text-center md:text-start">{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</div>
-      <Link 
-        to={isAdmin ? "/admin" : "/login"}
-        className="text-xs text-gray-300 hover:text-white transition-all uppercase tracking-wider py-2.5 px-5 bg-white/5 hover:bg-brand-red/20 border border-white/10 hover:border-brand-red/40 rounded-xl flex items-center gap-2 min-h-[44px] cursor-pointer active:scale-98"
-      >
-        {isAdmin ? <Shield className="w-3.5 h-3.5 text-brand-red" /> : <LogIn className="w-3.5 h-3.5 text-brand-red" />}
-        <span>{isAdmin ? (lang === 'ar' ? 'لوحة تحكم الإدارة (Admin)' : 'Admin Dashboard') : (lang === 'ar' ? 'تسجيل دخول الإدارة (Admin Login)' : 'Admin Login')}</span>
-      </Link>
     </div>
   </footer>
   );
