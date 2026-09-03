@@ -196,11 +196,17 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
     }
   };
 
+  const getCleanLoginUrl = () => {
+    const base = (appUrl || (typeof window !== 'undefined' ? window.location.origin : '') || 'https://www.drfix.repair').replace(/\/+$/, '');
+    return `${base}/login`;
+  };
+
   const handleCopyCredentials = (staff: StaffUser) => {
+    const loginLink = getCleanLoginUrl();
     const text = `🚗 *نظام DR.FIX للصيانة المتنقلة*\n\n` +
       `مرحباً ${staff.fullName} 👋\n` +
       `تم إنشاء/تحديث حسابك في لوحة التحكم بالصلاحيات المحددة.\n\n` +
-      `🌐 *رابط تسجيل الدخول:* ${appUrl}/admin\n` +
+      `🌐 *رابط تسجيل الدخول:* ${loginLink}\n` +
       `👤 *اسم المستخدم:* \`${staff.username}\`\n` +
       `🔑 *كلمة المرور:* \`${staff.password}\`\n` +
       `💼 *المسمى الوظيفي:* ${staff.roleTitleAr || 'موظف'}\n\n` +
@@ -224,10 +230,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
       ? '966' + cleanPhone.slice(1) 
       : (cleanPhone.startsWith('5') ? '966' + cleanPhone : cleanPhone);
 
+    const loginLink = getCleanLoginUrl();
     const msg = `🚗 *نظام DR.FIX للصيانة المتنقلة*\n\n` +
       `مرحباً ${staff.fullName} 👋\n` +
       `تم إنشاء/تحديث حسابك في لوحة تحكم DR.FIX.\n\n` +
-      `🌐 *رابط الدخول:* ${appUrl}/admin\n` +
+      `🌐 *رابط تسجيل الدخول:* ${loginLink}\n` +
       `👤 *اسم المستخدم:* ${staff.username}\n` +
       `🔑 *كلمة المرور:* ${staff.password}\n` +
       `💼 *الدور:* ${staff.roleTitleAr || 'موظف'}\n\n` +

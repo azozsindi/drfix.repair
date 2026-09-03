@@ -55,6 +55,7 @@ import {
   Layout,
   Share2,
   Eye,
+  EyeOff,
   AlignLeft,
   ShieldAlert,
   Twitter,
@@ -258,24 +259,42 @@ export const safeFormatDate = (dateVal: any, locale = 'ar-SA', options?: Intl.Da
 
 // --- Components ---
 
-const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
+const normalizeCredentialsInput = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+    .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)])
+    .trim();
+};
+
+const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void; isAdmin?: boolean }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
+
+  useEffect(() => {
+    if (isAdmin) {
+      navigate('/admin', { replace: true });
+    }
+  }, [isAdmin, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
 
-    const cleanUser = username.trim();
-    const cleanPass = password.trim();
+    const cleanUser = normalizeCredentialsInput(username);
+    const cleanPass = normalizeCredentialsInput(password);
 
-    // 1. Check Master Super Admin Credentials
-    if (cleanUser === ADMIN_CREDENTIALS.username && cleanPass === ADMIN_CREDENTIALS.password) {
+    // 1. Check Master Super Admin Credentials (case-insensitive for username, flexible for mobile keyboards)
+    const isMasterUser = cleanUser.toUpperCase() === ADMIN_CREDENTIALS.username.toUpperCase();
+    const isMasterPass = cleanPass === ADMIN_CREDENTIALS.password || cleanPass.toUpperCase() === ADMIN_CREDENTIALS.password.toUpperCase();
+
+    if (isMasterUser && isMasterPass) {
       const masterUser: StaffUser = {
         id: 'master-super-admin',
         username: 'DRFIX',
@@ -288,7 +307,7 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
       };
       onLogin(masterUser);
       setIsSubmitting(false);
-      navigate('/admin');
+      navigate('/admin', { replace: true });
       return;
     }
 
@@ -304,7 +323,8 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
         const userDoc = snap.docs[0];
         const staffData = { id: userDoc.id, ...userDoc.data() } as StaffUser;
 
-        if (staffData.password === cleanPass) {
+        const staffPass = normalizeCredentialsInput(staffData.password || '');
+        if (staffPass === cleanPass) {
           if (staffData.isActive === false) {
             setError(lang === 'ar' ? 'عذراً، هذا الحساب معطل حالياً من قِبل الإدارة.' : 'This account has been deactivated by admin.');
             setIsSubmitting(false);
@@ -318,7 +338,7 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
 
           onLogin(staffData);
           setIsSubmitting(false);
-          navigate('/admin');
+          navigate('/admin', { replace: true });
           return;
         }
       }
@@ -333,53 +353,80 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center p-4">
+    <div className="min-h-[80vh] flex items-center justify-center p-4 py-8">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
+        initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass-card p-8 w-full max-w-md border-brand-red/20 shadow-2xl"
+        className="glass-card p-6 sm:p-8 w-full max-w-md border-brand-red/20 shadow-2xl rounded-2xl sm:rounded-3xl relative"
       >
-        <div className="text-center mb-8">
+        <div className="text-center mb-6 sm:mb-8">
           <div className="w-14 h-14 bg-brand-red/20 border border-brand-red/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-brand-red shadow-lg shadow-brand-red/20">
             <KeyRound className="w-7 h-7" />
           </div>
-          <h2 className="text-2xl font-display font-black italic uppercase">
+          <h2 className="text-2xl sm:text-3xl font-display font-black italic uppercase">
             {t.login.title} <span className="text-brand-red">{t.login.titleAccent}</span>
           </h2>
           <p className="text-gray-400 text-xs sm:text-sm mt-2">تسجيل دخول الإدارة وفريق العمل الفني</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.login.username}</label>
+            <label className="text-xs font-bold text-gray-300 uppercase tracking-widest block">
+              {t.login.username}
+            </label>
             <input 
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all text-white"
-              placeholder={t.login.usernamePlaceholder || "Username"}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 focus:outline-none focus:border-brand-red transition-all text-white text-base font-mono"
+              placeholder={t.login.usernamePlaceholder || "DRFIX"}
               required
               disabled={isSubmitting}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="username"
+              dir="ltr"
             />
           </div>
+
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t.login.password}</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-brand-red transition-all text-white"
-              placeholder={t.login.passwordPlaceholder || "Password"}
-              required
-              disabled={isSubmitting}
-            />
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-gray-300 uppercase tracking-widest">
+                {t.login.password}
+              </label>
+            </div>
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 pe-12 focus:outline-none focus:border-brand-red transition-all text-white text-base font-mono"
+                placeholder={t.login.passwordPlaceholder || "••••••••"}
+                required
+                disabled={isSubmitting}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="current-password"
+                dir="ltr"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute top-1/2 -translate-y-1/2 end-3 text-gray-400 hover:text-white p-2 transition-colors cursor-pointer"
+                aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
 
           {error && (
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-brand-red/10 border border-brand-red/20 rounded-lg text-brand-red text-xs sm:text-sm text-center"
+              className="p-3.5 bg-brand-red/15 border border-brand-red/30 rounded-xl text-brand-red text-xs sm:text-sm text-center font-bold"
             >
               {error}
             </motion.div>
@@ -388,7 +435,7 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
           <button 
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full min-h-[48px] py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 text-white cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 active:scale-98"
           >
             {isSubmitting ? (
               <>
@@ -396,9 +443,22 @@ const LoginPage = ({ onLogin }: { onLogin: (staff?: StaffUser) => void }) => {
                 <span>جاري التحقق...</span>
               </>
             ) : (
-              t.login.login
+              <>
+                <LogIn className="w-5 h-5" />
+                <span>{t.login.login}</span>
+              </>
             )}
           </button>
+
+          <div className="pt-2 text-center">
+            <Link 
+              to="/" 
+              className="text-xs text-gray-400 hover:text-white transition-colors inline-flex items-center gap-1.5 py-2 px-3 rounded-lg hover:bg-white/5"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              <span>العودة للموقع الرئيسي</span>
+            </Link>
+          </div>
         </form>
       </motion.div>
     </div>
@@ -629,7 +689,7 @@ const Ticker = ({ settings }: { settings: AppSettings }) => {
   );
 };
 
-const Navbar = ({ settings }: { settings: AppSettings }) => {
+const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolean }) => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -696,7 +756,7 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
         </Link>
         
         {/* Desktop Menu */}
-        <div className="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-bold uppercase tracking-wider">
+        <div className="hidden lg:flex items-center gap-5 xl:gap-7 text-sm font-bold uppercase tracking-wider">
           {navLinks.map((link) => (
             <button 
               key={link.path} 
@@ -707,6 +767,14 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
             </button>
           ))}
           <div className="h-5 w-px bg-white/10" />
+          <button 
+            onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
+            className="px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-200 hover:text-white hover:border-brand-red/40 hover:bg-brand-red/10 transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            title={isAdmin ? (lang === 'ar' ? 'لوحة التحكم' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}
+          >
+            {isAdmin ? <Shield className="w-3.5 h-3.5 text-brand-red" /> : <LogIn className="w-3.5 h-3.5 text-brand-red" />}
+            <span>{isAdmin ? (lang === 'ar' ? 'الإدارة' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}</span>
+          </button>
           <LanguageToggle />
           <div className="flex items-center gap-2">
             <a 
@@ -736,7 +804,15 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
         </div>
 
         {/* Mobile / Tablet Menu Toggle */}
-        <div className="flex items-center gap-2.5 lg:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
+          <button
+            onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
+            className="p-2 rounded-xl bg-white/5 border border-white/10 text-gray-200 hover:text-brand-red hover:border-brand-red/30 transition-all cursor-pointer flex items-center justify-center"
+            title={isAdmin ? (lang === 'ar' ? 'لوحة التحكم' : 'Admin') : (lang === 'ar' ? 'تسجيل الدخول' : 'Login')}
+            aria-label={isAdmin ? "لوحة التحكم" : "تسجيل الدخول"}
+          >
+            {isAdmin ? <Shield className="w-4 h-4 text-brand-red" /> : <LogIn className="w-4 h-4 text-brand-red" />}
+          </button>
           <LanguageToggle />
           <button 
             onClick={() => setIsOpen(!isOpen)}
@@ -799,15 +875,28 @@ const Navbar = ({ settings }: { settings: AppSettings }) => {
                 {t.nav.bookNow}
               </button>
 
-              <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs text-gray-500">
-                <Link 
-                  to="/admin"
-                  onClick={() => setIsOpen(false)}
-                  className="text-gray-500 hover:text-white transition-colors"
+              <div className="pt-3 border-t border-white/10 space-y-2">
+                <button 
+                  type="button"
+                  onClick={() => handleNavClick(isAdmin ? '/admin' : '/login')}
+                  className="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-brand-red/10 border border-white/10 hover:border-brand-red/30 flex items-center justify-between text-sm font-bold text-gray-100 transition-all cursor-pointer active:scale-98"
                 >
-                  لوحة التحكم (Admin)
-                </Link>
-                <span className="font-mono text-[10px]">v2.5 • Dr. Fix</span>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-brand-red/20 text-brand-red flex items-center justify-center">
+                      {isAdmin ? <Shield className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
+                    </div>
+                    <span>
+                      {isAdmin 
+                        ? (lang === 'ar' ? 'لوحة تحكم المركز (Admin)' : 'Admin Dashboard')
+                        : (lang === 'ar' ? 'تسجيل دخول الإدارة وفريق العمل' : 'Staff & Admin Login')}
+                    </span>
+                  </div>
+                  <ChevronLeft className="w-4 h-4 text-gray-400" />
+                </button>
+                <div className="flex justify-between items-center text-[10px] text-gray-500 px-1 font-mono">
+                  <span>Dr. Fix Auto Services</span>
+                  <span>v2.5 • Verified</span>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -6909,7 +6998,7 @@ const FAQ = () => {
   );
 };
 
-const Footer = React.memo(({ settings }: { settings: AppSettings }) => {
+const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolean }) => {
   const [visitors, setVisitors] = useState<number | null>(null);
   const { t, lang } = useLanguage();
 
@@ -6958,7 +7047,7 @@ const Footer = React.memo(({ settings }: { settings: AppSettings }) => {
   }, []);
 
   return (
-    <footer className="bg-brand-black border-t border-white/5 pt-12 pb-24 md:pb-12">
+    <footer className="bg-brand-black border-t border-white/5 pt-12 pb-32 md:pb-12">
       <div className={cn("max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12", lang === 'ar' ? "text-right" : "text-left")}>
         <div className="col-span-2">
           <div className="flex items-center gap-2 mb-6">
@@ -7068,13 +7157,14 @@ const Footer = React.memo(({ settings }: { settings: AppSettings }) => {
         </div>
       </div>
     </div>
-    <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-600 text-sm font-mono">
-      <div>{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</div>
+    <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-400 text-sm font-mono">
+      <div className="text-center md:text-start">{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</div>
       <Link 
-        to="/admin"
-        className="text-[10px] md:text-xs opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest py-2 px-4 border border-white/5 rounded-lg"
+        to={isAdmin ? "/admin" : "/login"}
+        className="text-xs text-gray-300 hover:text-white transition-all uppercase tracking-wider py-2.5 px-5 bg-white/5 hover:bg-brand-red/20 border border-white/10 hover:border-brand-red/40 rounded-xl flex items-center gap-2 min-h-[44px] cursor-pointer active:scale-98"
       >
-        Admin Portal
+        {isAdmin ? <Shield className="w-3.5 h-3.5 text-brand-red" /> : <LogIn className="w-3.5 h-3.5 text-brand-red" />}
+        <span>{isAdmin ? (lang === 'ar' ? 'لوحة تحكم الإدارة (Admin)' : 'Admin Dashboard') : (lang === 'ar' ? 'تسجيل دخول الإدارة (Admin Login)' : 'Admin Login')}</span>
       </Link>
     </div>
   </footer>
@@ -7445,7 +7535,15 @@ const LanguageToggle = () => {
 
 function MainContent() {
   const [selectedService, setSelectedService] = useState<string>('');
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
+    try {
+      const sessionVal = sessionStorage.getItem('drfix_admin_logged_in');
+      const localVal = localStorage.getItem('drfix_admin_logged_in');
+      return sessionVal === 'true' || localVal === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [settings, setSettings] = useState<AppSettings>({});
   const navigate = useNavigate();
   const location = useLocation();
@@ -7497,7 +7595,7 @@ function MainContent() {
 
   const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser | null>(() => {
     try {
-      const saved = sessionStorage.getItem('drfix_current_staff');
+      const saved = sessionStorage.getItem('drfix_current_staff') || localStorage.getItem('drfix_current_staff');
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error('Error parsing saved staff session:', e);
@@ -7506,28 +7604,45 @@ function MainContent() {
   });
 
   useEffect(() => {
-    const savedAdmin = sessionStorage.getItem('drfix_admin_logged_in');
-    if (savedAdmin === 'true') {
-      setIsAdminLoggedIn(true);
-      if (!currentStaffUser) {
-        // Fallback default master admin
-        setCurrentStaffUser({
-          id: 'master-super-admin',
-          username: 'DRFIX',
-          password: '••••••••',
-          fullName: 'المدير العام (Master Admin)',
-          role: 'super_admin',
-          roleTitleAr: 'المدير العام',
-          permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
-          isActive: true
-        });
+    try {
+      const savedAdmin = sessionStorage.getItem('drfix_admin_logged_in') || localStorage.getItem('drfix_admin_logged_in');
+      if (savedAdmin === 'true') {
+        setIsAdminLoggedIn(true);
+        if (!currentStaffUser) {
+          const savedStaff = sessionStorage.getItem('drfix_current_staff') || localStorage.getItem('drfix_current_staff');
+          if (savedStaff) {
+            try {
+              setCurrentStaffUser(JSON.parse(savedStaff));
+            } catch {
+              // fallback
+            }
+          } else {
+            setCurrentStaffUser({
+              id: 'master-super-admin',
+              username: 'DRFIX',
+              password: '••••••••',
+              fullName: 'المدير العام (Master Admin)',
+              role: 'super_admin',
+              roleTitleAr: 'المدير العام',
+              permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
+              isActive: true
+            });
+          }
+        }
       }
+    } catch (e) {
+      console.error('Auth verification error:', e);
     }
   }, []);
 
   const handleAdminLoginSuccess = (staff?: StaffUser) => {
     setIsAdminLoggedIn(true);
-    sessionStorage.setItem('drfix_admin_logged_in', 'true');
+    try {
+      sessionStorage.setItem('drfix_admin_logged_in', 'true');
+      localStorage.setItem('drfix_admin_logged_in', 'true');
+    } catch (e) {
+      console.warn('Storage set failed:', e);
+    }
     const userToSave: StaffUser = staff || {
       id: 'master-super-admin',
       username: 'DRFIX',
@@ -7539,15 +7654,26 @@ function MainContent() {
       isActive: true
     };
     setCurrentStaffUser(userToSave);
-    sessionStorage.setItem('drfix_current_staff', JSON.stringify(userToSave));
-    navigate('/admin');
+    try {
+      sessionStorage.setItem('drfix_current_staff', JSON.stringify(userToSave));
+      localStorage.setItem('drfix_current_staff', JSON.stringify(userToSave));
+    } catch (e) {
+      console.warn('Storage set failed:', e);
+    }
+    navigate('/admin', { replace: true });
   };
 
   const handleAdminLogout = () => {
     setIsAdminLoggedIn(false);
     setCurrentStaffUser(null);
-    sessionStorage.removeItem('drfix_admin_logged_in');
-    sessionStorage.removeItem('drfix_current_staff');
+    try {
+      sessionStorage.removeItem('drfix_admin_logged_in');
+      localStorage.removeItem('drfix_admin_logged_in');
+      sessionStorage.removeItem('drfix_current_staff');
+      localStorage.removeItem('drfix_current_staff');
+    } catch (e) {
+      console.warn('Storage remove failed:', e);
+    }
     navigate('/');
   };
 
@@ -7571,7 +7697,7 @@ function MainContent() {
     <div className="min-h-screen bg-brand-black text-white" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <DynamicStyles settings={settings} />
       <Ticker settings={settings} />
-      <Navbar settings={settings} />
+      <Navbar settings={settings} isAdmin={isAdminLoggedIn} />
       
       <main className="pt-20 sm:pt-24 md:pt-28 pb-24 md:pb-0">
         <Routes>
@@ -7593,11 +7719,13 @@ function MainContent() {
           <Route path="/booking" element={<BookingForm selectedService={selectedService} settings={settings} />} />
           <Route path="/history" element={<MaintenanceHistory />} />
           <Route path="/admin" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />
-          <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} />} />
+          <Route path="/admin/*" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />
+          <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
+          <Route path="/login/*" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
         </Routes>
       </main>
 
-      <Footer settings={settings} />
+      <Footer settings={settings} isAdmin={isAdminLoggedIn} />
       
       {location.pathname !== '/admin' && location.pathname !== '/login' && (
         <MobileQuickBar settings={settings} />
