@@ -947,13 +947,14 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 md:py-4 flex justify-between items-center">
         <Link to="/" onClick={handleLogoClick} className="flex items-center gap-3 group select-none">
           <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-            ) : (
-              <span className="text-brand-red font-display font-black text-base md:text-lg italic tracking-tighter leading-none">
-                Dr.Fix
-              </span>
-            )}
+            <img 
+              src={settings.logoUrl || '/logo.png'} 
+              alt={settings.siteName || "DR.FIX"} 
+              className="w-full h-full object-cover" 
+              referrerPolicy="no-referrer" 
+              loading="eager"
+              decoding="async"
+            />
           </div>
           <div className="flex flex-col">
             <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors">
@@ -1269,9 +1270,10 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             <img 
               src={settings.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
               alt="Dr. Fix Car Maintenance" 
-              className="w-full h-[200px] sm:h-[280px] md:h-[360px] lg:h-[420px] object-cover"
+              className="w-full h-[200px] sm:h-[280px] md:h-[360px] lg:h-[420px] object-cover bg-neutral-950"
               referrerPolicy="no-referrer"
-              loading="lazy"
+              loading="eager"
+              decoding="async"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60" />
             
@@ -7798,13 +7800,14 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
         <div className="col-span-2">
           <div className="flex items-center gap-2 mb-6">
             <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
-              {settings.logoUrl ? (
-                <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-cover" referrerPolicy="no-referrer" loading="lazy" />
-              ) : (
-                <span className="text-brand-red font-display font-black text-xl italic tracking-tighter leading-none">
-                  Dr.Fix
-                </span>
-              )}
+              <img 
+                src={settings.logoUrl || '/logo.png'} 
+                alt="Logo" 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer" 
+                loading="eager"
+                decoding="async" 
+              />
             </div>
           </div>
           <p className="text-gray-500 max-w-sm leading-relaxed">
@@ -8283,7 +8286,17 @@ function MainContent() {
       return false;
     }
   });
-  const [settings, setSettings] = useState<AppSettings>({});
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_app_settings');
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.error('Error loading cached settings:', e);
+    }
+    return {};
+  });
   const navigate = useNavigate();
   const location = useLocation();
   const { lang, t } = useLanguage();
@@ -8320,7 +8333,26 @@ function MainContent() {
     const statsRef = doc(db, 'stats', 'global');
     const unsubscribe = onSnapshot(statsRef, (doc) => {
       if (doc.exists()) {
-        setSettings(doc.data() as AppSettings);
+        const data = doc.data() as AppSettings;
+        setSettings(data);
+        try {
+          localStorage.setItem('drfix_app_settings', JSON.stringify(data));
+        } catch {
+          try {
+            // If quota limit exceeded due to base64 images, store core visual keys
+            const trimmed = {
+              siteName: data.siteName,
+              logoUrl: data.logoUrl,
+              heroImageUrl: data.heroImageUrl,
+              whatsapp: data.whatsapp,
+              phone: data.phone,
+              showHeroImageBadge: data.showHeroImageBadge,
+              heroImageBadgeTitle: data.heroImageBadgeTitle,
+              heroImageBadgeSubtitle: data.heroImageBadgeSubtitle
+            };
+            localStorage.setItem('drfix_app_settings', JSON.stringify(trimmed));
+          } catch {}
+        }
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'stats/global'));
 
