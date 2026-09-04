@@ -22,8 +22,10 @@ export interface ReportSummary {
   generatedAt: string;
   totalBookings: number;
   completedBookings: number;
-  totalRevenue: number;
-  avgTicket: number;
+  activeBookings?: number;
+  uniqueCustomers?: number;
+  totalRevenue?: number;
+  avgTicket?: number;
   items: BookingReportItem[];
 }
 
@@ -58,7 +60,6 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
   const outName = filename || `DRFIX_Report_${new Date().toISOString().slice(0, 10)}.doc`;
 
   const rowsHtml = summary.items.map((item, idx) => {
-    const costNum = Number(item.cost) || 0;
     const dateStr = item.serviceDate ? formatReportDate(item.serviceDate) : formatReportDate(item.createdAt);
     const statusAr = getStatusArabic(item.status);
     const bId = item.bookingId || item.id || `DRF-${idx + 1}`;
@@ -77,7 +78,7 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
         <td style="padding: 8px; border: 1px solid #d1d5db; text-align: right; font-family: 'Arial', sans-serif;">${service}</td>
         <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; font-family: 'Arial', sans-serif;">${dateStr}</td>
         <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; font-family: 'Arial', sans-serif;">${statusAr}</td>
-        <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: #E31837; font-family: 'Arial', sans-serif;">${costNum > 0 ? `${costNum} ريال` : 'غير محدد'}</td>
+        <td style="padding: 8px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: #059669; font-family: 'Arial', sans-serif;">معتمد بضمان المركز</td>
       </tr>
     `;
   }).join('');
@@ -162,7 +163,7 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
         <tr>
           <td style="text-align: right; vertical-align: middle;">
             <h1 style="color: #E31837; font-size: 24px; font-weight: 900;">DR.FIX | دكتور فيكس</h1>
-            <p style="font-size: 13px; color: #4b5563; margin-top: 4px;">المركز الرائد لخدمات الميكانيكا والصيانة المتنقلة في جدة 🚗⚡</p>
+            <p style="font-size: 13px; color: #4b5563; margin-top: 4px;">المركز المتخصص للصيانة والميكانيكا المتنقلة في جدة 🚗⚡</p>
             <p style="font-size: 11px; color: #6b7280;">هاتف: 0546870807 | الموقع: www.drfix.repair</p>
           </td>
           <td style="text-align: left; vertical-align: middle;">
@@ -185,18 +186,18 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
             <div style="font-size: 18px; font-weight: bold; color: #059669; margin-top: 4px;">${summary.completedBookings}</div>
           </td>
           <td>
-            <div style="font-size: 11px; color: #6b7280;">إجمالي الإيرادات</div>
-            <div style="font-size: 18px; font-weight: bold; color: #E31837; margin-top: 4px;">${summary.totalRevenue.toLocaleString()} ريال</div>
+            <div style="font-size: 11px; color: #6b7280;">العمليات قيد المتابعة</div>
+            <div style="font-size: 18px; font-weight: bold; color: #d97706; margin-top: 4px;">${summary.activeBookings ?? (summary.totalBookings - summary.completedBookings)}</div>
           </td>
           <td>
-            <div style="font-size: 11px; color: #6b7280;">متوسط قيمة الحجز</div>
-            <div style="font-size: 18px; font-weight: bold; color: #2563eb; margin-top: 4px;">${summary.avgTicket} ريال</div>
+            <div style="font-size: 11px; color: #6b7280;">العملاء المستفيدين</div>
+            <div style="font-size: 18px; font-weight: bold; color: #2563eb; margin-top: 4px;">${summary.uniqueCustomers ?? summary.totalBookings}</div>
           </td>
         </tr>
       </table>
 
       <!-- Detailed Table -->
-      <h3 style="font-size: 15px; color: #111827; margin-bottom: 8px;">جدول تفاصيل الحجوزات والعمليات:</h3>
+      <h3 style="font-size: 15px; color: #111827; margin-bottom: 8px;">جدول تفاصيل الحجوزات والعمليات الميدانية:</h3>
       <table class="data-table">
         <thead>
           <tr>
@@ -208,7 +209,7 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
             <th style="width: 14%;">نوع الخدمة</th>
             <th style="width: 10%;">التاريخ</th>
             <th style="width: 9%;">الحالة</th>
-            <th style="width: 9%;">المبلغ</th>
+            <th style="width: 14%;">حالة الفحص والضمان</th>
           </tr>
         </thead>
         <tbody>
@@ -284,8 +285,8 @@ export function exportSingleBookingWord(booking: BookingReportItem) {
           <tr>
             <td style="text-align: right;">
               <div class="title">DR.FIX | دكتور فيكس</div>
-              <div style="font-size: 13px; color: #4b5563; margin-top: 4px;">سند أمر صيانة وفاتورة خدمة متنقلة</div>
-              <div style="font-size: 11px; color: #6b7280;">جدة - المملكة العربية السعودية | جوال: 0546870807</div>
+              <div style="font-size: 13px; color: #4b5563; margin-top: 4px;">سند فحص واعتماد صيانة ميدانية معتمدة</div>
+              <div style="font-size: 11px; color: #6b7280;">المركز المتخصص للصيانة والميكانيكا المتنقلة في جدة | جوال: 0546870807</div>
             </td>
             <td style="text-align: left;">
               <div style="font-size: 16px; font-weight: bold; color: #111827;">رقم السند: #${bId}</div>
@@ -320,11 +321,12 @@ export function exportSingleBookingWord(booking: BookingReportItem) {
         </tr>
       </table>
 
-      <div class="price-box">
-        <div style="font-size: 13px; color: #991b1b; font-weight: bold;">المبلغ الإجمالي للخدمة:</div>
-        <div style="font-size: 28px; font-weight: 900; color: #E31837; margin-top: 4px;">
-          ${costNum > 0 ? `${costNum.toLocaleString()} ريال سعودي` : 'حسب الفحص والاتفاق'}
+      <div class="price-box" style="background: #f0fdf4; border: 2px solid #86efac; padding: 15px; text-align: center; margin: 25px 0; border-radius: 8px;">
+        <div style="font-size: 13px; color: #166534; font-weight: bold;">حالة الاعتماد الفني والضمان:</div>
+        <div style="font-size: 20px; font-weight: 900; color: #15803d; margin-top: 4px;">
+          صيانة معتمدة بضمان المركز | دكتور فيكس
         </div>
+        <div style="font-size: 11px; color: #4b5563; margin-top: 4px;">تم الفحص والعمل وفق المعايير الفنية المعتمدة لمركز الصيانة المتنقلة</div>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin-top: 40px;">

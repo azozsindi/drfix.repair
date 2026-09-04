@@ -104,19 +104,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
     });
   }, [records, period, statusFilter, searchQuery]);
 
-  // Financial & Operational Metrics calculation
+  // Operational Metrics calculation
   const metrics = useMemo(() => {
     const totalBookings = filteredRecords.length;
     const completedBookings = filteredRecords.filter(r => r.status === 'completed').length;
-    const totalRevenue = filteredRecords.reduce((sum, curr) => sum + (Number(curr.cost) || 0), 0);
-    const avgTicket = completedBookings > 0 ? Math.round(totalRevenue / completedBookings) : (totalRevenue > 0 ? Math.round(totalRevenue / totalBookings) : 0);
+    const activeBookings = filteredRecords.filter(r => r.status !== 'completed' && r.status !== 'cancelled').length;
     const uniqueCustomers = new Set(filteredRecords.map(r => r.customerPhone).filter(Boolean)).size;
+    const completionRate = totalBookings > 0 ? Math.round((completedBookings / totalBookings) * 100) : 0;
 
     return {
       totalBookings,
       completedBookings,
-      totalRevenue,
-      avgTicket,
+      activeBookings,
+      completionRate,
       uniqueCustomers
     };
   }, [filteredRecords]);
@@ -125,13 +125,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
   const handleExportWord = () => {
     const periodLabel = period === 'today' ? 'اليوم' : period === 'week' ? 'آخر 7 أيام' : period === 'month' ? 'آخر 30 يوم' : 'جميع الفترات';
     const summary: ReportSummary = {
-      title: 'تقرير حجوزات ومبيعات DR.FIX المتنقلة - جدة',
+      title: 'تقرير حجوزات وعمليات DR.FIX المتنقلة - جدة',
       periodLabel,
       generatedAt: new Date().toLocaleString('ar-SA'),
       totalBookings: metrics.totalBookings,
       completedBookings: metrics.completedBookings,
-      totalRevenue: metrics.totalRevenue,
-      avgTicket: metrics.avgTicket,
+      activeBookings: metrics.activeBookings,
+      uniqueCustomers: metrics.uniqueCustomers,
       items: filteredRecords
     };
     exportBookingsToWord(summary);
@@ -241,47 +241,47 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 no-print">
         <div className="glass-card p-5 border-white/5 relative overflow-hidden">
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-            <span>عدد الحجوزات المفلترة</span>
+            <span>إجمالي الحجوزات</span>
             <Calendar className="w-4 h-4 text-blue-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-display text-white">
             {metrics.totalBookings} <span className="text-xs font-normal text-gray-400">حجز</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            منها {metrics.completedBookings} منجزة
+            ضمن الفترة المحددة
           </div>
         </div>
 
         <div className="glass-card p-5 border-white/5 relative overflow-hidden">
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-            <span>إجمالي الإيرادات</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span>الصيانات المنجزة</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black font-display text-brand-red">
-            {metrics.totalRevenue.toLocaleString()} <span className="text-xs font-normal text-white">ريال</span>
+          <div className="text-2xl sm:text-3xl font-black font-display text-emerald-400">
+            {metrics.completedBookings} <span className="text-xs font-normal text-gray-400">عملية</span>
           </div>
           <div className="text-[11px] text-emerald-400 mt-2 flex items-center gap-1">
             <TrendingUp className="w-3 h-3" />
-            <span>محسوبة بدقة من التكاليف المحددة</span>
+            <span>نسبة إنجاز {metrics.completionRate}%</span>
           </div>
         </div>
 
         <div className="glass-card p-5 border-white/5 relative overflow-hidden">
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-            <span>متوسط قيمة الخدمة</span>
+            <span>العمليات الجارية والميدانية</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-2xl sm:text-3xl font-black font-display text-white">
-            {metrics.avgTicket} <span className="text-xs font-normal text-gray-400">ريال</span>
+          <div className="text-2xl sm:text-3xl font-black font-display text-amber-400">
+            {metrics.activeBookings} <span className="text-xs font-normal text-gray-400">طلب</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            متوسط كل عملية صيانة
+            قيد المتابعة والتنفيذ الميداني
           </div>
         </div>
 
         <div className="glass-card p-5 border-white/5 relative overflow-hidden">
           <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-            <span>العملاء المميزين</span>
+            <span>العملاء المستفيدين</span>
             <Car className="w-4 h-4 text-purple-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-black font-display text-white">
@@ -303,7 +303,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
               <span>| دكتور فيكس</span>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              المركز المتخصص الأول للصيانة والميكانيكا المتنقلة في جدة 🚗⚡
+              المركز المتخصص للصيانة والميكانيكا المتنقلة في جدة 🚗⚡
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
               جوال: 0546870807 | الموقع: www.drfix.repair
@@ -329,14 +329,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                 <th className="px-4 py-3 font-bold">الخدمة</th>
                 <th className="px-4 py-3 font-bold">التاريخ</th>
                 <th className="px-4 py-3 font-bold">الحالة</th>
-                <th className="px-4 py-3 font-bold">التكلفة</th>
+                <th className="px-4 py-3 font-bold">حالة الفحص والضمان</th>
                 <th className="px-4 py-3 font-bold no-print">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {filteredRecords.map((item, index) => {
                 const bId = item.bookingId || item.id || `DRF-${index + 1}`;
-                const costVal = Number(item.cost) || 0;
                 let statusBadge = (
                   <span className="px-2 py-1 rounded-md bg-blue-500/10 text-blue-400 text-[10px] font-bold">جديد</span>
                 );
@@ -362,8 +361,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                     <td className="px-4 py-3 text-gray-300">{item.serviceType || 'صيانة'}</td>
                     <td className="px-4 py-3 text-gray-400">{formatDisplayDate(item.serviceDate || item.createdAt)}</td>
                     <td className="px-4 py-3">{statusBadge}</td>
-                    <td className="px-4 py-3 font-bold text-white">
-                      {costVal > 0 ? `${costVal} ريال` : <span className="text-gray-500 font-normal">-</span>}
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1 text-emerald-400 font-bold text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                        <CheckCircle2 className="w-3 h-3" />
+                        معتمد بضمان المركز
+                      </span>
                     </td>
                     <td className="px-4 py-3 no-print">
                       <div className="flex items-center gap-1.5">
@@ -399,10 +401,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
               <tfoot>
                 <tr className="bg-white/5 border-t-2 border-white/20 font-bold text-white">
                   <td colSpan={8} className="px-4 py-3 text-left">
-                    المجموع الكلي للإيرادات المفلترة:
+                    إجمالي العمليات المكتملة والموثقة:
                   </td>
-                  <td colSpan={2} className="px-4 py-3 text-brand-red font-black text-sm">
-                    {metrics.totalRevenue.toLocaleString()} ريال
+                  <td colSpan={2} className="px-4 py-3 text-emerald-400 font-black text-sm">
+                    {metrics.completedBookings} من أصل {metrics.totalBookings} عملية
                   </td>
                 </tr>
               </tfoot>
@@ -435,7 +437,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
             <div className="flex items-center justify-between pb-4 border-b border-white/10 no-print">
               <h3 className="font-bold text-white text-base flex items-center gap-2">
                 <FileText className="w-5 h-5 text-brand-red" />
-                <span>سند أمر صيانة وفاتورة خدمة #{selectedBookingForPrint.bookingId || selectedBookingForPrint.id}</span>
+                <span>سند فحص واعتماد صيانة ميدانية #{selectedBookingForPrint.bookingId || selectedBookingForPrint.id}</span>
               </h3>
               <button
                 onClick={() => setSelectedBookingForPrint(null)}
@@ -450,7 +452,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
               <div className="border-b-2 border-[#E31837] pb-3 flex justify-between items-center">
                 <div>
                   <div className="text-xl font-black text-[#E31837]">DR.FIX | دكتور فيكس</div>
-                  <div className="text-xs text-gray-600">سند صيانة وفاتورة خدمة متنقلة - جدة</div>
+                  <div className="text-xs text-gray-600">سند فحص واعتماد صيانة متنقلة - جدة</div>
                 </div>
                 <div className="text-left text-xs">
                   <div className="font-bold text-black">رقم السند: #{selectedBookingForPrint.bookingId || selectedBookingForPrint.id}</div>
@@ -469,11 +471,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                 )}
               </div>
 
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center">
-                <div className="text-xs text-red-900 font-bold">المبلغ الإجمالي المستحق:</div>
-                <div className="text-2xl font-black text-[#E31837] mt-1">
-                  {Number(selectedBookingForPrint.cost) > 0 ? `${Number(selectedBookingForPrint.cost).toLocaleString()} ريال سعودي` : 'حسب الفحص والاتفاق'}
+              <div className="p-4 bg-emerald-50 border-2 border-emerald-400 rounded-xl text-center">
+                <div className="text-xs text-emerald-900 font-bold">حالة الاعتماد الفني والضمان:</div>
+                <div className="text-xl font-black text-emerald-700 mt-1">
+                  صيانة معتمدة بضمان المركز | دكتور فيكس
                 </div>
+                <div className="text-[11px] text-gray-500 mt-1">خضعت السيارة للفحص الدقيق وفق المعايير المعتمدة للمركز المتنقل</div>
               </div>
 
               <div className="pt-6 grid grid-cols-2 gap-4 text-xs text-center border-t border-gray-200">

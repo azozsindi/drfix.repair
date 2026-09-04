@@ -49,6 +49,7 @@ import {
   MessageSquare,
   AlertCircle,
   Bell,
+  ArrowLeft,
   ArrowRight,
   ArrowUp,
   Globe,
@@ -570,7 +571,7 @@ export const escapeTelegramHtml = (text: any): string => {
     .replace(/"/g, '&quot;');
 };
 
-// Telegram instant message dispatcher with auto-retry plain text fallback
+// Telegram instant message dispatcher with support for multiple Chat IDs and group chats
 export const sendTelegramNotification = async (
   messageText: string, 
   botToken?: string, 
@@ -578,50 +579,99 @@ export const sendTelegramNotification = async (
   replyMarkup?: any
 ): Promise<boolean> => {
   const activeToken = (botToken || DEFAULT_TELEGRAM_BOT_TOKEN).trim();
-  const activeChatId = (chatId || DEFAULT_TELEGRAM_CHAT_ID).trim();
-  if (!activeToken || !activeChatId) return false;
-  try {
-    const payload: Record<string, any> = {
-      chat_id: activeChatId,
-      text: messageText,
-      parse_mode: 'HTML'
-    };
-    if (replyMarkup) {
-      payload.reply_markup = replyMarkup;
-    }
-    const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      if (data.ok) return true;
-    }
+  const rawChatId = (chatId || DEFAULT_TELEGRAM_CHAT_ID).trim();
+  if (!activeToken || !rawChatId) return false;
 
-    // Fallback without HTML parse_mode if Telegram rejected formatting
-    const plainPayload: Record<string, any> = {
-      chat_id: activeChatId,
-      text: String(messageText).replace(/<[^>]*>/g, '')
-    };
-    if (replyMarkup) {
-      plainPayload.reply_markup = replyMarkup;
-    }
-    const retryRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(plainPayload)
-    });
-    return retryRes.ok;
-  } catch (err) {
-    console.error("Telegram notification error:", err);
-    return false;
-  }
+  // Split multiple chat IDs if separated by commas, newlines, semicolons, or spaces
+  const chatIds = rawChatId
+    .split(/[\n,;\s]+/)
+    .map(id => id.trim())
+    .filter(Boolean);
+
+  if (chatIds.length === 0) return false;
+
+  const results = await Promise.allSettled(
+    chatIds.map(async (singleChatId) => {
+      try {
+        const payload: Record<string, any> = {
+          chat_id: singleChatId,
+          text: messageText,
+          parse_mode: 'HTML'
+        };
+        if (replyMarkup) {
+          payload.reply_markup = replyMarkup;
+        }
+        const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) return true;
+        }
+
+        // Fallback without HTML parse_mode if Telegram rejected formatting
+        const plainPayload: Record<string, any> = {
+          chat_id: singleChatId,
+          text: String(messageText).replace(/<[^>]*>/g, '')
+        };
+        if (replyMarkup) {
+          plainPayload.reply_markup = replyMarkup;
+        }
+        const retryRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plainPayload)
+        });
+        return retryRes.ok;
+      } catch (err) {
+        console.error(`Telegram notification error for ID ${singleChatId}:`, err);
+        return false;
+      }
+    })
+  );
+
+  return results.some(r => r.status === 'fulfilled' && r.value === true);
 };
 
-const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, quality = 0.7): Promise<string> => {
+export const formatBytes = (bytes: number): string => {
+  if (!bytes || bytes <= 0) return '0 بايت';
+  if (bytes < 1024) return `${bytes} بايت`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} كيلوبايت`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(2)} ميجابايت`;
+};
+
+export const getBase64SizeInBytes = (base64: string): number => {
+  if (!base64 || !base64.startsWith('data:')) return 0;
+  const parts = base64.split(',');
+  if (!parts[1]) return 0;
+  const padding = parts[1].endsWith('==') ? 2 : parts[1].endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.round((parts[1].length * 3) / 4) - padding);
+};
+
+export interface UploadedImageInfo {
+  name: string;
+  origSize: string;
+  origSizeBytes: number;
+  compSize: string;
+  compSizeBytes: number;
+  origDim: string;
+  compDim: string;
+  savings?: string;
+}
+
+const compressImage = (
+  base64Str: string, 
+  maxWidth = 1200, 
+  maxHeight = 1200, 
+  quality = 0.75,
+  preservePng = false
+): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.src = base64Str;
@@ -632,12 +682,12 @@ const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, qua
 
       if (width > height) {
         if (width > maxWidth) {
-          height *= maxWidth / width;
+          height = Math.round(height * (maxWidth / width));
           width = maxWidth;
         }
       } else {
         if (height > maxHeight) {
-          width *= maxHeight / height;
+          width = Math.round(width * (maxHeight / height));
           height = maxHeight;
         }
       }
@@ -645,10 +695,131 @@ const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 1200, qua
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      if (ctx) {
+        const isPng = preservePng || base64Str.startsWith('data:image/png');
+        if (!isPng) {
+          ctx.fillStyle = '#FFFFFF';
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+      } else {
+        resolve(base64Str);
+      }
     };
+    img.onerror = () => resolve(base64Str);
   });
+};
+
+const ImageUploadSizeBadge = ({ 
+  meta, 
+  imageUrl, 
+  recommended 
+}: { 
+  meta?: UploadedImageInfo; 
+  imageUrl?: string; 
+  recommended: { dimensions: string; idealSize: string; formats: string } 
+}) => {
+  const [liveInfo, setLiveInfo] = useState<{ dim?: string; size?: string } | null>(null);
+
+  useEffect(() => {
+    if (!imageUrl) {
+      setLiveInfo(null);
+      return;
+    }
+    if (meta) {
+      setLiveInfo(null);
+      return;
+    }
+
+    const img = new Image();
+    img.src = imageUrl;
+    img.onload = () => {
+      const dim = img.naturalWidth ? `${img.naturalWidth} × ${img.naturalHeight} بكسل` : undefined;
+      const size = imageUrl.startsWith('data:') ? formatBytes(getBase64SizeInBytes(imageUrl)) : undefined;
+      setLiveInfo({ dim, size });
+    };
+    img.onerror = () => {
+      setLiveInfo(null);
+    };
+  }, [imageUrl, meta]);
+
+  return (
+    <div className="space-y-2 mt-2 w-full text-right" dir="rtl">
+      {/* Recommended Specs Box */}
+      <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-[11px] text-gray-300">
+        <div className="flex items-center gap-1.5 font-bold text-gray-200 mb-1.5">
+          <HelpCircle className="w-3.5 h-3.5 text-brand-red shrink-0" />
+          <span>المقاسات والمواصفات الموصى بها:</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
+          <div className="bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+            <span className="text-gray-400 block">الأبعاد الموصى بها:</span>
+            <span className="font-bold text-white font-mono">{recommended.dimensions}</span>
+          </div>
+          <div className="bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+            <span className="text-gray-400 block">الحجم الأقصى المثالي:</span>
+            <span className="font-bold text-emerald-400 font-mono">{recommended.idealSize}</span>
+          </div>
+          <div className="bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/5">
+            <span className="text-gray-400 block">الصيغ المفضلة:</span>
+            <span className="font-bold text-gray-300 font-mono">{recommended.formats}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Selected Image Information Badge */}
+      {meta ? (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="line-clamp-1">بيانات الصورة المرفوعة: {meta.name}</span>
+            </div>
+            {meta.savings && (
+              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold font-mono">
+                توفير {meta.savings} عبر التحسين والضغط الذكي
+              </span>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+            <div className="bg-black/50 p-2 rounded-lg border border-white/5">
+              <span className="text-gray-400 block text-[10px]">الحجم الأصلي قبل الرفع:</span>
+              <span className="font-bold text-white font-mono text-xs">{meta.origSize}</span>
+              <span className="text-gray-400 text-[9px] block font-mono">({meta.origDim})</span>
+            </div>
+            <div className="bg-black/50 p-2 rounded-lg border border-emerald-500/20">
+              <span className="text-emerald-400 block text-[10px] font-bold">الحجم الفعلي المحفوظ:</span>
+              <span className="font-bold text-emerald-400 font-mono text-xs">{meta.compSize}</span>
+              <span className="text-emerald-400/80 text-[9px] block font-mono">({meta.compDim})</span>
+            </div>
+            <div className="bg-black/50 p-2 rounded-lg border border-white/5 col-span-2 sm:col-span-1 flex flex-col justify-center">
+              <span className="text-gray-400 block text-[10px]">سرعة العرض والتصفح:</span>
+              <span className="font-bold text-emerald-400 text-xs flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                فائقة السرعة ومثالية ✓
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : liveInfo ? (
+        <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 text-gray-300">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[11px] text-gray-400">بيانات الصورة الحالية:</span>
+            {liveInfo.dim && <span className="font-mono text-white text-[11px] bg-black/40 px-1.5 py-0.5 rounded border border-white/5">{liveInfo.dim}</span>}
+          </div>
+          {liveInfo.size ? (
+            <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-[11px] border border-emerald-500/20">
+              حجم الملف: {liveInfo.size} (محسّنة للويب)
+            </span>
+          ) : (
+            <span className="text-gray-400 text-[10px]">رابط صورة خارجي مباشر</span>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 const Ticker = ({ settings }: { settings: AppSettings }) => {
@@ -1152,8 +1323,9 @@ const ServiceCard = React.memo(({ icon: Icon, title, description, onClick }: { i
       <h3 className="text-base font-display font-black mb-2 italic uppercase tracking-tight relative z-10 group-hover:text-brand-red transition-colors whitespace-normal">{title}</h3>
       <p className="text-gray-400 text-[10px] leading-relaxed relative z-10 flex-1 whitespace-normal line-clamp-3">{description}</p>
       
-      <div className={cn("mt-6 flex items-center gap-2 text-brand-red font-bold italic text-xs opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-2", lang === 'en' && "group-hover:-translate-x-2")} style={{ transform: 'translateZ(15px)' }}>
+      <div className={cn("mt-6 flex items-center gap-2 text-brand-red font-bold italic text-xs opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all sm:group-hover:translate-x-2", lang === 'en' && "sm:group-hover:-translate-x-2")} style={{ transform: 'translateZ(15px)' }}>
         <span>{t.services.bookNow}</span>
+        <ArrowLeft className={cn("w-3.5 h-3.5 transition-transform", lang === 'en' && "rotate-180")} />
       </div>
     </motion.div>
   );
@@ -1315,10 +1487,11 @@ interface Offer {
 
 const STATIC_OFFERS: Offer[] = [];
 
-const Offers = () => {
+const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) => {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
   const { t, lang } = useLanguage();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const q = query(collection(db, 'offers'), orderBy('createdAt', 'desc'));
@@ -1344,6 +1517,14 @@ const Offers = () => {
   }, [offers]);
 
   if (loading || allOffers.length === 0) return null;
+
+  const handleClaim = (offer: Offer) => {
+    if (onOfferSelect) {
+      onOfferSelect(offer);
+    } else {
+      navigate('/booking');
+    }
+  };
 
   return (
     <section id="offers" className="py-24 bg-brand-black relative overflow-hidden">
@@ -1399,9 +1580,14 @@ const Offers = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/booking" className="w-full py-4 bg-white/5 border border-white/10 rounded-xl font-display font-black italic text-center hover:bg-brand-red hover:border-brand-red transition-all group-hover:shadow-lg group-hover:shadow-brand-red/20" style={{ transform: 'translateZ(25px)' }}>
+              <button 
+                type="button"
+                onClick={() => handleClaim(offer)}
+                className="w-full py-4 bg-white/5 border border-white/10 rounded-xl font-display font-black italic text-center hover:bg-brand-red hover:border-brand-red transition-all group-hover:shadow-lg group-hover:shadow-brand-red/20 cursor-pointer active:scale-95" 
+                style={{ transform: 'translateZ(25px)' }}
+              >
                 {t.offers.claimOffer}
-              </Link>
+              </button>
             </motion.div>
           ))}
         </div>
@@ -1506,9 +1692,31 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   const { t, lang } = useLanguage();
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<BookingFormData>();
 
+  const normalizeServiceType = (val?: string): string => {
+    if (!val) return '';
+    const lower = val.toLowerCase();
+    if (lower.includes('باب') || lower.includes('door')) return 'home-service';
+    if (lower.includes('ميكانيك') || lower.includes('mechanic')) return 'mechanic';
+    if (lower.includes('كهرب') || lower.includes('electric')) return 'electric';
+    if (lower.includes('برمج') || lower.includes('program')) return 'programming';
+    if (lower.includes('سمكر') || lower.includes('بودي') || lower.includes('body') || lower.includes('طلاء') || lower.includes('دهان')) return 'bodywork';
+    if (lower.includes('تكييف') || lower.includes('تبريد') || lower.includes('فريون') || lower.includes('ac')) return 'ac';
+    if (lower.includes('فرامل') || lower.includes('فحمات') || lower.includes('brake')) return 'brakes';
+    if (lower.includes('فحص') || lower.includes('شراء') || lower.includes('inspect')) return 'inspection';
+    if (lower.includes('كفر') || lower.includes('إطار') || lower.includes('tire')) return 'tires';
+    if (lower.includes('بطار') || lower.includes('battery')) return 'battery';
+    if (lower.includes('تلميع') || lower.includes('detail')) return 'detailing';
+    if (lower.includes('دور') || lower.includes('صيان') || lower.includes('maint')) return 'maintenance';
+    return val;
+  };
+
   React.useEffect(() => {
     if (selectedService) {
-      setValue('serviceType', selectedService);
+      const key = normalizeServiceType(selectedService);
+      setValue('serviceType', key);
+      if (selectedService.includes('عرض:') || selectedService.includes('باقة')) {
+        setValue('description', `طلب الاستفادة من ${selectedService}`);
+      }
     }
   }, [selectedService, setValue]);
 
@@ -1558,7 +1766,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
     };
 
     const serviceTitle = serviceLabels[data.serviceType] || data.serviceType || 'صيانة متنقلة';
-    const cleanPhone = data.phone.trim();
+    const cleanPhone = normalizeCredentialsInput(data.phone);
     const uniqueBookingId = `DRF-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
@@ -1584,6 +1792,58 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
       await addDoc(collection(db, 'maintenance'), bookingDocData);
       
+      // 1b. Automatically open/update customer file in Firestore (طلب العميل: مجرد ما يحجز العميل ينفتح له ملف)
+      try {
+        const customersRef = collection(db, 'customers');
+        const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
+        const carInfo = {
+          make: data.carMake.trim(),
+          model: `${data.carMake.trim()} ${data.carModel.trim()}`.trim(),
+          year: data.carYear.trim()
+        };
+
+        if (!custSnap.empty) {
+          const existingDoc = custSnap.docs[0];
+          const existingData = existingDoc.data();
+          const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
+          
+          const hasCar = existingVehicles.some(v => 
+            v.model?.toLowerCase() === carInfo.model.toLowerCase() ||
+            (v.make?.toLowerCase() === carInfo.make.toLowerCase() && v.model?.toLowerCase() === data.carModel.trim().toLowerCase())
+          );
+          const updatedVehicles = hasCar ? existingVehicles : [...existingVehicles, carInfo];
+          const newVisits = (Number(existingData.totalVisits) || 1) + 1;
+
+          await updateDoc(doc(db, 'customers', existingDoc.id), {
+            name: (resolvedCustomerName && resolvedCustomerName !== 'عميل' && (!existingData.name || existingData.name.includes('عميل'))) ? resolvedCustomerName : existingData.name,
+            vehicles: updatedVehicles,
+            totalVisits: newVisits,
+            lastVisitDate: new Date().toISOString(),
+            status: newVisits >= 3 ? 'vip' : (existingData.status || 'regular'),
+            notes: existingData.notes ? `${existingData.notes}\n• حجز جديد: ${serviceTitle}` : `حجز خدمة: ${serviceTitle}`,
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Open a brand new customer file
+          await addDoc(customersRef, {
+            name: resolvedCustomerName || 'عميل كريم',
+            phone: cleanPhone,
+            city: 'جدة',
+            address: locationName || 'جدة',
+            vehicles: [carInfo],
+            totalVisits: 1,
+            firstVisitDate: new Date().toISOString(),
+            lastVisitDate: new Date().toISOString(),
+            status: 'new',
+            notes: `حجز خدمة: ${serviceTitle}${data.description ? ` - ${data.description.trim()}` : ''}`,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      } catch (custFileErr) {
+        console.warn('Error opening customer file on booking:', custFileErr);
+      }
+
       // Save phone to localStorage for auto-tracking
       localStorage.setItem('drfix_customer_phone', cleanPhone);
       setConfirmedBookingId(uniqueBookingId);
@@ -1677,6 +1937,21 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           settings?.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
           { inline_keyboard }
         );
+      }
+
+      // Track conversion in Google Analytics 4 (G-63DGX8ECEL)
+      try {
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+          (window as any).gtag('event', 'generate_lead', {
+            event_category: 'Service Booking',
+            event_label: serviceTitle,
+            booking_id: uniqueBookingId,
+            car: `${data.carMake} ${data.carModel}`,
+            service: serviceTitle
+          });
+        }
+      } catch (gtagErr) {
+        console.warn('GA4 event tracking notice:', gtagErr);
       }
 
       // 3. Prepare WhatsApp Message with Unique Booking ID
@@ -1788,6 +2063,9 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all appearance-none text-sm md:text-base text-white"
               >
                 <option value="" className="bg-brand-black">{t.booking.selectService}</option>
+                {selectedService && !['home-service', 'mechanic', 'electric', 'programming', 'bodywork', 'maintenance', 'ac', 'brakes', 'inspection', 'tires', 'battery', 'detailing', 'other'].includes(normalizeServiceType(selectedService)) && (
+                  <option value={normalizeServiceType(selectedService)} className="bg-brand-black text-brand-red font-bold">⭐ {selectedService}</option>
+                )}
                 <option value="home-service" className="bg-brand-black">{t.booking.services.doorToDoor}</option>
                 <option value="mechanic" className="bg-brand-black">{t.booking.services.mechanic}</option>
                 <option value="electric" className="bg-brand-black">{t.booking.services.electric}</option>
@@ -2344,6 +2622,15 @@ const AdminDashboard = ({
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff'>('dashboard');
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
+    type: 'batch_bookings' | 'batch_offers' | 'single';
+    collectionName?: string;
+    id?: string;
+    title?: string;
+    count?: number;
+  } | null>(null);
+  const [isDeletingProcess, setIsDeletingProcess] = useState(false);
+  const [deleteToast, setDeleteToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
   const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -2482,6 +2769,12 @@ const AdminDashboard = ({
     imageUrl: '',
     category: 'صيانة دورية'
   });
+
+  const [uploadedImageMeta, setUploadedImageMeta] = useState<{
+    logo?: UploadedImageInfo;
+    hero?: UploadedImageInfo;
+    gallery?: UploadedImageInfo;
+  }>({});
 
   const [testimonialForm, setTestimonialForm] = useState({
     name: '',
@@ -2744,17 +3037,61 @@ const AdminDashboard = ({
       if (editingItem && editingItem.type === 'booking') {
         await updateDoc(doc(db, 'maintenance', editingItem.id), {
           ...formData,
-          cost: Number(formData.cost)
+          cost: 0
         });
       } else {
         await addDoc(collection(db, 'maintenance'), {
           ...formData,
-          cost: Number(formData.cost),
+          cost: 0,
           serviceDate: serverTimestamp(),
           status: 'pending'
         });
       }
-      setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '', status: 'pending' });
+
+      // Automatically sync/open customer file
+      if (formData.customerPhone) {
+        try {
+          const cleanPhone = formData.customerPhone.trim();
+          const customersRef = collection(db, 'customers');
+          const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
+          const carInfo = {
+            model: formData.carModel.trim(),
+            notes: formData.serviceType
+          };
+
+          if (!custSnap.empty) {
+            const existingDoc = custSnap.docs[0];
+            const existingData = existingDoc.data();
+            const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
+            const hasCar = existingVehicles.some(v => v.model?.toLowerCase() === carInfo.model.toLowerCase());
+            const updatedVehicles = hasCar ? existingVehicles : [...existingVehicles, carInfo];
+            await updateDoc(doc(db, 'customers', existingDoc.id), {
+              vehicles: updatedVehicles,
+              totalVisits: (Number(existingData.totalVisits) || 1) + 1,
+              lastVisitDate: new Date().toISOString(),
+              updatedAt: serverTimestamp()
+            });
+          } else {
+            await addDoc(customersRef, {
+              name: 'عميل كريم',
+              phone: cleanPhone,
+              city: 'جدة',
+              vehicles: [carInfo],
+              totalVisits: 1,
+              firstVisitDate: new Date().toISOString(),
+              lastVisitDate: new Date().toISOString(),
+              status: 'new',
+              notes: `حجز خدمة: ${formData.serviceType}${formData.notes ? ` - ${formData.notes}` : ''}`,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch (cErr) {
+          console.warn('Customer auto-create error in handleAddRecord:', cErr);
+        }
+      }
+
+      setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '0', status: 'pending' });
       setIsAdding(false);
       setEditingItem(null);
     } catch (error) {
@@ -2792,17 +3129,61 @@ const AdminDashboard = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const origSizeBytes = file.size;
+    const origSizeFormatted = formatBytes(origSizeBytes);
+
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result as string;
-      const compressed = await compressImage(base64String);
+
+      // Extract original dimensions
+      const tempImg = new Image();
+      tempImg.src = base64String;
+      await new Promise((res) => { tempImg.onload = res; tempImg.onerror = res; });
+      const origDim = tempImg.naturalWidth ? `${tempImg.naturalWidth} × ${tempImg.naturalHeight} بكسل` : 'غير محدد';
+
+      // Optimized dimensions according to image role
+      const maxWidth = type === 'settings' ? 600 : type === 'hero' ? 1400 : 1000;
+      const maxHeight = type === 'settings' ? 600 : type === 'hero' ? 900 : 800;
+      const quality = type === 'settings' ? 0.85 : 0.75;
+      const isPng = file.type === 'image/png' || base64String.startsWith('data:image/png');
+
+      const compressed = await compressImage(base64String, maxWidth, maxHeight, quality, type === 'settings' && isPng);
+
+      // Extract compressed dimensions & size
+      const compImg = new Image();
+      compImg.src = compressed;
+      await new Promise((res) => { compImg.onload = res; compImg.onerror = res; });
+      const compDim = compImg.naturalWidth ? `${compImg.naturalWidth} × ${compImg.naturalHeight} بكسل` : 'غير محدد';
+
+      const compSizeBytes = getBase64SizeInBytes(compressed);
+      const compSizeFormatted = formatBytes(compSizeBytes);
+      const savings = origSizeBytes > compSizeBytes 
+        ? `${Math.round(((origSizeBytes - compSizeBytes) / origSizeBytes) * 100)}%` 
+        : undefined;
+
+      const metaInfo: UploadedImageInfo = {
+        name: file.name,
+        origSize: origSizeFormatted,
+        origSizeBytes,
+        compSize: compSizeFormatted,
+        compSizeBytes,
+        origDim,
+        compDim,
+        savings
+      };
+
+      setUploadedImageMeta(prev => ({
+        ...prev,
+        [type === 'settings' ? 'logo' : type]: metaInfo
+      }));
       
       if (type === 'gallery') {
-        setGalleryForm({ ...galleryForm, imageUrl: compressed });
+        setGalleryForm(prev => ({ ...prev, imageUrl: compressed }));
       } else if (type === 'hero') {
-        setSettingsForm({ ...settingsForm, heroImageUrl: compressed });
+        setSettingsForm(prev => ({ ...prev, heroImageUrl: compressed }));
       } else {
-        setSettingsForm({ ...settingsForm, logoUrl: compressed });
+        setSettingsForm(prev => ({ ...prev, logoUrl: compressed }));
       }
     };
     reader.readAsDataURL(file);
@@ -2844,6 +3225,7 @@ const AdminDashboard = ({
         await addDoc(collection(db, 'gallery'), { ...data, createdAt: serverTimestamp() });
       }
       setGalleryForm({ title: '', imageUrl: '', category: 'صيانة دورية' });
+      setUploadedImageMeta(prev => ({ ...prev, gallery: undefined }));
       setIsAdding(false);
       setEditingItem(null);
     } catch (error) {
@@ -2906,6 +3288,22 @@ const AdminDashboard = ({
         imageUrl: item.imageUrl || '',
         category: item.category || 'صيانة دورية'
       });
+      if (item.imageUrl && item.imageUrl.startsWith('data:')) {
+        const sz = getBase64SizeInBytes(item.imageUrl);
+        setUploadedImageMeta(prev => ({
+          ...prev,
+          gallery: {
+            name: item.title || 'صورة المعرض',
+            origSize: formatBytes(sz),
+            origSizeBytes: sz,
+            compSize: formatBytes(sz),
+            compSizeBytes: sz,
+            compDim: 'محفوظة مسبقاً'
+          }
+        }));
+      } else {
+        setUploadedImageMeta(prev => ({ ...prev, gallery: undefined }));
+      }
     } else if (type === 'booking') {
       setFormData({
         customerPhone: item.customerPhone || '',
@@ -2936,37 +3334,21 @@ const AdminDashboard = ({
     }
   };
 
-  const handleDeleteAllOffers = async () => {
-    if (window.confirm('هل أنت متأكد من رغبتك في حذف جميع العروض بالكامل لإعادة بنائها من جديد؟')) {
-      try {
-        setLoading(true);
-        for (const o of offers) {
-          await deleteDoc(doc(db, 'offers', o.id));
-        }
-        alert('تم حذف جميع العروض بنجاح. يمكنك الآن إضافة وبناء عروضك الجديدة.');
-      } catch (error) {
-        console.error("Error deleting all offers:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
+  const handleDeleteAllOffers = () => {
+    setDeleteConfirmTarget({
+      type: 'batch_offers',
+      title: 'حذف جميع العروض الترويجية',
+      count: offers.length
+    });
   };
 
-  const handleDelete = async (collectionName: string, id: string) => {
-    if (window.confirm('هل أنت متأكد من الحذف؟')) {
-      try {
-        await deleteDoc(doc(db, collectionName, id));
-        if (collectionName === 'maintenance') {
-          setSelectedBookingIds(prev => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        }
-      } catch (error) {
-        console.error(`Error deleting from ${collectionName}:`, error);
-      }
-    }
+  const handleDelete = (collectionName: string, id: string, label?: string) => {
+    setDeleteConfirmTarget({
+      type: 'single',
+      collectionName,
+      id,
+      title: label || (collectionName === 'maintenance' ? 'هذا الحجز' : 'هذا العنصر')
+    });
   };
 
   const handleToggleSelectBooking = (id: string) => {
@@ -2991,24 +3373,76 @@ const AdminDashboard = ({
     }
   };
 
-  const handleDeleteSelectedBookings = async () => {
-    if (selectedBookingIds.size === 0) return;
-    const count = selectedBookingIds.size;
-    if (window.confirm(`هل أنت متأكد من رغبتك في حذف (${count}) حجز محدد نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`)) {
-      try {
-        setLoading(true);
-        const ids: string[] = Array.from(selectedBookingIds);
-        for (const id of ids) {
-          await deleteDoc(doc(db, 'maintenance', String(id)));
-        }
+  const handleDeleteSelectedBookings = () => {
+    if (selectedBookingIds.size === 0) {
+      setDeleteToast({ message: 'يرجى تحديد حجز واحد على الأقل أولاً لحذفه', type: 'error' });
+      return;
+    }
+    setDeleteConfirmTarget({
+      type: 'batch_bookings',
+      title: `حذف (${selectedBookingIds.size}) حجز محدد`,
+      count: selectedBookingIds.size
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmTarget) return;
+    setIsDeletingProcess(true);
+    try {
+      if (deleteConfirmTarget.type === 'batch_bookings') {
+        const ids = Array.from(selectedBookingIds);
+        const count = ids.length;
+
+        // Optimistic UI update immediately
+        setRecords(prev => prev.filter(r => !selectedBookingIds.has(r.id)));
         setSelectedBookingIds(new Set());
-        alert(`تم حذف (${count}) حجز بنجاح.`);
-      } catch (error) {
-        console.error("Error deleting selected bookings:", error);
-        alert('حدث خطأ أثناء محاولة حذف الحجوزات.');
-      } finally {
-        setLoading(false);
+
+        // Delete all from Firestore in parallel
+        await Promise.all(ids.map(id => deleteDoc(doc(db, 'maintenance', String(id)))));
+
+        setDeleteConfirmTarget(null);
+        setDeleteToast({ message: `تم حذف (${count}) حجز بنجاح!`, type: 'success' });
+      } else if (deleteConfirmTarget.type === 'batch_offers') {
+        const offersToDelete = [...offers];
+        setOffers([]);
+        await Promise.all(offersToDelete.map(o => deleteDoc(doc(db, 'offers', o.id))));
+        setDeleteConfirmTarget(null);
+        setDeleteToast({ message: 'تم حذف جميع العروض بنجاح!', type: 'success' });
+      } else if (deleteConfirmTarget.type === 'single' && deleteConfirmTarget.collectionName && deleteConfirmTarget.id) {
+        const { collectionName, id } = deleteConfirmTarget;
+
+        if (collectionName === 'maintenance') {
+          setRecords(prev => prev.filter(r => r.id !== id));
+          setSelectedBookingIds(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+          if (selectedBookingDetails?.id === id) {
+            setSelectedBookingDetails(null);
+          }
+        } else if (collectionName === 'services') {
+          setServices(prev => prev.filter(s => s.id !== id));
+        } else if (collectionName === 'offers') {
+          setOffers(prev => prev.filter(o => o.id !== id));
+        } else if (collectionName === 'gallery') {
+          setGallery(prev => prev.filter(g => g.id !== id));
+        } else if (collectionName === 'testimonials') {
+          setTestimonials(prev => prev.filter(t => t.id !== id));
+        }
+
+        await deleteDoc(doc(db, collectionName, id));
+        setDeleteConfirmTarget(null);
+        setDeleteToast({ message: 'تم الحذف بنجاح!', type: 'success' });
       }
+    } catch (error) {
+      console.error("Error executing deletion:", error);
+      setDeleteToast({ message: 'حدث خطأ أثناء محاولة الحذف، يرجى المحاولة ثانية.', type: 'error' });
+    } finally {
+      setIsDeletingProcess(false);
+      setTimeout(() => {
+        setDeleteToast(null);
+      }, 4000);
     }
   };
 
@@ -3237,21 +3671,21 @@ const AdminDashboard = ({
   }
 
   return (
-    <section id="admin" className="py-24 bg-brand-black border-t border-white/5 min-h-screen">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex flex-wrap justify-between items-center gap-6 mb-12">
+    <section id="admin" className="py-8 sm:py-14 bg-brand-black border-t border-white/5 min-h-screen">
+      <div className="w-full max-w-[1550px] mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
           <div>
-            <h2 className="text-3xl font-display font-black italic mb-2">لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></h2>
-            <div className="flex items-center gap-4 text-gray-500 text-sm">
-              <span>إدارة الخدمات وفريق العمل</span>
-              <span className="w-1 h-1 bg-gray-700 rounded-full" />
-              <span>{records.length} حجز إجمالي</span>
+            <h2 className="text-2xl sm:text-3xl font-display font-black italic mb-1.5">لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></h2>
+            <div className="flex items-center gap-3 text-gray-400 text-xs sm:text-sm">
+              <span>إدارة الحجوزات والمواعيد والعملاء</span>
+              <span className="w-1.5 h-1.5 bg-brand-red rounded-full" />
+              <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold">{records.length} حجز إجمالي</span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
             {/* Logged-in Staff Badge */}
-            <div className="flex items-center gap-2.5 px-3.5 py-2 bg-white/5 border border-white/10 rounded-2xl">
-              <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-bold text-xs">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-xl">
+              <div className="w-7 h-7 rounded-lg bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-bold text-xs">
                 {currentStaffUser?.fullName?.charAt(0) || 'D'}
               </div>
               <div className="text-right">
@@ -3266,10 +3700,11 @@ const AdminDashboard = ({
 
             <button 
               onClick={() => window.location.href = '/'}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl font-bold text-xs sm:text-sm hover:bg-white/10 transition-all text-gray-300"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white/5 border border-white/10 rounded-xl font-bold text-xs sm:text-sm hover:bg-white/10 transition-all text-gray-300 cursor-pointer"
+              title="العودة إلى واجهة الموقع الرئيسية"
             >
               <ArrowRight className="w-4 h-4" />
-              الموقع
+              <span>الموقع</span>
             </button>
             
             {/* Sound alert toggle */}
@@ -3282,21 +3717,21 @@ const AdminDashboard = ({
                 }
               }}
               className={cn(
-                "p-2.5 sm:p-3 border rounded-xl transition-all cursor-pointer",
+                "p-2 sm:p-2.5 border rounded-xl transition-all cursor-pointer",
                 settingsForm.enableSoundAlerts !== false 
                   ? "bg-brand-red/10 border-brand-red/30 text-brand-red" 
                   : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
               )}
               title={settingsForm.enableSoundAlerts !== false ? "الصوت مفعل للحجوزات الجديدة (اضغط للتعطيل)" : "تفعيل الصوت التنبيهي"}
             >
-              {settingsForm.enableSoundAlerts !== false ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+              {settingsForm.enableSoundAlerts !== false ? <Volume2 className="w-4.5 h-4.5" /> : <VolumeX className="w-4.5 h-4.5" />}
             </button>
 
             {/* PWA Install Button */}
             <button
               onClick={handleInstallPWA}
               className={cn(
-                "hidden sm:flex items-center gap-2 px-4 py-2.5 border rounded-xl font-bold text-xs transition-all cursor-pointer",
+                "hidden sm:flex items-center gap-1.5 px-3 py-2 border rounded-xl font-bold text-xs transition-all cursor-pointer",
                 isPWAInstalled 
                   ? "bg-green-500/10 border-green-500/20 text-green-400" 
                   : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
@@ -3304,7 +3739,7 @@ const AdminDashboard = ({
               title="تثبيت لوحة التحكم كتطبيق مستقل على جوالك أو جهازك"
             >
               <Download className="w-4 h-4 text-brand-red" />
-              <span>{isPWAInstalled ? "التطبيق مثبت ✓" : "تثبيت كتطبيق (PWA)"}</span>
+              <span>{isPWAInstalled ? "مثبت ✓" : "تثبيت تطبيق (PWA)"}</span>
             </button>
 
             {typeof Notification !== 'undefined' && (
@@ -3322,54 +3757,85 @@ const AdminDashboard = ({
                   }
                 }}
                 className={cn(
-                  "p-2.5 sm:p-3 border rounded-xl transition-all cursor-pointer",
+                  "p-2 sm:p-2.5 border rounded-xl transition-all cursor-pointer",
                   notificationPermission === 'granted' ? "bg-green-500/10 border-green-500/20 text-green-500" : 
                   notificationPermission === 'denied' ? "bg-red-500/10 border-red-500/20 text-red-500" :
                   "bg-white/5 border-white/10 text-yellow-500 hover:bg-white/10"
                 )}
                 title={notificationPermission === 'granted' ? "التنبيهات مفعلة (اضغط للتجربة)" : "تفعيل التنبيهات"}
               >
-                {notificationPermission === 'granted' ? <Bell className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                {notificationPermission === 'granted' ? <Bell className="w-4.5 h-4.5" /> : <AlertCircle className="w-4.5 h-4.5" />}
               </button>
             )}
 
             {userPermissions.canManageBookings !== false && (
               <button 
                 onClick={() => setIsAdding(true)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
               >
-                <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-                إضافة حجز
+                <PlusCircle className="w-4 h-4" />
+                <span>إضافة حجز</span>
               </button>
             )}
 
             <button 
               onClick={onLogout}
-              className="p-2.5 sm:p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
+              className="p-2 sm:p-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
               title="تسجيل الخروج"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4.5 h-4.5" />
             </button>
           </div>
         </div>
 
-        {/* Main Navigation Tabs */}
-        <div className="flex overflow-x-auto gap-2 mb-8 bg-white/5 p-2 rounded-2xl border border-white/5 no-scrollbar">
-          {allowedNavTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={cn(
-                "flex items-center gap-2 px-5 py-3 rounded-xl font-bold transition-all shrink-0 text-xs sm:text-sm whitespace-nowrap cursor-pointer",
-                activeTab === tab.id 
-                  ? "bg-brand-red text-white shadow-lg shadow-brand-red/20" 
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-              )}
-            >
-              <tab.icon className="w-4 h-4 shrink-0" />
-              {tab.label}
-            </button>
-          ))}
+        {/* Main Navigation Tabs with Smooth Horizontal Controls for Laptops & Mobiles */}
+        <div className="relative mb-8 group">
+          {/* Scroll Right Button (in RTL, scrolls back to start) */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('admin-nav-tabs-scroll');
+              if (el) el.scrollBy({ left: 260, behavior: 'smooth' });
+            }}
+            className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-brand-dark/95 border border-white/20 text-white shadow-xl items-center justify-center hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer"
+            title="تمرير التبويبات لليمين"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Scroll Left Button (in RTL, scrolls forward to end) */}
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('admin-nav-tabs-scroll');
+              if (el) el.scrollBy({ left: -260, behavior: 'smooth' });
+            }}
+            className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-brand-dark/95 border border-white/20 text-white shadow-xl items-center justify-center hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer"
+            title="تمرير التبويبات لليسار"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div 
+            id="admin-nav-tabs-scroll"
+            className="flex overflow-x-auto gap-2 bg-white/5 p-2 rounded-2xl border border-white/10 scroll-smooth custom-tabs-scrollbar"
+          >
+            {allowedNavTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-all shrink-0 text-xs sm:text-sm whitespace-nowrap cursor-pointer",
+                  activeTab === tab.id 
+                    ? "bg-brand-red text-white shadow-lg shadow-brand-red/20 scale-[1.02]" 
+                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                )}
+              >
+                <tab.icon className="w-4 h-4 shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <AnimatePresence mode="wait">
@@ -3481,9 +3947,11 @@ const AdminDashboard = ({
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-bold">{record.cost} ريال</div>
+                        <div className="text-xs font-mono text-gray-400">
+                          {record.bookingId ? `#${record.bookingId}` : 'طلب صيانة'}
+                        </div>
                         <div className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block",
+                          "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1",
                           record.status === 'completed' ? "text-green-500 bg-green-500/10" :
                           record.status === 'in-progress' ? "text-blue-500 bg-blue-500/10" :
                           "text-yellow-500 bg-yellow-500/10"
@@ -3640,8 +4108,6 @@ const AdminDashboard = ({
                           generatedAt: new Date().toLocaleString('ar-SA'),
                           totalBookings: records.length,
                           completedBookings: records.filter(r => r.status === 'completed').length,
-                          totalRevenue: records.reduce((sum, r) => sum + (Number(r.cost) || 0), 0),
-                          avgTicket: Math.round(records.reduce((sum, r) => sum + (Number(r.cost) || 0), 0) / (records.length || 1)),
                           items: records.filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
                         };
                         exportBookingsToWord(summary);
@@ -3737,23 +4203,41 @@ const AdminDashboard = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {selectedCount > 0 && (
+                        {selectedCount > 0 ? (
                           <>
                             <button
+                              type="button"
                               onClick={() => setSelectedBookingIds(new Set())}
                               className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-bold transition-all cursor-pointer"
                             >
                               إلغاء التحديد
                             </button>
                             <button
+                              type="button"
                               onClick={handleDeleteSelectedBookings}
-                              className="flex items-center gap-1.5 px-4 py-1.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black shadow-lg shadow-brand-red/20 transition-all cursor-pointer"
+                              className="flex items-center gap-1.5 px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black shadow-lg shadow-brand-red/20 transition-all cursor-pointer active:scale-95"
                               title="حذف جميع الحجوزات المحددة نهائياً"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               <span>حذف الحجوزات المحددة ({selectedCount})</span>
                             </button>
                           </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (displayedBookings.length > 0) {
+                                handleSelectAllFilteredBookings(displayedBookings.map(b => b.id));
+                              } else {
+                                setDeleteToast({ message: 'لا توجد أي حجوزات معروضة لتحديدها', type: 'error' });
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-gray-200 border border-white/5 rounded-xl text-xs font-medium transition-all cursor-pointer"
+                            title="اضغط لتحديد الحجوزات أولاً"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 opacity-60" />
+                            <span>حذف الحجوزات (حدد أولاً)</span>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -3939,7 +4423,8 @@ const AdminDashboard = ({
                                         <Edit3 className="w-4 h-4" />
                                       </button>
                                       <button 
-                                        onClick={() => handleDelete('maintenance', record.id)}
+                                        type="button"
+                                        onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
                                         className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                                         title="حذف هذا الحجز"
                                       >
@@ -4102,7 +4587,8 @@ const AdminDashboard = ({
                                     <Edit3 className="w-4 h-4" />
                                   </button>
                                   <button 
-                                    onClick={() => handleDelete('maintenance', record.id)}
+                                    type="button"
+                                    onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
                                     className="p-2 text-gray-400 hover:text-brand-red bg-white/5 rounded-xl cursor-pointer"
                                     title="حذف الحجز"
                                   >
@@ -4844,6 +5330,15 @@ const AdminDashboard = ({
                                 افتراضي
                               </span>
                             )}
+                            {item.imageUrl && item.imageUrl.startsWith('data:') ? (
+                              <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-md rounded-md text-[9px] font-mono text-emerald-400 border border-white/10" dir="ltr">
+                                {formatBytes(getBase64SizeInBytes(item.imageUrl))}
+                              </span>
+                            ) : item.imageUrl ? (
+                              <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/80 backdrop-blur-md rounded-md text-[9px] font-mono text-gray-300 border border-white/10" dir="ltr">
+                                رابط ويب
+                              </span>
+                            ) : null}
                           </div>
                           <div className="p-4 flex items-center justify-between gap-2 flex-1">
                             <div className="text-xs font-bold text-white line-clamp-1 flex-1" title={item.title}>
@@ -5192,17 +5687,29 @@ const AdminDashboard = ({
 
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-300 uppercase flex items-center justify-between">
-                        <span>معرف المحادثة أو القناة (Telegram Chat ID)</span>
-                        <span className="text-[11px] text-sky-400 font-normal">من @userinfobot</span>
+                        <span>معرف المحادثة أو القروب (Telegram Chat ID)</span>
+                        <span className="text-[11px] text-sky-400 font-normal">شخصي أو مجموعة لفريق العمل</span>
                       </label>
                       <input 
                         type="text"
                         value={settingsForm.telegramChatId}
                         onChange={e => setSettingsForm({ ...settingsForm, telegramChatId: e.target.value })}
-                        placeholder="مثال: 987654321 أو -100123456789"
+                        placeholder="مثال: 867105778 أو عدة أشخاص: 867105778, 123456789 أو قروب: -100123456789"
                         className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono text-gray-200"
                         dir="ltr"
                       />
+                      <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-3 text-[11px] text-sky-300 space-y-1">
+                        <div className="font-bold flex items-center gap-1 text-sky-400">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>كيف ترسل الإشعارات لعدة أشخاص تختارهم؟</span>
+                        </div>
+                        <p className="text-gray-300 leading-relaxed">
+                          • <strong className="text-white">طريقة القروب (المفضلة):</strong> أنشئ قروب بتيليجرام وأضف البوت فيه كـ مشرف، ثم ضع آيدي القروب (يبدأ بـ <span className="font-mono text-white" dir="ltr">-100...</span>) لتصل الرسائل لجميع أعضاء القروب فوراً مهما كان عددهم.
+                        </p>
+                        <p className="text-gray-300 leading-relaxed">
+                          • <strong className="text-white">طريقة الأشخاص المحددين:</strong> ضع معرفات الأشخاص (Chat IDs) مفصولة بفواصل، مثال: <span className="font-mono text-white" dir="ltr">867105778, 987654321</span> وسيرسل البوت لكل شخص فيهم على حسابه الخاص.
+                        </p>
+                      </div>
                     </div>
 
                     {/* Test & Save Actions */}
@@ -5516,6 +6023,17 @@ const AdminDashboard = ({
                                   className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-brand-red text-white"
                                 />
                               </div>
+
+                              {/* Recommended & Uploaded Image Size Info */}
+                              <ImageUploadSizeBadge
+                                meta={uploadedImageMeta.logo}
+                                imageUrl={settingsForm.logoUrl}
+                                recommended={{
+                                  dimensions: '512 × 512 بكسل (مربع 1:1)',
+                                  idealSize: 'أقل من 300 كيلوبايت (KB)',
+                                  formats: 'PNG بخلفية مفرغة، WebP'
+                                }}
+                              />
                             </div>
                           </div>
                         </div>
@@ -5564,15 +6082,21 @@ const AdminDashboard = ({
                               />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-gray-400 uppercase">معرف المحادثة (Chat ID)</label>
+                              <label className="text-xs font-bold text-gray-400 uppercase flex items-center justify-between">
+                                <span>معرف المحادثة أو القروب (Chat ID / Group ID)</span>
+                                <span className="text-[10px] text-sky-400">يدعم عدة أشخاص أو قروب</span>
+                              </label>
                               <input 
                                 type="text"
                                 value={settingsForm.telegramChatId}
                                 onChange={e => setSettingsForm({ ...settingsForm, telegramChatId: e.target.value })}
-                                placeholder="مثال: 987654321"
+                                placeholder="مثال: 867105778 أو عدة أشخاص: 867105778, 123456789 أو قروب: -100123456789"
                                 className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:border-brand-red font-mono"
                                 dir="ltr"
                               />
+                              <p className="text-[10px] text-gray-400">
+                                يمكنك وضع معرف قروب تيليجرام (يبدأ بسالب مثل <span className="font-mono text-gray-300" dir="ltr">-100...</span>) أو معرفات عدة أشخاص مفصولة بفواصل.
+                              </p>
                             </div>
                           </div>
 
@@ -5697,6 +6221,17 @@ const AdminDashboard = ({
                                 accept="image/*"
                                 onChange={(e) => handleImageUpload(e, 'settings')}
                                 className="w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
+                              />
+
+                              {/* Recommended & Uploaded Image Size Info */}
+                              <ImageUploadSizeBadge
+                                meta={uploadedImageMeta.logo}
+                                imageUrl={settingsForm.logoUrl}
+                                recommended={{
+                                  dimensions: '512 × 512 بكسل (مربع 1:1)',
+                                  idealSize: 'أقل من 300 كيلوبايت (KB)',
+                                  formats: 'PNG بخلفية مفرغة، WebP'
+                                }}
                               />
                             </div>
                           </div>
@@ -6006,6 +6541,17 @@ const AdminDashboard = ({
                                 />
                               </div>
                             </div>
+
+                            {/* Recommended & Uploaded Image Size Info for Hero Image */}
+                            <ImageUploadSizeBadge
+                              meta={uploadedImageMeta.hero}
+                              imageUrl={settingsForm.heroImageUrl}
+                              recommended={{
+                                dimensions: '1200 × 800 أو 1920 × 1080 بكسل (16:9)',
+                                idealSize: '300 - 700 كيلوبايت (KB)',
+                                formats: 'JPG، WebP، PNG'
+                              }}
+                            />
                           </div>
 
                           {/* Floating Stat Badge on Image Configuration */}
@@ -6479,12 +7025,12 @@ const AdminDashboard = ({
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">التكلفة</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">حالة الضمان والاعتماد</label>
                       <input 
-                        type="number"
-                        value={formData.cost}
-                        onChange={e => setFormData({...formData, cost: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                        type="text"
+                        readOnly
+                        value="معتمد بضمان المركز الرسمي"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-emerald-400 font-bold text-sm cursor-default"
                       />
                     </div>
                     <div className="md:col-span-2 space-y-2">
@@ -6593,7 +7139,10 @@ const AdminDashboard = ({
                             <img src={galleryForm.imageUrl} alt="Preview" className="w-full h-full object-cover" loading="lazy" />
                             <button 
                               type="button"
-                              onClick={() => setGalleryForm({ ...galleryForm, imageUrl: '' })}
+                              onClick={() => {
+                                setGalleryForm({ ...galleryForm, imageUrl: '' });
+                                setUploadedImageMeta(prev => ({ ...prev, gallery: undefined }));
+                              }}
                               className="absolute top-2 right-2 p-2 bg-black/60 rounded-full text-white hover:bg-brand-red transition-colors"
                             >
                               <X className="w-4 h-4" />
@@ -6610,6 +7159,17 @@ const AdminDashboard = ({
                           value={galleryForm.imageUrl}
                           onChange={e => setGalleryForm({...galleryForm, imageUrl: e.target.value})}
                           className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
+                        />
+
+                        {/* Recommended & Uploaded Image Size Info for Gallery */}
+                        <ImageUploadSizeBadge
+                          meta={uploadedImageMeta.gallery}
+                          imageUrl={galleryForm.imageUrl}
+                          recommended={{
+                            dimensions: '800 × 600 بكسل أو 800 × 800 بكسل',
+                            idealSize: 'أقل من 500 كيلوبايت (KB)',
+                            formats: 'JPG، WebP، PNG'
+                          }}
                         />
                       </div>
                     </div>
@@ -6661,8 +7221,8 @@ const AdminDashboard = ({
                       <div className="font-bold text-white text-base" dir="ltr">{selectedBookingDetails.customerPhone}</div>
                     </div>
                     <div className="bg-white/5 p-4 rounded-xl space-y-1">
-                      <div className="text-xs text-gray-400">التكلفة التقديرية</div>
-                      <div className="font-bold text-brand-red text-base">{selectedBookingDetails.cost ? `${selectedBookingDetails.cost} ريال` : 'غير محدد'}</div>
+                      <div className="text-xs text-gray-400">الضمان والاعتماد</div>
+                      <div className="font-bold text-emerald-400 text-base">معتمد بضمان المركز</div>
                     </div>
                   </div>
 
@@ -6802,6 +7362,104 @@ const AdminDashboard = ({
                 </div>
               </motion.div>
             </div>
+          )}
+        </AnimatePresence>
+
+        {/* Delete Confirmation Modal (In-App Dialog - Safe for sandboxed iframes) */}
+        <AnimatePresence>
+          {deleteConfirmTarget && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="glass-card max-w-md w-full p-6 border-brand-red/40 relative space-y-5 bg-[#0f0f12] shadow-2xl"
+              >
+                <button 
+                  type="button"
+                  onClick={() => !isDeletingProcess && setDeleteConfirmTarget(null)}
+                  disabled={isDeletingProcess}
+                  className="absolute top-5 left-5 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-brand-red shrink-0">
+                    <Trash2 className="w-6 h-6 text-brand-red" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">
+                      {deleteConfirmTarget.type === 'batch_bookings' 
+                        ? `تأكيد حذف (${deleteConfirmTarget.count}) حجز` 
+                        : deleteConfirmTarget.type === 'batch_offers'
+                        ? 'تأكيد حذف كافة العروض'
+                        : 'تأكيد الحذف نهائياً'}
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {deleteConfirmTarget.type === 'batch_bookings'
+                        ? 'سيتم حذف جميع الحجوزات المحددة نهائياً من قاعدة البيانات'
+                        : deleteConfirmTarget.type === 'batch_offers'
+                        ? 'سيتم مسح جميع العروض المسجلة في النظام'
+                        : `سيتم حذف: ${deleteConfirmTarget.title || 'هذا العنصر'}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-200 leading-relaxed">
+                  ⚠️ تنبيه: هذا الإجراء نهائي ولا يمكن التراجع عنه. هل أنت متأكد من المتابعة؟
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmTarget(null)}
+                    disabled={isDeletingProcess}
+                    className="py-3 px-4 rounded-xl bg-white/10 hover:bg-white/15 text-gray-200 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer text-center"
+                  >
+                    إلغاء التراجع
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDelete}
+                    disabled={isDeletingProcess}
+                    className="py-3 px-4 rounded-xl bg-brand-red hover:bg-red-700 text-white text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isDeletingProcess ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جاري الحذف...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>{deleteConfirmTarget.type === 'batch_bookings' ? `نعم، حذف (${deleteConfirmTarget.count})` : 'نعم، حذف الآن'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Global Toast Notification */}
+        <AnimatePresence>
+          {deleteToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-xs font-bold pointer-events-none"
+              style={{
+                backgroundColor: deleteToast.type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(239, 68, 68, 0.95)',
+                color: '#fff',
+                borderColor: deleteToast.type === 'success' ? '#10b981' : '#ef4444'
+              }}
+            >
+              {deleteToast.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-white" /> : <AlertCircle className="w-4 h-4 text-white" />}
+              <span>{deleteToast.message}</span>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>

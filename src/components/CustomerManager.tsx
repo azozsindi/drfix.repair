@@ -77,7 +77,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'vip' | 'regular' | 'new'>('all');
-  const [sortBy, setSortBy] = useState<'visits' | 'spent' | 'recent' | 'name'>('recent');
+  const [sortBy, setSortBy] = useState<'visits' | 'vehicles' | 'recent' | 'name'>('recent');
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(new Set());
   
   // Modals
@@ -251,7 +251,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       return matchSearch && matchStatus;
     }).sort((a, b) => {
       if (sortBy === 'visits') return b.totalVisits - a.totalVisits;
-      if (sortBy === 'spent') return b.totalSpent - a.totalSpent;
+      if (sortBy === 'vehicles') return (b.vehicles?.length || 0) - (a.vehicles?.length || 0);
       if (sortBy === 'name') return a.name.localeCompare(b.name, 'ar');
       // recent default
       const dateA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : 0;
@@ -506,12 +506,12 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
         <div className="glass-card p-5 border-white/5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-black">
-            <DollarSign className="w-6 h-6" />
+            <Check className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-gray-400 text-xs font-mono">إجمالي إيرادات العملاء</div>
+            <div className="text-gray-400 text-xs font-mono">إجمالي زيارات الصيانة</div>
             <div className="text-2xl font-display font-black text-emerald-400">
-              {customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0).toLocaleString()} <span className="text-xs">ر.س</span>
+              {customers.reduce((sum, c) => sum + (c.totalVisits || 0), 0)}
             </div>
           </div>
         </div>
@@ -605,7 +605,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
               className="bg-black/60 border border-white/10 rounded-lg px-2.5 py-1 text-white text-xs outline-none focus:border-brand-red cursor-pointer"
             >
               <option value="recent">الأحدث زيارة</option>
-              <option value="spent">الأعلى إنفاقاً</option>
+              <option value="vehicles">الأكثر مركبات</option>
               <option value="visits">الأكثر زيارات</option>
               <option value="name">أبجدياً (أ-ي)</option>
             </select>
@@ -1022,8 +1022,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
                             {rec.notes && <div className="text-gray-500 italic mt-0.5">{rec.notes}</div>}
                           </div>
                           <div className="text-left shrink-0">
-                            <div className="font-display font-black text-brand-red text-sm">
-                              {rec.cost ? `${rec.cost} ر.س` : 'غير محدد'}
+                            <div className="text-emerald-400 font-bold text-xs">
+                              معتمد بضمان المركز
                             </div>
                             <span className={cn(
                               "text-[10px] px-2 py-0.5 rounded-full font-bold",
