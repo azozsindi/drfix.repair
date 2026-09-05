@@ -26,7 +26,8 @@
     <meta name="apple-mobile-web-app-title" content="DR.FIX" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="preload" as="image" href="/logo.png" />
+    <link rel="preload" as="image" href="/logo-custom.png" />
+    <link rel="preload" as="image" href="/hero-custom.jpg" />
     <link rel="manifest" href="/manifest.json" />
     
     <!-- Open Graph / Facebook / WhatsApp -->
@@ -50,64 +51,78 @@
     <meta property="twitter:description" content="DR.FIX ميكانيكي متنقل في جدة يقدم خدمات صيانة وإصلاح السيارات عند موقعك. احجز خدمة ميكانيكي متنقل بسرعة وسهولة." />
     <meta property="twitter:image" content="https://drfix.repair/logo.png" />
 
-    <!-- Structured Data / Schema for Mobile Mechanic in Jeddah -->
+    <!-- Structured Data / Schema for Google Site Name & Mobile Mechanic in Jeddah -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "AutoRepair",
-      "name": "DR.FIX",
-      "alternateName": ["DR FIX", "دكتور فيكس"],
-      "description": "DR.FIX ميكانيكي متنقل في جدة يقدم خدمات صيانة وإصلاح السيارات عند موقعك. فحص وبرمجة كمبيوتر، ميكانيكا، كهرباء، وصيانة سريعة.",
-      "url": "https://drfix.repair/",
-      "telephone": "+966546870807",
-      "priceRange": "$$",
-      "areaServed": {
-        "@type": "AdministrativeArea",
-        "name": "جدة"
-      },
-      "serviceArea": {
-        "@type": "GeoCircle",
-        "geoMidpoint": {
-          "@type": "GeoCoordinates",
-          "latitude": "21.5433",
-          "longitude": "39.1728"
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://drfix.repair/#website",
+          "name": "DR.FIX",
+          "alternateName": ["DR FIX", "Dr. Fix", "دكتور فيكس", "drfix.repair", "DR. FIX"],
+          "url": "https://drfix.repair/"
         },
-        "geoRadius": "50000"
-      },
-      "hasOfferCatalog": {
-        "@type": "OfferCatalog",
-        "name": "خدمات صيانة السيارات المتنقلة",
-        "itemListElement": [
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "ميكانيكي متنقل عند الموقع"
-            }
+        {
+          "@type": "AutoRepair",
+          "@id": "https://drfix.repair/#business",
+          "name": "DR.FIX",
+          "alternateName": ["DR FIX", "دكتور فيكس", "Dr. Fix"],
+          "image": "https://drfix.repair/logo.png",
+          "logo": "https://drfix.repair/logo.png",
+          "description": "DR.FIX ميكانيكي متنقل في جدة يقدم خدمات صيانة وإصلاح السيارات عند موقعك. فحص وبرمجة كمبيوتر، ميكانيكا، كهرباء، وصيانة سريعة.",
+          "url": "https://drfix.repair/",
+          "telephone": "+966546870807",
+          "priceRange": "$$",
+          "areaServed": {
+            "@type": "AdministrativeArea",
+            "name": "جدة"
           },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "فحص وتشخيص الأعطال بالكمبيوتر"
-            }
+          "serviceArea": {
+            "@type": "GeoCircle",
+            "geoMidpoint": {
+              "@type": "GeoCoordinates",
+              "latitude": "21.5433",
+              "longitude": "39.1728"
+            },
+            "geoRadius": "50000"
           },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "كهرباء وبطاريات سيارات متنقلة"
-            }
-          },
-          {
-            "@type": "Offer",
-            "itemOffered": {
-              "@type": "Service",
-              "name": "صيانة دورية وسريعة"
-            }
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "خدمات صيانة السيارات المتنقلة",
+            "itemListElement": [
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "ميكانيكي متنقل عند الموقع"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "فحص وتشخيص الأعطال بالكمبيوتر"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "كهرباء وبطاريات سيارات متنقلة"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "صيانة دورية وسريعة"
+                }
+              }
+            ]
           }
-        ]
-      }
+        }
+      ]
     }
     </script>
   </head>

@@ -1,5 +1,30 @@
 import { Timestamp } from 'firebase/firestore';
 
+export interface CustomerCar {
+  id: string;
+  make: string;
+  model: string;
+  year: string;
+  plateNumber?: string;
+  color?: string;
+  notes?: string;
+  addedAt?: any;
+}
+
+export interface CustomerProfile {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  photoURL?: string;
+  googleUid?: string;
+  address?: string;
+  cars: CustomerCar[];
+  password?: string;
+  createdAt: any;
+  updatedAt?: any;
+}
+
 export interface MaintenanceRecord {
   id: string;
   bookingId?: string;

@@ -3,11 +3,18 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Unregister any active service worker to prevent cached stale assets in dev iframe
+// Unregister any active service worker and clear stale caches to prevent old code flash
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     for (const registration of registrations) {
       registration.unregister();
+    }
+  });
+}
+if ('caches' in window) {
+  caches.keys().then((names) => {
+    for (const name of names) {
+      caches.delete(name);
     }
   });
 }

@@ -8,3 +8,4 @@ export const db = initializeFirestore(app, {
   experimentalAutoDetectLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export { firebaseConfig };

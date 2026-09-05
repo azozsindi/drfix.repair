@@ -13,15 +13,21 @@
   "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
-      "src": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=192",
+      "src": "/logo.png",
       "sizes": "192x192",
-      "type": "image/jpeg",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=512",
+      "src": "/logo.png",
       "sizes": "512x512",
-      "type": "image/jpeg",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-custom.png",
+      "sizes": "600x600",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
@@ -31,21 +37,21 @@
       "short_name": "الحجوزات",
       "description": "عرض وإدارة طلبات الحجز المباشرة",
       "url": "/admin?tab=bookings",
-      "icons": [{ "src": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=96", "sizes": "96x96" }]
+      "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "حجز موعد صيانة",
       "short_name": "حجز جديد",
       "description": "إنشاء حجز صيانة سيارة للعميل",
-      "url": "/booking",
-      "icons": [{ "src": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=96", "sizes": "96x96" }]
+      "url": "/#booking",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "سجل الصيانة",
       "short_name": "سجل الصيانة",
       "description": "البحث في فواتير وتقارير الصيانة",
       "url": "/history",
-      "icons": [{ "src": "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=96", "sizes": "96x96" }]
+      "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
     }
   ]
 }

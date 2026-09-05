@@ -86,11 +86,13 @@ import {
   ShieldCheck,
   Users,
   UserCheck,
-  KeyRound
+  KeyRound,
+  ZoomIn
 } from 'lucide-react';
 import { ReportsView } from './components/ReportsView';
 import { StaffManagement } from './components/StaffManagement';
 import { CustomerManager } from './components/CustomerManager';
+import { CustomerProvider, CustomerNavButton, useCustomer } from './components/CustomerAccountSystem';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
 import { 
   StaffUser, 
@@ -504,6 +506,7 @@ interface AppSettings {
   showTestimonials?: boolean;
   showServices?: boolean;
   showContact?: boolean;
+  enableCustomerAccounts?: boolean;
   // SEO
   metaDescription?: string;
   metaKeywords?: string;
@@ -520,6 +523,37 @@ interface AppSettings {
   telegramChatId?: string;
   enableSoundAlerts?: boolean;
 }
+
+// Built-in Instant Brand Defaults to completely eliminate any reload/refresh flicker
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  siteName: "Dr.Fix",
+  heroTitle: "نصلح سيارتك",
+  heroSubtitle: "في مكانك",
+  heroBadge: "",
+  heroImageUrl: "/hero-custom.jpg",
+  logoUrl: "/logo-custom.png",
+  phone: "0546870807",
+  whatsapp: "966546870807",
+  heroButtonText: "احجز الآن",
+  heroImageBadgeTitle: "خدمة متنقلة وسريعة",
+  heroImageBadgeSubtitle: "نصلك أينما كنت بجدة",
+  tickerText: "",
+  primaryColor: "#E31837",
+  accentColor: "#0A0A0A",
+  borderRadius: "1rem",
+  fontFamily: "Cairo",
+  secondaryFont: "Inter",
+  buttonStyle: "solid",
+  showHeroImageBadge: true,
+  showServices: true,
+  showOffers: true,
+  showGallery: true,
+  showTestimonials: true,
+  showContact: true,
+  showStats: true,
+  enableCustomerAccounts: true,
+  copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX"
+};
 
 // Audio synthesized notification chime for bookings
 export const playNotificationSound = () => {
@@ -866,6 +900,7 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   const location = useLocation();
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
+  const { customer, setIsPortalOpen, setIsAuthOpen } = useCustomer();
 
   const logoClicksRef = useRef(0);
   const lastLogoClickTimeRef = useRef(0);
@@ -945,24 +980,77 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   return (
     <nav className="fixed top-7 md:top-8 left-0 right-0 z-50 bg-brand-black/90 backdrop-blur-xl border-b border-white/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 md:py-4 flex justify-between items-center">
-        <Link to="/" onClick={handleLogoClick} className="flex items-center gap-3 group select-none">
-          <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
-            <img 
-              src={settings.logoUrl || '/logo.png'} 
-              alt={settings.siteName || "DR.FIX"} 
-              className="w-full h-full object-cover" 
-              referrerPolicy="no-referrer" 
-              loading="eager"
-              decoding="async"
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors">
-              {settings.siteName || 'Dr. Fix'}
-            </span>
-            <span className="text-[10px] text-gray-400 hidden sm:inline-block">صيانة سيارات احترافية</span>
-          </div>
-        </Link>
+        {/* Brand Logo & Customer Name Quick Profile Badge */}
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 sm:gap-3 group select-none shrink-0">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
+              <img 
+                src={settings.logoUrl || '/logo-custom.png'} 
+                alt={settings.siteName || "DR.FIX"} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer" 
+                loading="eager"
+                decoding="async"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors">
+                {settings.siteName || 'Dr. Fix'}
+              </span>
+              <span className="text-[10px] text-gray-400 hidden sm:inline-block">صيانة سيارات احترافية</span>
+            </div>
+          </Link>
+
+          {/* Customer Name & Maintenance Card Badge directly next to Logo */}
+          {settings.enableCustomerAccounts !== false && (
+            customer ? (
+              <button
+                type="button"
+                onClick={() => setIsPortalOpen(true)}
+                className="flex items-center gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-neutral-900/90 hover:bg-neutral-850 border border-brand-red/50 hover:border-brand-red text-white transition-all cursor-pointer group shadow-lg shadow-brand-red/10"
+                title="اضغط لفتح ملفك واستعراض كرت الصيانة المباشر"
+              >
+                <div className="relative shrink-0">
+                  {customer.photoURL ? (
+                    <img 
+                      src={customer.photoURL} 
+                      alt={customer.name} 
+                      className="w-6 h-6 rounded-full object-cover border border-brand-red/50" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-brand-red text-white flex items-center justify-center text-xs font-black shadow-inner">
+                      {customer.name?.charAt(0) || <User className="w-3.5 h-3.5" />}
+                    </div>
+                  )}
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <div className="flex flex-col text-right">
+                  <span className="text-xs font-bold text-gray-100 group-hover:text-white max-w-[85px] xs:max-w-[110px] sm:max-w-[150px] truncate leading-tight">
+                    {customer.name}
+                  </span>
+                  <span className="text-[9px] text-brand-red font-bold leading-none flex items-center gap-0.5 mt-0.5">
+                    <FileText className="w-2.5 h-2.5" />
+                    <span>كرت الصيانة</span>
+                  </span>
+                </div>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsAuthOpen(true)}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
+                title="تسجيل الدخول / كرت الصيانة"
+              >
+                <User className="w-3.5 h-3.5 text-brand-red" />
+                <span>دخول / كرت الصيانة</span>
+              </button>
+            )
+          )}
+        </div>
         
         {/* Desktop Menu */}
         <div className="hidden lg:flex items-center gap-5 xl:gap-7 text-sm font-bold uppercase tracking-wider">
@@ -976,6 +1064,9 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
             </button>
           ))}
           <LanguageToggle />
+          {settings.enableCustomerAccounts !== false && (
+            <CustomerNavButton />
+          )}
           <div className="flex items-center gap-2">
             <a 
               href={`tel:${settings.phone || '0546870807'}`} 
@@ -1039,6 +1130,12 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
                   <ChevronLeft className="w-4 h-4 opacity-50" />
                 </button>
               ))}
+
+              {settings.enableCustomerAccounts !== false && (
+                <div className="pt-1">
+                  <CustomerNavButton isMobile />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <a 
@@ -1150,6 +1247,22 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+
+  // Close modal on Escape key and prevent background scrolling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsImageModalOpen(false);
+    };
+    if (isImageModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isImageModalOpen]);
 
   const handleBookNow = () => {
     if (location.pathname === '/') {
@@ -1249,43 +1362,49 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
         </motion.div>
 
         <motion.div 
-          initial={{ opacity: 0, scale: 0.92 }}
+          initial={{ opacity: 1, y: 0 }}
           animate={{ 
-            opacity: 1, 
-            scale: 1,
-            y: [0, -10, 0]
+            y: [0, -8, 0]
           }}
           transition={{ 
-            duration: 1.2, 
-            delay: 0.2,
             y: {
               duration: 6,
               repeat: Infinity,
               ease: "easeInOut"
             }
           }}
-          className="relative px-2 sm:px-4 md:px-0"
+          className="relative px-1 sm:px-4 md:px-0"
         >
-          <div className="relative z-10 rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 red-glow shadow-2xl">
+          <div 
+            onClick={() => setIsImageModalOpen(true)}
+            className="relative z-10 rounded-2xl sm:rounded-3xl overflow-hidden border border-white/10 red-glow shadow-2xl cursor-pointer group select-none transition-all duration-300 active:scale-[0.99] hover:border-brand-red/60"
+            title={lang === 'ar' ? "انقر لعرض الصورة كاملة" : "Click to view full image"}
+          >
             <img 
-              src={settings.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
+              src={settings.heroImageUrl || "/hero-custom.jpg"} 
               alt="Dr. Fix Car Maintenance" 
-              className="w-full h-[200px] sm:h-[280px] md:h-[360px] lg:h-[420px] object-cover bg-neutral-950"
+              className="w-full h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] object-cover object-center bg-neutral-950 transition-transform duration-500 group-hover:scale-105"
               referrerPolicy="no-referrer"
               loading="eager"
               decoding="async"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60 pointer-events-none" />
+
+            {/* Tap to zoom hint badge */}
+            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md border border-white/20 rounded-full px-2.5 py-1 flex items-center gap-1.5 text-white/90 text-[11px] font-medium shadow-lg opacity-90 group-hover:opacity-100 group-hover:bg-brand-red transition-all">
+              <ZoomIn className="w-3.5 h-3.5 text-white" />
+              <span>{lang === 'ar' ? 'عرض كامل' : 'Full view'}</span>
+            </div>
             
             {/* Quick floating stat badge on image */}
             {settings.showHeroImageBadge !== false && (
-              <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 bg-brand-black/85 backdrop-blur-md border border-white/15 rounded-xl px-3.5 py-2 flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-green-500 animate-ping" />
+              <div className="absolute bottom-3 right-3 sm:bottom-6 sm:right-6 bg-brand-black/90 backdrop-blur-md border border-white/15 rounded-xl px-3 py-1.5 sm:px-3.5 sm:py-2 flex items-center gap-2.5 sm:gap-3 shadow-xl pointer-events-none">
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500 animate-ping shrink-0" />
                 <div className="text-right">
-                  <div className="text-xs font-bold text-white">
+                  <div className="text-[11px] sm:text-xs font-bold text-white leading-tight">
                     {settings.heroImageBadgeTitle || (lang === 'ar' ? "خدمة متنقلة وسريعة" : "Fast & Mobile Service")}
                   </div>
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
                     {settings.heroImageBadgeSubtitle || (lang === 'ar' ? "نصلك أينما كنت بجدة" : "We reach you anywhere in Jeddah")}
                   </div>
                 </div>
@@ -1297,6 +1416,60 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
           <div className="absolute -bottom-5 -left-5 md:-bottom-10 md:-left-10 w-36 h-36 md:w-64 md:h-64 bg-brand-red/15 blur-3xl rounded-full pointer-events-none" />
         </motion.div>
       </div>
+
+      {/* Full Image Lightbox Modal */}
+      <AnimatePresence>
+        {isImageModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setIsImageModalOpen(false)}
+            className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-3 sm:p-6 cursor-zoom-out"
+          >
+            {/* Top action bar */}
+            <div className="absolute top-4 sm:top-6 left-4 sm:left-6 right-4 sm:right-6 flex justify-between items-center z-20 pointer-events-auto">
+              <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-3.5 py-1.5 border border-white/15 text-xs text-white/90 font-medium">
+                <ZoomIn className="w-4 h-4 text-brand-red" />
+                <span>{lang === 'ar' ? 'عرض الصورة كاملة' : 'Full Image View'}</span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsImageModalOpen(false);
+                }}
+                className="w-10 h-10 rounded-full bg-white/15 hover:bg-brand-red text-white flex items-center justify-center transition-all duration-200 border border-white/20 active:scale-95 shadow-lg"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Full Image Box */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-5xl max-h-[85vh] w-full flex items-center justify-center"
+            >
+              <img
+                src={settings.heroImageUrl || "/hero-custom.jpg"}
+                alt="Dr. Fix Full"
+                className="max-h-[82vh] max-w-full w-auto h-auto object-contain rounded-xl sm:rounded-2xl border border-white/15 shadow-2xl"
+              />
+            </motion.div>
+
+            {/* Bottom helper tip */}
+            <div className="absolute bottom-4 sm:bottom-6 text-center text-xs text-gray-400 pointer-events-none">
+              {lang === 'ar' ? 'انقر في أي مكان للإغلاق' : 'Click anywhere to close'}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 };
@@ -1692,7 +1865,29 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   const [locationName, setLocationName] = useState('');
   
   const { t, lang } = useLanguage();
+  const { customer } = useCustomer();
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<BookingFormData>();
+
+  React.useEffect(() => {
+    if (customer) {
+      if (customer.name) setValue('customerName', customer.name);
+      if (customer.phone) setValue('phone', customer.phone);
+    }
+  }, [customer, setValue]);
+
+  React.useEffect(() => {
+    const handlePrefill = (e: any) => {
+      if (e.detail) {
+        if (e.detail.customerName) setValue('customerName', e.detail.customerName);
+        if (e.detail.customerPhone) setValue('phone', e.detail.customerPhone);
+        if (e.detail.carMake) setValue('carMake', e.detail.carMake);
+        if (e.detail.carModel) setValue('carModel', e.detail.carModel);
+        if (e.detail.carYear) setValue('carYear', e.detail.carYear);
+      }
+    };
+    window.addEventListener('drfix_prefill_booking', handlePrefill);
+    return () => window.removeEventListener('drfix_prefill_booking', handlePrefill);
+  }, [setValue]);
 
   const normalizeServiceType = (val?: string): string => {
     if (!val) return '';
@@ -1776,6 +1971,8 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
       const resolvedCustomerName = data.customerName?.trim() || cleanPhone;
       const bookingDocData = {
         bookingId: uniqueBookingId,
+        customerId: customer?.id || null,
+        customerEmail: customer?.email || '',
         customerPhone: cleanPhone,
         customerName: resolvedCustomerName,
         carMake: data.carMake.trim(),
@@ -2029,6 +2226,35 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
+            {customer && customer.cars && customer.cars.length > 0 && (
+              <div className="p-3.5 bg-brand-red/10 border border-brand-red/25 rounded-2xl animate-fadeIn">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Car className="w-4 h-4 text-brand-red" />
+                    سياراتك المحفوظة في حسابك:
+                  </span>
+                  <span className="text-[10px] text-gray-400">انقر لتعبئة بيانات السيارة فوراً</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {customer.cars.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setValue('carMake', c.make);
+                        setValue('carModel', c.model);
+                        setValue('carYear', c.year);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-black/60 hover:bg-brand-red border border-white/10 hover:border-brand-red text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm group"
+                    >
+                      <span>🚗 {c.make} {c.model} ({c.year})</span>
+                      {c.plateNumber && <span className="text-[10px] text-gray-400 group-hover:text-white font-mono">[{c.plateNumber}]</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.carMake}</label>
@@ -2818,6 +3044,7 @@ const AdminDashboard = ({
     showTestimonials: settings.showTestimonials ?? true,
     showServices: settings.showServices ?? true,
     showContact: settings.showContact ?? true,
+    enableCustomerAccounts: settings.enableCustomerAccounts ?? true,
     metaDescription: settings.metaDescription || '',
     metaKeywords: settings.metaKeywords || '',
     googleAnalyticsId: settings.googleAnalyticsId || '',
@@ -2915,6 +3142,7 @@ const AdminDashboard = ({
       showTestimonials: settings.showTestimonials ?? true,
       showServices: settings.showServices ?? true,
       showContact: settings.showContact ?? true,
+      enableCustomerAccounts: settings.enableCustomerAccounts ?? true,
       metaDescription: settings.metaDescription || '',
       metaKeywords: settings.metaKeywords || '',
       googleAnalyticsId: settings.googleAnalyticsId || '',
@@ -3532,6 +3760,9 @@ const AdminDashboard = ({
         ...settingsForm,
         updatedAt: serverTimestamp()
       });
+      try {
+        localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...settingsForm }));
+      } catch {}
       alert('تم تحديث الإعدادات بنجاح');
     } catch (error) {
       console.error("Error updating settings:", error);
@@ -6423,7 +6654,7 @@ const AdminDashboard = ({
                             <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/60 shadow-xl max-w-2xl mx-auto">
                               <div className="aspect-[16/9] sm:aspect-[21/9] w-full relative">
                                 <img 
-                                  src={settingsForm.heroImageUrl || "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000"} 
+                                  src={settingsForm.heroImageUrl || "/hero-custom.jpg"} 
                                   alt="Hero Preview" 
                                   className="w-full h-full object-cover"
                                   referrerPolicy="no-referrer"
@@ -6459,9 +6690,9 @@ const AdminDashboard = ({
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 {[
                                   {
-                                    title: 'محرك سيارة حديث (الافتراضية)',
-                                    url: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000',
-                                    badge: 'محرك رياضي'
+                                    title: 'صورة DR.FIX الحالية (المعتمدة)',
+                                    url: '/hero-custom.jpg',
+                                    badge: 'الهوية الرسمية'
                                   },
                                   {
                                     title: 'ورشة وميكانيك حديث',
@@ -6489,7 +6720,7 @@ const AdminDashboard = ({
                                     badge: 'صيانة سريعة'
                                   }
                                 ].map((preset, idx) => {
-                                  const isSelected = (settingsForm.heroImageUrl || 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=1000') === preset.url;
+                                  const isSelected = (settingsForm.heroImageUrl || '/hero-custom.jpg') === preset.url;
                                   return (
                                     <div
                                       key={idx}
@@ -6740,6 +6971,43 @@ const AdminDashboard = ({
                           <Eye className="w-5 h-5 text-brand-red" />
                           الأقسام والظهور
                         </h3>
+
+                        {/* Customer Account System Master Switch */}
+                        <div className="p-4 rounded-2xl bg-black/40 border border-brand-red/30">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2.5 rounded-xl bg-brand-red/20 text-brand-red border border-brand-red/30">
+                                <Users className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                                  نظام تسجيل دخول وحسابات العملاء
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">ميزة تجريبية مفعّلة</span>
+                                </h4>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  إظهار زر "تسجيل الدخول / حسابي" في أعلى الموقع للعملاء لحفظ سياراتهم وتتبع حالة صيانة حجوزاتهم. يمكنك إيقافه أو تشغيله بنقرة واحدة في أي وقت.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSettingsForm({
+                                ...settingsForm,
+                                enableCustomerAccounts: !(settingsForm.enableCustomerAccounts ?? true)
+                              })}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-all cursor-pointer shrink-0",
+                                (settingsForm.enableCustomerAccounts ?? true) ? "bg-brand-red" : "bg-gray-700"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                                (settingsForm.enableCustomerAccounts ?? true) ? "right-1" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           {[
                             { id: 'showStats', label: 'إحصائيات الأرقام', icon: BarChart },
@@ -7801,7 +8069,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
           <div className="flex items-center gap-2 mb-6">
             <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
               <img 
-                src={settings.logoUrl || '/logo.png'} 
+                src={settings.logoUrl || '/logo-custom.png'} 
                 alt="Logo" 
                 className="w-full h-full object-cover" 
                 referrerPolicy="no-referrer" 
@@ -8290,12 +8558,12 @@ function MainContent() {
     try {
       const cached = localStorage.getItem('drfix_app_settings');
       if (cached) {
-        return JSON.parse(cached);
+        return { ...DEFAULT_APP_SETTINGS, ...JSON.parse(cached) };
       }
     } catch (e) {
       console.error('Error loading cached settings:', e);
     }
-    return {};
+    return DEFAULT_APP_SETTINGS;
   });
   const navigate = useNavigate();
   const location = useLocation();
@@ -8334,18 +8602,24 @@ function MainContent() {
     const unsubscribe = onSnapshot(statsRef, (doc) => {
       if (doc.exists()) {
         const data = doc.data() as AppSettings;
-        setSettings(data);
+        const merged = { ...DEFAULT_APP_SETTINGS, ...data };
+        setSettings(merged);
         try {
-          localStorage.setItem('drfix_app_settings', JSON.stringify(data));
+          localStorage.setItem('drfix_app_settings', JSON.stringify(merged));
         } catch {
           try {
-            // If quota limit exceeded due to base64 images, store core visual keys
-            const trimmed = {
-              siteName: data.siteName,
-              logoUrl: data.logoUrl,
-              heroImageUrl: data.heroImageUrl,
-              whatsapp: data.whatsapp,
-              phone: data.phone,
+            // If quota limit exceeded due to large base64 strings, store critical visual keys
+            const trimmed: Partial<AppSettings> = {
+              siteName: data.siteName || DEFAULT_APP_SETTINGS.siteName,
+              heroTitle: data.heroTitle || DEFAULT_APP_SETTINGS.heroTitle,
+              heroSubtitle: data.heroSubtitle || DEFAULT_APP_SETTINGS.heroSubtitle,
+              heroBadge: data.heroBadge,
+              heroButtonText: data.heroButtonText || DEFAULT_APP_SETTINGS.heroButtonText,
+              logoUrl: data.logoUrl || DEFAULT_APP_SETTINGS.logoUrl,
+              heroImageUrl: data.heroImageUrl || DEFAULT_APP_SETTINGS.heroImageUrl,
+              whatsapp: data.whatsapp || DEFAULT_APP_SETTINGS.whatsapp,
+              phone: data.phone || DEFAULT_APP_SETTINGS.phone,
+              tickerText: data.tickerText,
               showHeroImageBadge: data.showHeroImageBadge,
               heroImageBadgeTitle: data.heroImageBadgeTitle,
               heroImageBadgeSubtitle: data.heroImageBadgeSubtitle
@@ -8586,7 +8860,9 @@ export default function App() {
       <HelmetProvider>
         <Router>
           <LanguageProvider>
-            <MainContent />
+            <CustomerProvider>
+              <MainContent />
+            </CustomerProvider>
           </LanguageProvider>
         </Router>
       </HelmetProvider>
