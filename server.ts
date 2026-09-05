@@ -8,6 +8,7 @@ import notifyVisitHandler from './api/notify-visit';
 import setupWebhookHandler from './api/setup-webhook';
 import statusRedirectHandler from './api/status-redirect';
 import accountingHandler from './api/accounting';
+import notifyCustomerRegistrationHandler from './api/notify-customer-registration';
 
 async function startServer() {
   const app = express();
@@ -53,6 +54,11 @@ async function startServer() {
   // Server-side Emergency / Visit Request Notification Trigger
   app.all('/api/notify-visit', async (req, res) => {
     await notifyVisitHandler(req, res);
+  });
+
+  // Server-side Customer Registration Notification Trigger
+  app.all('/api/notify-customer-registration', async (req, res) => {
+    await notifyCustomerRegistrationHandler(req, res);
   });
 
   // Direct Status Update & WhatsApp Redirect Route

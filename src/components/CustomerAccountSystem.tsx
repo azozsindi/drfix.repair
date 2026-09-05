@@ -6,7 +6,7 @@ import {
   MessageCircle, Check
 } from 'lucide-react';
 import { 
-  doc, setDoc, getDoc, updateDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
+  doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
 } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../firebase';
@@ -21,6 +21,128 @@ export const cleanSaudiPhone = (raw: string): string => {
     cleaned = '0' + cleaned;
   }
   return cleaned;
+};
+
+// Notification dispatcher when a customer registers or joins
+export const notifyAdminNewCustomerRegistration = async (params: {
+  name: string;
+  phone?: string;
+  email?: string;
+  car?: { make?: string; model?: string; year?: string };
+  source: 'google' | 'phone_register' | 'quick_booking';
+}) => {
+  try {
+    const rawPhone = (params.phone || '').trim();
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+    let intPhone = '';
+    if (cleanDigits.startsWith('00966')) {
+      intPhone = cleanDigits.slice(2);
+    } else if (cleanDigits.startsWith('05')) {
+      intPhone = '966' + cleanDigits.slice(1);
+    } else if (cleanDigits.startsWith('5') && cleanDigits.length === 9) {
+      intPhone = '966' + cleanDigits;
+    } else if (cleanDigits.startsWith('0') && !cleanDigits.startsWith('966')) {
+      intPhone = '966' + cleanDigits.replace(/^0+/, '');
+    } else if (!cleanDigits.startsWith('966') && cleanDigits.length === 9) {
+      intPhone = '966' + cleanDigits;
+    }
+
+    const saudiTime = new Intl.DateTimeFormat('ar-SA', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Riyadh'
+    }).format(new Date());
+
+    const sourceArabic = params.source === 'google' 
+      ? 'جوجل Google 🌐' 
+      : params.source === 'quick_booking'
+      ? 'فتح ملف تلقائي عبر حجز صيانة 🚗'
+      : 'تسجيل حساب جديد 📱';
+
+    const carText = params.car && (params.car.model || params.car.make)
+      ? `${params.car.make || ''} ${params.car.model || ''} ${params.car.year ? `(${params.car.year})` : ''}`.trim()
+      : '';
+
+    // 1. Try server-side notification endpoint
+    let serverSent = false;
+    try {
+      const res = await fetch('/api/notify-customer-registration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: params.name || 'عميل كريم',
+          phone: rawPhone,
+          email: params.email || '',
+          source: params.source,
+          car: carText
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.ok) serverSent = true;
+      }
+    } catch (e) {
+      console.warn('Server registration notification failed, falling back to direct:', e);
+    }
+
+    // 2. Direct fallback to Telegram bot if server-side wasn't delivered
+    if (!serverSent) {
+      const tgText = `🔔 <b>تسجيل عميل جديد في DR.FIX</b> 👤\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `👤 <b>اسم العميل:</b> ${params.name || 'عميل كريم'}\n` +
+        (rawPhone ? `📱 <b>رقم الجوال:</b> <code>${rawPhone}</code>\n` : '') +
+        (params.email ? `📧 <b>البريد:</b> <code>${params.email}</code>\n` : '') +
+        (carText ? `🚗 <b>السيارة:</b> ${carText}\n` : '') +
+        `🔑 <b>طريقة التسجيل:</b> ${sourceArabic}\n` +
+        `⏰ <b>التوقيت:</b> ${saudiTime}\n` +
+        `━━━━━━━━━━━━━━━━━━`;
+
+      const token = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
+      const chatId = '867105778';
+
+      let replyMarkup: any = undefined;
+      if (intPhone) {
+        replyMarkup = {
+          inline_keyboard: [
+            [
+              { text: '💬 محادثة واتساب', url: `https://wa.me/${intPhone}` },
+              { text: '📞 اتصال بالعميل', url: `tel:${rawPhone || intPhone}` }
+            ]
+          ]
+        };
+      }
+
+      fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: tgText,
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup
+        })
+      }).catch(err => console.warn('Direct Telegram customer notification error:', err));
+    }
+
+    // 3. Record in Firestore 'notifications' collection
+    await addDoc(collection(db, 'notifications'), {
+      type: 'new_customer_registration',
+      title: 'تسجيل عميل جديد 👤',
+      body: `انضم عميل جديد: ${params.name || 'عميل'} ${rawPhone ? `(${rawPhone})` : ''}`,
+      customerName: params.name || 'عميل',
+      customerPhone: rawPhone,
+      customerEmail: params.email || '',
+      source: params.source,
+      car: carText || null,
+      createdAt: serverTimestamp(),
+      read: false
+    }).catch(err => console.warn('Firestore notification add error:', err));
+
+    // 4. Dispatch browser custom event for active admin
+    window.dispatchEvent(new CustomEvent('drfix_admin_new_customer', { detail: params }));
+  } catch (err) {
+    console.warn('notifyAdminNewCustomerRegistration error:', err);
+  }
 };
 
 interface CustomerContextType {
@@ -197,6 +319,13 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updatedAt: serverTimestamp()
       };
       await setDoc(customerRef, profile);
+      // Trigger instant notifications to admin via Telegram & Firestore
+      notifyAdminNewCustomerRegistration({
+        name: profile.name,
+        email: profile.email,
+        phone: profile.phone,
+        source: 'google'
+      });
     }
 
     setCustomer(profile);
