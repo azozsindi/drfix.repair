@@ -6,6 +6,7 @@ export const translations = {
       offers: "العروض",
       gallery: "المعرض",
       history: "سجل الصيانة",
+      partners: "شركاء النجاح",
       bookNow: "احجز الآن",
       admin: "لوحة التحكم",
       contact: "تواصل معنا"
@@ -286,6 +287,7 @@ export const translations = {
       offers: "Offers",
       gallery: "Gallery",
       history: "History",
+      partners: "Success Partners",
       bookNow: "Book Now",
       admin: "Admin Dashboard",
       contact: "Contact Us"

@@ -218,3 +218,89 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
     }
   }
 };
+
+export interface Partner {
+  id?: string;
+  name: string;
+  category: string;
+  description: string;
+  imageUrl: string;
+  locationUrl: string;
+  address: string;
+  phone?: string;
+  whatsapp?: string;
+  discountRate?: string;
+  workingHours?: string;
+  rating?: number;
+  isActive: boolean;
+  order?: number;
+  createdAt?: any;
+}
+
+export const DEFAULT_PARTNERS: Partner[] = [
+  {
+    id: 'partner-1',
+    name: 'مركز النخبة لصيانة وتوضيب المحركات',
+    category: 'ميكانيكا وتوضيب',
+    description: 'متخصصون في تشخيص وصيانة المحركات والجيربكس الأوتوماتيكي لجميع السيارات الأمريكية واليابانية والكورية بأحدث أجهزة الفحص.',
+    imageUrl: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?q=80&w=800&auto=format&fit=crop',
+    locationUrl: 'https://maps.google.com/?q=Jeddah+Industrial+Area',
+    address: 'جدة - حي بني مالك، شارع فلسطين',
+    phone: '0546870807',
+    whatsapp: '966546870807',
+    discountRate: 'خصم 15% لعملاء Dr.Fix',
+    workingHours: '8:00 ص - 10:00 م',
+    rating: 4.9,
+    isActive: true,
+    order: 1
+  },
+  {
+    id: 'partner-2',
+    name: 'ورشة الأمان لسمكرة ودهان الأفران الحرارية',
+    category: 'سمكرة ودهان',
+    description: 'أفران طلاء حرارية إيطالية حديثة مع مطابقة ألوان الكمبيوتر الأصلية وضمان 3 سنوات على الدهان.',
+    imageUrl: 'https://images.unsplash.com/photo-1625047509168-a7026f36de04?q=80&w=800&auto=format&fit=crop',
+    locationUrl: 'https://maps.google.com/?q=Jeddah+Car+Services',
+    address: 'جدة - صناعية الشمال، عسفان',
+    phone: '0546870807',
+    whatsapp: '966546870807',
+    discountRate: 'خصم 10% + تلميع ساطع مجاني',
+    workingHours: '8:30 ص - 9:30 م',
+    rating: 4.8,
+    isActive: true,
+    order: 2
+  },
+  {
+    id: 'partner-3',
+    name: 'مركز كولد تك لتكييف وكهرباء السيارات',
+    category: 'كهرباء وتكييف',
+    description: 'تعبئة فريون أصلي 134a و R1234yf، تبديل الكمبروسرات، إصلاح دورة التبريد وفحص تسريبات الفريون بجهاز الليزر.',
+    imageUrl: 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?q=80&w=800&auto=format&fit=crop',
+    locationUrl: 'https://maps.google.com/?q=Jeddah+Automotive+AC',
+    address: 'جدة - حي الصفا، طريق الأمير متعب',
+    phone: '0546870807',
+    whatsapp: '966546870807',
+    discountRate: 'فحص دورة التكييف مجاناً مع أي إصلاح',
+    workingHours: '9:00 ص - 11:00 م',
+    rating: 4.9,
+    isActive: true,
+    order: 3
+  },
+  {
+    id: 'partner-4',
+    name: 'مؤسسة الدقة لقطع غيار السيارات الأصلية',
+    category: 'قطع غيار وزيوت',
+    description: 'توفير وتأمين قطع الغيار الأصلية والمصنعية وكالة لجميع الموديلات والماركات مع إمكانية التوصيل الفوري لموقع الفني.',
+    imageUrl: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?q=80&w=800&auto=format&fit=crop',
+    locationUrl: 'https://maps.google.com/?q=Jeddah+Auto+Parts',
+    address: 'جدة - حي مشرفة، شارع التحلية',
+    phone: '0546870807',
+    whatsapp: '966546870807',
+    discountRate: 'أسعار جملة خاصة لعملاء Dr.Fix',
+    workingHours: '8:00 ص - 10:30 م',
+    rating: 4.7,
+    isActive: true,
+    order: 4
+  }
+];
+

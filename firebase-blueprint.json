@@ -138,6 +138,26 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["action", "title", "targetId", "targetType"]
+    },
+    "partner": {
+      "title": "Success Partner",
+      "description": "A participating workshop or shop in the Dr.Fix network.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "locationUrl": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "discountRate": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "imageUrl", "locationUrl", "isActive"]
     }
   },
   "firestore": {
@@ -184,6 +204,10 @@
     "/payment_audit_logs/{logId}": {
       "schema": "paymentAuditLog",
       "description": "Collection of immutable accounting audit trail entries."
+    },
+    "/partners/{partnerId}": {
+      "schema": "partner",
+      "description": "Collection of success partner workshops and automotive stores."
     }
   }
 }

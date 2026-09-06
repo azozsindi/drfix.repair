@@ -18,7 +18,6 @@ import {
   MapPin, 
   Clock,
   Mail,
-  Smartphone,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -63,7 +62,6 @@ import {
   Twitter,
   Facebook,
   Youtube,
-  Monitor,
   MousePointer2,
   Edit3,
   Filter,
@@ -87,19 +85,24 @@ import {
   Users,
   UserCheck,
   KeyRound,
-  ZoomIn
+  ZoomIn,
+  Handshake
 } from 'lucide-react';
 import { ReportsView } from './components/ReportsView';
 import { StaffManagement } from './components/StaffManagement';
 import { CustomerManager } from './components/CustomerManager';
 import { CustomerProvider, CustomerNavButton, useCustomer } from './components/CustomerAccountSystem';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
+import { PartnersPage } from './components/PartnersPage';
+import { AdminPartnersManager } from './components/AdminPartnersManager';
 import { 
   StaffUser, 
   StaffRole, 
   StaffPermissions, 
   DEFAULT_SUPER_ADMIN_PERMISSIONS, 
-  ROLE_PRESETS 
+  ROLE_PRESETS,
+  Partner,
+  DEFAULT_PARTNERS
 } from './types';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
@@ -506,6 +509,7 @@ interface AppSettings {
   showTestimonials?: boolean;
   showServices?: boolean;
   showContact?: boolean;
+  showPartners?: boolean;
   enableCustomerAccounts?: boolean;
   // SEO
   metaDescription?: string;
@@ -534,6 +538,10 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   logoUrl: "/logo-custom.png",
   phone: "0546870807",
   whatsapp: "966546870807",
+  snapchat: "https://www.snapchat.com",
+  tiktok: "https://www.tiktok.com",
+  instagram: "https://www.instagram.com",
+  twitter: "https://x.com",
   heroButtonText: "احجز الآن",
   heroImageBadgeTitle: "خدمة متنقلة وسريعة",
   heroImageBadgeSubtitle: "نصلك أينما كنت بجدة",
@@ -551,6 +559,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showTestimonials: true,
   showContact: true,
   showStats: true,
+  showPartners: true,
   enableCustomerAccounts: true,
   copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX"
 };
@@ -940,9 +949,10 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
 
   const navLinks = [
     { name: t.nav.home, path: '/' },
-    { name: t.nav.services, path: '/#services' },
-    { name: t.nav.offers, path: '/#offers' },
-    { name: t.nav.gallery, path: '/#gallery' },
+    ...(settings.showServices !== false ? [{ name: t.nav.services, path: '/#services' }] : []),
+    ...(settings.showOffers !== false ? [{ name: t.nav.offers, path: '/#offers' }] : []),
+    ...(settings.showPartners !== false ? [{ name: t.nav.partners || 'شركاء النجاح', path: '/partners' }] : []),
+    ...(settings.showGallery !== false ? [{ name: t.nav.gallery, path: '/#gallery' }] : []),
     { name: t.nav.history, path: '/history' },
   ];
 
@@ -983,11 +993,11 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
         {/* Brand Logo & Customer Name Quick Profile Badge */}
         <div className="flex items-center gap-2.5 sm:gap-4">
           <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 sm:gap-3 group select-none shrink-0">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-black rounded-xl sm:rounded-2xl p-1 flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
               <img 
                 src={settings.logoUrl || '/logo-custom.png'} 
                 alt={settings.siteName || "DR.FIX"} 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-contain" 
                 referrerPolicy="no-referrer" 
                 loading="eager"
                 decoding="async"
@@ -2895,11 +2905,19 @@ const AdminDashboard = ({
   const [offers, setOffers] = useState<Offer[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [partners, setPartners] = useState<Partner[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_partners');
+      return cached ? JSON.parse(cached) : DEFAULT_PARTNERS;
+    } catch {
+      return DEFAULT_PARTNERS;
+    }
+  });
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners'>('dashboard');
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     type: 'batch_bookings' | 'batch_offers' | 'single';
@@ -2911,7 +2929,7 @@ const AdminDashboard = ({
   const [isDeletingProcess, setIsDeletingProcess] = useState(false);
   const [deleteToast, setDeleteToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'branding' | 'hero' | 'contact' | 'sections' | 'seo' | 'footer' | 'maintenance' | 'notifications'>('general');
-  const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery'>('services');
+  const [contentTab, setContentTab] = useState<'services' | 'offers' | 'gallery' | 'partners'>('services');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
@@ -3095,6 +3113,7 @@ const AdminDashboard = ({
     showTestimonials: settings.showTestimonials ?? true,
     showServices: settings.showServices ?? true,
     showContact: settings.showContact ?? true,
+    showPartners: settings.showPartners ?? true,
     enableCustomerAccounts: settings.enableCustomerAccounts ?? true,
     metaDescription: settings.metaDescription || '',
     metaKeywords: settings.metaKeywords || '',
@@ -3193,6 +3212,7 @@ const AdminDashboard = ({
       showTestimonials: settings.showTestimonials ?? true,
       showServices: settings.showServices ?? true,
       showContact: settings.showContact ?? true,
+      showPartners: settings.showPartners ?? true,
       enableCustomerAccounts: settings.enableCustomerAccounts ?? true,
       metaDescription: settings.metaDescription || '',
       metaKeywords: settings.metaKeywords || '',
@@ -3300,6 +3320,23 @@ const AdminDashboard = ({
         setStaffList(results);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'staff'));
 
+      // Partners
+      const qPartners = query(collection(db, 'partners'), orderBy('order', 'asc'));
+      const unsubPartners = onSnapshot(qPartners, (snapshot) => {
+        if (!snapshot.empty) {
+          const results: Partner[] = [];
+          snapshot.forEach((doc) => {
+            results.push({ id: doc.id, ...(doc.data() as any) } as Partner);
+          });
+          setPartners(results);
+          try { localStorage.setItem('drfix_partners', JSON.stringify(results)); } catch {}
+        } else {
+          setPartners(DEFAULT_PARTNERS);
+        }
+      }, (error) => {
+        console.warn('Partners fetch fallback:', error);
+      });
+
       return () => {
         unsubM();
         unsubT();
@@ -3307,6 +3344,7 @@ const AdminDashboard = ({
         unsubS();
         unsubG();
         unsubStaff();
+        unsubPartners();
       };
     }
   }, [isAdmin]);
@@ -3543,6 +3581,79 @@ const AdminDashboard = ({
       console.error("Error saving testimonial:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddPartner = async (partnerData: Omit<Partner, 'id'>) => {
+    try {
+      await addDoc(collection(db, 'partners'), {
+        ...partnerData,
+        createdAt: serverTimestamp()
+      });
+      setDeleteToast({ message: 'تمت إضافة الشريك بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error adding partner:', err);
+      handleFirestoreError(err, OperationType.CREATE, 'partners');
+      throw err;
+    }
+  };
+
+  const handleUpdatePartner = async (id: string, partnerData: Partial<Partner>) => {
+    try {
+      if (id.startsWith('partner-')) {
+        await setDoc(doc(db, 'partners', id), {
+          ...partnerData,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await updateDoc(doc(db, 'partners', id), {
+          ...partnerData,
+          updatedAt: serverTimestamp()
+        });
+      }
+      setDeleteToast({ message: 'تم تحديث بيانات الشريك بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error updating partner:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'partners');
+      throw err;
+    }
+  };
+
+  const handleDeletePartner = async (id: string) => {
+    try {
+      if (!id.startsWith('partner-')) {
+        await deleteDoc(doc(db, 'partners', id));
+      }
+      setPartners(prev => prev.filter(p => p.id !== id));
+      setDeleteToast({ message: 'تم حذف الشريك بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error deleting partner:', err);
+      handleFirestoreError(err, OperationType.DELETE, 'partners');
+      throw err;
+    }
+  };
+
+  const handleTogglePartnersVisibility = async () => {
+    const nextState = !(settings.showPartners !== false);
+    setSettingsForm(prev => ({ ...prev, showPartners: nextState }));
+    try {
+      await updateDoc(doc(db, 'stats', 'global'), {
+        showPartners: nextState,
+        updatedAt: serverTimestamp()
+      });
+      try {
+        localStorage.setItem('drfix_app_settings', JSON.stringify({
+          ...DEFAULT_APP_SETTINGS,
+          ...settings,
+          showPartners: nextState
+        }));
+      } catch {}
+      setDeleteToast({
+        message: nextState ? 'تم تفعيل وإظهار قسم شركاء النجاح في الموقع بنجاح' : 'تم إخفاء قسم شركاء النجاح بالكامل من الموقع',
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Error toggling partners visibility:', err);
     }
   };
 
@@ -3940,6 +4051,7 @@ const AdminDashboard = ({
     { id: 'analytics', label: 'التحليلات ومؤشرات الأداء', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
     { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
     { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText, allowed: userPermissions.canManageContent !== false },
+    { id: 'partners', label: 'شركاء النجاح', icon: Handshake, allowed: userPermissions.canManageContent !== false },
     { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings, allowed: userPermissions.canManageSettings !== false },
     { id: 'staff', label: 'فريق العمل والصلاحيات', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
   ].filter(tab => tab.allowed);
@@ -4132,22 +4244,26 @@ const AdminDashboard = ({
               className="space-y-8"
             >
               {/* Quick Actions */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onClick={() => setIsAdding(true)} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <button onClick={() => setIsAdding(true)} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center cursor-pointer">
                   <PlusCircle className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold italic">حجز جديد</span>
                 </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('offers'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center">
+                <button onClick={() => { setActiveTab('content'); setContentTab('offers'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
                   <Tag className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold italic">إدارة العروض الخاصة</span>
                 </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('services'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center">
+                <button onClick={() => { setActiveTab('content'); setContentTab('services'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
                   <Wrench className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold italic">إدارة الخدمات</span>
                 </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('gallery'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center">
+                <button onClick={() => { setActiveTab('content'); setContentTab('gallery'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
                   <Camera className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold italic">إدارة المعرض</span>
+                </button>
+                <button onClick={() => setActiveTab('partners')} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
+                  <Handshake className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-bold italic">شركاء النجاح</span>
                 </button>
               </div>
 
@@ -5396,11 +5512,12 @@ const AdminDashboard = ({
               className="space-y-8"
             >
               {/* Content Sub-tabs */}
-              <div className="flex gap-4 border-b border-white/5 pb-4">
+              <div className="flex gap-4 border-b border-white/5 pb-4 overflow-x-auto custom-tabs-scrollbar">
                 {[
                   { id: 'services', label: 'الخدمات' },
                   { id: 'offers', label: 'العروض الخاصة' },
                   { id: 'gallery', label: 'المعرض' },
+                  { id: 'partners', label: 'شركاء النجاح' },
                 ].map((sub) => (
                   <button
                     key={sub.id}
@@ -5668,6 +5785,17 @@ const AdminDashboard = ({
                     </div>
                   )}
                 </div>
+              )}
+
+              {contentTab === 'partners' && (
+                <AdminPartnersManager
+                  partners={partners}
+                  onAddPartner={handleAddPartner}
+                  onUpdatePartner={handleUpdatePartner}
+                  onDeletePartner={handleDeletePartner}
+                  isSectionVisible={settings.showPartners !== false}
+                  onToggleSectionVisibility={handleTogglePartnersVisibility}
+                />
               )}
             </motion.div>
           )}
@@ -6175,42 +6303,48 @@ const AdminDashboard = ({
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="flex flex-col lg:flex-row gap-8"
+              className="flex flex-col lg:flex-row gap-6 sm:gap-8"
             >
-              {/* Settings Sidebar */}
-              <div className="lg:w-64 flex-shrink-0">
-                <div className="glass-card p-4 border-white/5 space-y-2">
-                  {[
-                    { id: 'general', label: 'الإعدادات العامة', icon: Globe },
-                    { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
-                    { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
-                    { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout },
-                    { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
-                    { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
-                    { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
-                    { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
-                    { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setSettingsSubTab(tab.id as any)}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all",
-                        settingsSubTab === tab.id 
-                          ? "bg-brand-red text-white shadow-lg shadow-brand-red/20" 
-                          : "text-gray-400 hover:bg-white/5 hover:text-white"
-                      )}
-                    >
-                      <tab.icon className="w-4 h-4" />
-                      {tab.label}
-                    </button>
-                  ))}
+              {/* Settings Sub-Tabs Navigation: Horizontal scroll on mobile/tablet, vertical on desktop */}
+              <div className="lg:w-64 lg:shrink-0">
+                <div className="glass-card p-2.5 sm:p-3.5 lg:p-4 border-white/10 rounded-2xl sm:rounded-3xl shadow-xl">
+                  <div className="text-[11px] font-bold text-gray-400 uppercase mb-2 px-1 hidden lg:block">
+                    أقسام الإعدادات
+                  </div>
+                  <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 sm:gap-2 pb-1.5 lg:pb-0 scroll-smooth no-scrollbar">
+                    {[
+                      { id: 'general', label: 'الإعدادات العامة', icon: Globe },
+                      { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
+                      { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
+                      { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout },
+                      { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
+                      { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
+                      { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
+                      { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
+                      { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSettingsSubTab(tab.id as any)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer",
+                          settingsSubTab === tab.id 
+                            ? "bg-brand-red text-white shadow-lg shadow-brand-red/20 scale-[1.01]" 
+                            : "text-gray-400 hover:bg-white/5 hover:text-white"
+                        )}
+                      >
+                        <tab.icon className="w-4 h-4 shrink-0" />
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* Settings Content */}
-              <div className="flex-1">
-                <div className="glass-card p-8 border-white/5">
+              <div className="flex-1 min-w-0">
+                <div className="glass-card p-4 sm:p-6 lg:p-8 border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     {settingsSubTab === 'general' && (
                       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -6268,12 +6402,12 @@ const AdminDashboard = ({
                           <div className="flex flex-col sm:flex-row items-center gap-5">
                             {/* Live Logo Preview Box */}
                             <div className="flex flex-col items-center gap-1.5 shrink-0">
-                              <div className="w-24 h-24 rounded-full bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl relative group">
+                              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-neutral-950 border-2 border-white/20 p-2 flex items-center justify-center overflow-hidden shadow-2xl relative group">
                                 {settingsForm.logoUrl ? (
                                   <img 
                                     src={settingsForm.logoUrl} 
                                     alt="Logo Preview" 
-                                    className="w-full h-full object-cover" 
+                                    className="w-full h-full object-contain" 
                                   />
                                 ) : (
                                   <span className="text-brand-red font-display font-black text-xl italic tracking-tighter">
@@ -6281,7 +6415,7 @@ const AdminDashboard = ({
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-gray-400">معاينة الشعار في الهيدر</span>
+                              <span className="text-[11px] text-gray-400 font-bold">معاينة الشعار المعتمد</span>
                             </div>
 
                             <div className="flex-1 w-full space-y-3">
@@ -6470,18 +6604,23 @@ const AdminDashboard = ({
                           الهوية والثيمات
                         </h3>
 
-                        {/* Logo in Branding tab as well */}
-                        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
-                              <Camera className="w-4 h-4 text-brand-red" />
-                              شعار وهوية الموقع (Logo)
-                            </label>
+                        {/* Logo & Visual Identity in Branding tab */}
+                        <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-white/5 border border-white/10 space-y-5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                              <label className="text-sm font-bold text-white uppercase flex items-center gap-2">
+                                <Camera className="w-4 h-4 text-brand-red" />
+                                شعار وهوية الموقع (Logo & Brand Identity)
+                              </label>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                يمكنك رفع شعار المركز، وسيتم تكييف أبعاده وتطبيقه تلقائياً على كامل أقسام الموقع ومحركات البحث.
+                              </p>
+                            </div>
                             {settingsForm.logoUrl && (
                               <button
                                 type="button"
                                 onClick={() => setSettingsForm({ ...settingsForm, logoUrl: '' })}
-                                className="text-xs text-brand-red hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                                className="text-xs text-brand-red hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0 self-start sm:self-auto"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 استرجاع الشعار الافتراضي
@@ -6489,22 +6628,31 @@ const AdminDashboard = ({
                             )}
                           </div>
                           
-                          <div className="flex flex-col sm:flex-row items-center gap-5">
-                            <div className="w-20 h-20 rounded-full bg-black border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-xl shrink-0">
-                              {settingsForm.logoUrl ? (
-                                <img src={settingsForm.logoUrl} alt="Logo" className="w-full h-full object-cover" />
-                              ) : (
-                                <span className="text-brand-red font-display font-black text-lg italic tracking-tighter">
-                                  Dr.Fix
-                                </span>
-                              )}
+                          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                            {/* Main Identity Box */}
+                            <div className="flex flex-col items-center gap-2 shrink-0">
+                              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl bg-neutral-950 border-2 border-white/20 p-2.5 flex items-center justify-center overflow-hidden shadow-2xl relative group">
+                                {settingsForm.logoUrl ? (
+                                  <img 
+                                    src={settingsForm.logoUrl} 
+                                    alt="Logo Preview" 
+                                    className="w-full h-full object-contain" 
+                                  />
+                                ) : (
+                                  <span className="text-brand-red font-display font-black text-2xl italic tracking-tighter">
+                                    Dr.Fix
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-gray-400 font-bold">معاينة الشعار الأصلية</span>
                             </div>
-                            <div className="flex-1 w-full space-y-2">
+
+                            <div className="flex-1 w-full space-y-3">
                               <input 
                                 type="file"
                                 accept="image/*"
                                 onChange={(e) => handleImageUpload(e, 'settings')}
-                                className="w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
+                                className="w-full text-xs text-gray-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
                               />
 
                               {/* Recommended & Uploaded Image Size Info */}
@@ -6514,9 +6662,67 @@ const AdminDashboard = ({
                                 recommended={{
                                   dimensions: '512 × 512 بكسل (مربع 1:1)',
                                   idealSize: 'أقل من 300 كيلوبايت (KB)',
-                                  formats: 'PNG بخلفية مفرغة، WebP'
+                                  formats: 'PNG بخلفية مفرغة، WebP، SVG'
                                 }}
                               />
+                            </div>
+                          </div>
+
+                          {/* Multi-Platform Dimensions & Placement Preview */}
+                          <div className="pt-4 border-t border-white/10">
+                            <h4 className="text-xs font-bold text-gray-300 uppercase mb-3 flex items-center gap-2">
+                              <Eye className="w-3.5 h-3.5 text-brand-red" />
+                              معاينة أبعاد الشعار الحية عبر المنصة ومحركات البحث:
+                            </h4>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {/* 1. Header Preview */}
+                              <div className="p-3 bg-black/40 border border-white/10 rounded-xl flex items-center gap-3">
+                                <div className="w-11 h-11 bg-black rounded-xl p-1 border border-white/20 flex items-center justify-center shrink-0">
+                                  {settingsForm.logoUrl ? (
+                                    <img src={settingsForm.logoUrl} alt="Header Preview" className="w-full h-full object-contain" />
+                                  ) : (
+                                    <span className="text-brand-red text-xs font-black">Dr.Fix</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate">الهيدر العلوي (Navbar)</div>
+                                  <div className="text-[10px] text-gray-400">الأبعاد: 48×48 بكسل (احتواء كامل)</div>
+                                </div>
+                              </div>
+
+                              {/* 2. Google Search Result Favicon Preview */}
+                              <div className="p-3 bg-black/40 border border-white/10 rounded-xl flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white/10 rounded-lg p-1 border border-white/20 flex items-center justify-center shrink-0">
+                                  <img 
+                                    src="/favicon-48x48.png" 
+                                    alt="Google Favicon" 
+                                    className="w-full h-full object-contain"
+                                    onError={(e) => {
+                                      if (settingsForm.logoUrl) (e.target as HTMLImageElement).src = settingsForm.logoUrl;
+                                    }}
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate">أيقونة قوقل (Google Favicon)</div>
+                                  <div className="text-[10px] text-emerald-400">الأبعاد: 48×48 بكسل (مربع معتمد)</div>
+                                </div>
+                              </div>
+
+                              {/* 3. Footer Preview */}
+                              <div className="p-3 bg-black/40 border border-white/10 rounded-xl flex items-center gap-3 sm:col-span-2 lg:col-span-1">
+                                <div className="w-12 h-12 bg-black rounded-xl p-1 border border-white/20 flex items-center justify-center shrink-0">
+                                  {settingsForm.logoUrl ? (
+                                    <img src={settingsForm.logoUrl} alt="Footer Preview" className="w-full h-full object-contain" />
+                                  ) : (
+                                    <span className="text-brand-red text-xs font-black">Dr.Fix</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-white truncate">الفوتر وبطاقات العملاء</div>
+                                  <div className="text-[10px] text-gray-400">الأبعاد: 64×64 بكسل (واضح وفاخر)</div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -6947,58 +7153,63 @@ const AdminDashboard = ({
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                              <Instagram className="w-3 h-3" /> انستقرام
+                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
+                              <img src="/social/instagram.svg" alt="Instagram" className="w-4 h-4 object-contain rounded-sm" /> إنستغرام
                             </label>
                             <input 
                               type="text"
+                              placeholder="https://instagram.com/your-account"
                               value={settingsForm.instagram}
                               onChange={e => setSettingsForm({...settingsForm, instagram: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                              <Twitter className="w-3 h-3" /> تويتر (X)
+                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
+                              <img src="/social/twitter.svg" alt="X (Twitter)" className="w-4 h-4 object-contain rounded-sm" /> منصة إكس (تويتر)
                             </label>
                             <input 
                               type="text"
+                              placeholder="https://x.com/your-account"
                               value={settingsForm.twitter}
                               onChange={e => setSettingsForm({...settingsForm, twitter: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                              <Facebook className="w-3 h-3" /> فيسبوك
+                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
+                              <img src="/social/facebook.svg" alt="Facebook" className="w-4 h-4 object-contain rounded-sm" /> فيسبوك
                             </label>
                             <input 
                               type="text"
+                              placeholder="https://facebook.com/your-page"
                               value={settingsForm.facebook}
                               onChange={e => setSettingsForm({...settingsForm, facebook: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                              <Share2 className="w-3 h-3" /> سناب شات
+                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
+                              <img src="/social/snapchat.svg" alt="Snapchat" className="w-4 h-4 object-contain rounded-sm" /> سناب شات
                             </label>
                             <input 
                               type="text"
+                              placeholder="https://snapchat.com/add/your-account"
                               value={settingsForm.snapchat}
                               onChange={e => setSettingsForm({...settingsForm, snapchat: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                              <Share2 className="w-3 h-3" /> تيك توك
+                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
+                              <img src="/social/tiktok.svg" alt="TikTok" className="w-4 h-4 object-contain rounded-sm" /> تيك توك
                             </label>
                             <input 
                               type="text"
+                              placeholder="https://tiktok.com/@your-account"
                               value={settingsForm.tiktok}
                               onChange={e => setSettingsForm({...settingsForm, tiktok: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>
                           <div className="space-y-2">
@@ -7066,6 +7277,7 @@ const AdminDashboard = ({
                             { id: 'showGallery', label: 'معرض الصور', icon: Camera },
                             { id: 'showTestimonials', label: 'آراء العملاء', icon: Star },
                             { id: 'showServices', label: 'قسم الخدمات', icon: Wrench },
+                            { id: 'showPartners', label: 'صفحة وقسم شركاء النجاح', icon: Handshake },
                             { id: 'showContact', label: 'قسم تواصل معنا', icon: Phone },
                           ].map((section) => (
                             <button
@@ -7223,11 +7435,11 @@ const AdminDashboard = ({
                       </div>
                     )}
 
-                    <div className="pt-6 border-t border-white/5 flex justify-end">
+                    <div className="pt-6 border-t border-white/10 flex justify-end">
                       <button 
                         type="submit"
                         disabled={loading}
-                        className="px-10 py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 disabled:opacity-50 flex items-center gap-2"
+                        className="w-full sm:w-auto justify-center px-6 sm:px-10 py-3.5 sm:py-4 bg-brand-red rounded-xl font-display font-black italic uppercase tracking-wider hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                       >
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Settings className="w-5 h-5" />}
                         {loading ? 'جاري الحفظ...' : 'حفظ جميع الإعدادات'}
@@ -7267,6 +7479,14 @@ const AdminDashboard = ({
                     <div className="font-bold mb-1">إدارة المعرض</div>
                     <div className="text-xs text-gray-500">رفع صور جديدة لأعمال المركز</div>
                   </button>
+                  <button 
+                    onClick={() => setActiveTab('partners')}
+                    className="p-6 bg-white/5 border border-white/5 rounded-2xl hover:border-brand-red/50 transition-all text-right group"
+                  >
+                    <Handshake className="w-8 h-8 text-brand-red mb-4 group-hover:scale-110 transition-transform" />
+                    <div className="font-bold mb-1">إدارة شركاء النجاح</div>
+                    <div className="text-xs text-gray-500">إضافة وتعديل الورش والمحلات ومواقعها</div>
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -7287,34 +7507,59 @@ const AdminDashboard = ({
               />
             </motion.div>
           )}
+
+          {activeTab === 'partners' && (
+            <motion.div
+              key="partners"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <AdminPartnersManager
+                partners={partners}
+                onAddPartner={handleAddPartner}
+                onUpdatePartner={handleUpdatePartner}
+                onDeletePartner={handleDeletePartner}
+                isSectionVisible={settings.showPartners !== false}
+                onToggleSectionVisibility={handleTogglePartnersVisibility}
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Add New Modal */}
         <AnimatePresence>
           {isAdding && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto">
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setIsAdding(false)}
-                className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm"
               />
               <motion.div 
-                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                initial={{ scale: 0.95, opacity: 0, y: 15 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                className="relative w-full max-w-2xl bg-brand-dark border border-white/10 rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[90vh]"
+                exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                className="relative w-full max-w-2xl bg-[#0f0f12] border border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] my-auto overflow-hidden z-10"
               >
-                <div className="flex justify-between items-center mb-8">
-                  <h3 className="text-2xl font-display font-black italic">
+                {/* Sticky Header with Title and Close Button */}
+                <div className="px-5 sm:px-7 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex justify-between items-center shrink-0 z-20">
+                  <h3 className="text-lg sm:text-xl font-display font-black italic text-white">
                     {editingItem ? 'تعديل' : 'إضافة'} {activeTab === 'dashboard' || activeTab === 'bookings' ? 'حجز' : 
                           activeTab === 'content' ? (contentTab === 'services' ? 'خدمة' : contentTab === 'offers' ? 'عرض' : 'صورة') : 'جديد'}
                   </h3>
-                  <button onClick={() => { setIsAdding(false); setEditingItem(null); }} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                    <X className="w-6 h-6" />
+                  <button 
+                    type="button"
+                    onClick={() => { setIsAdding(false); setEditingItem(null); }} 
+                    className="p-1.5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
+
+                <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1">
 
                 {(activeTab === 'dashboard' || activeTab === 'bookings') && (
                   <form onSubmit={handleAddRecord} className="grid md:grid-cols-2 gap-6">
@@ -7503,6 +7748,7 @@ const AdminDashboard = ({
                     </button>
                   </form>
                 )}
+                </div>
               </motion.div>
             </div>
           )}
@@ -7511,31 +7757,34 @@ const AdminDashboard = ({
         {/* Full Booking Details Modal */}
         <AnimatePresence>
           {selectedBookingDetails && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
               <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
+                initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                className="glass-card max-w-lg w-full p-8 border-brand-red/30 relative space-y-6"
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="glass-card max-w-lg w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col border-brand-red/30 rounded-3xl overflow-hidden shadow-2xl relative my-auto"
               >
-                <button 
-                  onClick={() => setSelectedBookingDetails(null)}
-                  className="absolute top-6 left-6 text-gray-500 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-                  <div className="w-12 h-12 bg-brand-red/10 rounded-xl flex items-center justify-center text-brand-red">
-                    <Calendar className="w-6 h-6" />
+                {/* Sticky Header with Title and Close Button */}
+                <div className="px-5 sm:px-6 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-brand-red/10 border border-brand-red/20 rounded-xl flex items-center justify-center text-brand-red shrink-0">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white leading-tight">{selectedBookingDetails.carModel}</h3>
+                      <p className="text-xs text-gray-400">تفاصيل الحجز المسجل</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold">{selectedBookingDetails.carModel}</h3>
-                    <p className="text-xs text-gray-400">تفاصيل الحجز المسجل</p>
-                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setSelectedBookingDetails(null)}
+                    className="p-1.5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
-                <div className="space-y-4 text-sm">
+                <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-4 text-sm">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/5 p-4 rounded-xl space-y-1">
                       <div className="text-xs text-gray-400">رقم جوال العميل</div>
@@ -7689,12 +7938,12 @@ const AdminDashboard = ({
         {/* Delete Confirmation Modal (In-App Dialog - Safe for sandboxed iframes) */}
         <AnimatePresence>
           {deleteConfirmTarget && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="glass-card max-w-md w-full p-6 border-brand-red/40 relative space-y-5 bg-[#0f0f12] shadow-2xl"
+                className="glass-card max-w-md w-full p-5 sm:p-6 border-brand-red/40 relative space-y-5 bg-[#0f0f12] shadow-2xl rounded-3xl my-auto"
               >
                 <button 
                   type="button"
@@ -8118,11 +8367,11 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
       <div className={cn("max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12", lang === 'ar' ? "text-right" : "text-left")}>
         <div className="col-span-2">
           <div className="flex items-center gap-2 mb-6">
-            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-black rounded-2xl p-1.5 flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
               <img 
                 src={settings.logoUrl || '/logo-custom.png'} 
                 alt="Logo" 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-contain" 
                 referrerPolicy="no-referrer" 
                 loading="eager"
                 decoding="async" 
@@ -8147,76 +8396,131 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
             <li><Link to="/" className="hover:text-brand-red transition-colors">{t.nav.home}</Link></li>
             <li><Link to="/services" className="hover:text-brand-red transition-colors">{t.nav.services}</Link></li>
             <li><Link to="/offers" className="hover:text-brand-red transition-colors">{t.nav.offers}</Link></li>
+            <li><Link to="/partners" className="hover:text-brand-red transition-colors">{t.nav.partners || 'شركاء النجاح'}</Link></li>
             <li><Link to="/booking" className="hover:text-brand-red transition-colors">{t.nav.bookNow}</Link></li>
           </ul>
         </div>
 
       <div>
         <h4 className="font-display font-black mb-6 uppercase tracking-widest text-sm text-brand-red">{t.footer.followUs}</h4>
-        <div className="flex gap-4">
-          {settings.snapchat && (
+        <div className="flex flex-wrap items-center gap-3 sm:gap-3.5">
+          {/* Snapchat */}
+          {(settings.snapchat || DEFAULT_APP_SETTINGS.snapchat) && (
             <motion.a 
-              whileHover={{ y: -5, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              href={settings.snapchat} 
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              href={settings.snapchat || DEFAULT_APP_SETTINGS.snapchat} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-[#FFFC00] hover:text-black transition-all border border-white/10"
-              title="Snapchat"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-[#FFFC00] hover:shadow-[0_0_20px_rgba(255,252,0,0.35)] transition-all shadow-md group cursor-pointer"
+              title="Snapchat - سناب شات"
             >
-              <Smartphone className="w-6 h-6" />
+              <img 
+                src="/social/snapchat.svg" 
+                alt="سناب شات - Snapchat" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
             </motion.a>
           )}
-          {settings.instagram && (
+
+          {/* TikTok */}
+          {(settings.tiktok || DEFAULT_APP_SETTINGS.tiktok) && (
             <motion.a 
-              whileHover={{ y: -5, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              href={settings.instagram} 
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              href={settings.tiktok || DEFAULT_APP_SETTINGS.tiktok} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-gradient-to-tr hover:from-[#f09433] hover:via-[#dc2743] hover:to-[#bc1888] hover:text-white transition-all border border-white/10"
-              title="Instagram"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(37,244,238,0.35)] transition-all shadow-md group cursor-pointer"
+              title="TikTok - تيك توك"
             >
-              <Instagram className="w-6 h-6" />
+              <img 
+                src="/social/tiktok.svg" 
+                alt="تيك توك - TikTok" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
             </motion.a>
           )}
-          {settings.twitter && (
+
+          {/* Instagram */}
+          {(settings.instagram || DEFAULT_APP_SETTINGS.instagram) && (
             <motion.a 
-              whileHover={{ y: -5, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              href={settings.twitter} 
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              href={settings.instagram || DEFAULT_APP_SETTINGS.instagram} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-black hover:text-white transition-all border border-white/10"
-              title="Twitter"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-pink-500 hover:shadow-[0_0_20px_rgba(220,39,67,0.4)] transition-all shadow-md group cursor-pointer"
+              title="Instagram - إنستغرام"
             >
-              <Twitter className="w-6 h-6" />
+              <img 
+                src="/social/instagram.svg" 
+                alt="إنستغرام - Instagram" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
             </motion.a>
           )}
+
+          {/* X / Twitter */}
+          {(settings.twitter || DEFAULT_APP_SETTINGS.twitter) && (
+            <motion.a 
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              href={settings.twitter || DEFAULT_APP_SETTINGS.twitter} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-white/50 hover:shadow-[0_0_20px_rgba(255,255,255,0.25)] transition-all shadow-md group cursor-pointer"
+              title="X (Twitter) - منصة إكس"
+            >
+              <img 
+                src="/social/twitter.svg" 
+                alt="منصة إكس - X" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
+            </motion.a>
+          )}
+
+          {/* WhatsApp */}
+          {(settings.whatsapp || DEFAULT_APP_SETTINGS.whatsapp) && (
+            <motion.a 
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              href={`https://wa.me/${(settings.whatsapp || DEFAULT_APP_SETTINGS.whatsapp || '966546870807').replace(/[^0-9]/g, '')}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-[#25D366] hover:shadow-[0_0_20px_rgba(37,211,102,0.4)] transition-all shadow-md group cursor-pointer"
+              title="WhatsApp - واتساب"
+            >
+              <img 
+                src="/social/whatsapp.svg" 
+                alt="واتساب - WhatsApp" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
+            </motion.a>
+          )}
+
+          {/* Facebook */}
           {settings.facebook && (
             <motion.a 
-              whileHover={{ y: -5, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
+              whileHover={{ y: -4, scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
               href={settings.facebook} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-[#1877F2] hover:text-white transition-all border border-white/10"
-              title="Facebook"
+              className="w-11 h-11 sm:w-12 sm:h-12 bg-neutral-900/90 rounded-2xl p-2 flex items-center justify-center border border-white/10 hover:border-[#1877F2] hover:shadow-[0_0_20px_rgba(24,119,242,0.4)] transition-all shadow-md group cursor-pointer"
+              title="Facebook - فيسبوك"
             >
-              <Facebook className="w-6 h-6" />
-            </motion.a>
-          )}
-          {settings.tiktok && (
-            <motion.a 
-              whileHover={{ y: -5, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              href={settings.tiktok} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center hover:bg-black hover:text-white transition-all border border-white/10"
-              title="TikTok"
-            >
-              <Monitor className="w-6 h-6" />
+              <img 
+                src="/social/facebook.svg" 
+                alt="فيسبوك - Facebook" 
+                className="w-full h-full object-contain group-hover:scale-105 transition-transform" 
+                loading="lazy"
+              />
             </motion.a>
           )}
         </div>
@@ -8684,6 +8988,36 @@ function MainContent() {
     return unsubscribe;
   }, []);
 
+  const [partners, setPartners] = useState<Partner[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_partners');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {
+      console.error('Error loading cached partners:', e);
+    }
+    return DEFAULT_PARTNERS;
+  });
+
+  useEffect(() => {
+    const q = query(collection(db, 'partners'), orderBy('order', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Partner));
+        setPartners(list);
+        try {
+          localStorage.setItem('drfix_partners', JSON.stringify(list));
+        } catch {}
+      } else {
+        setPartners(DEFAULT_PARTNERS);
+      }
+    }, (error) => {
+      console.warn('Partners fetch fallback in MainContent:', error);
+      setPartners(DEFAULT_PARTNERS);
+    });
+
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     // Scroll to top on route change
     window.scrollTo(0, 0);
@@ -8812,6 +9146,16 @@ function MainContent() {
           } />
           <Route path="/services" element={<Services onServiceSelect={handleServiceSelect} />} />
           <Route path="/offers" element={<Offers />} />
+          <Route path="/partners" element={
+            <PartnersPage 
+              partners={partners} 
+              settings={settings} 
+              onSelectPartnerForBooking={(partner) => {
+                setSelectedService(`صيانة بالتنسيق مع الشريك: ${partner.name}`);
+                navigate('/booking');
+              }} 
+            />
+          } />
           <Route path="/booking" element={<BookingForm selectedService={selectedService} settings={settings} />} />
           <Route path="/history" element={<MaintenanceHistory />} />
           <Route path="/admin" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />

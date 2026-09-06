@@ -15,6 +15,7 @@ service cloud.firestore {
     match /settings/{docId} { allow read, write: if true; }
     match /staff/{staffId} { allow read, write: if true; }
     match /customers/{customerId} { allow read, write: if true; }
+    match /partners/{partnerId} { allow read, write: if true; }
     
     // ==========================================================
     // Accounting & Manual Payments RBAC Protected Collections

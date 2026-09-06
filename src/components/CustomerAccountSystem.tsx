@@ -825,8 +825,8 @@ export const CustomerAuthModal: React.FC = () => {
         {/* Sticky Header with Title and Close Button - ALWAYS visible and never off-screen */}
         <div className="px-5 py-4 border-b border-white/10 bg-black/50 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-black border border-white/10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden shrink-0">
-              <img src="/logo-custom.png" alt="DR.FIX" className="w-full h-full object-cover" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 bg-black border border-white/10 rounded-xl p-1 flex items-center justify-center shadow-lg overflow-hidden shrink-0">
+              <img src="/logo-custom.png" alt="DR.FIX" className="w-full h-full object-contain" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-display font-black text-white leading-tight">
