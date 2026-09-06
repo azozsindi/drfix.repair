@@ -145,6 +145,148 @@ export const notifyAdminNewCustomerRegistration = async (params: {
   }
 };
 
+// Auto-sync customer cars from maintenance bookings and legacy vehicle files
+export const syncCustomerCarsWithBookings = async (
+  currentCustomer: CustomerProfile
+): Promise<CustomerProfile> => {
+  if (!currentCustomer?.id) return currentCustomer;
+
+  try {
+    const rawPhone = (currentCustomer.phone || '').trim();
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+    let shortPhone = cleanDigits;
+    if (cleanDigits.startsWith('966')) shortPhone = '0' + cleanDigits.slice(3);
+    else if (cleanDigits.startsWith('00966')) shortPhone = '0' + cleanDigits.slice(5);
+    else if (cleanDigits.startsWith('5')) shortPhone = '0' + cleanDigits;
+
+    const phoneVariants = Array.from(new Set([
+      rawPhone,
+      cleanDigits,
+      shortPhone,
+      shortPhone ? `+966${shortPhone.slice(1)}` : '',
+      shortPhone ? `966${shortPhone.slice(1)}` : '',
+      rawPhone.replace(/\+/g, ''),
+      rawPhone.replace(/\s+/g, '')
+    ].filter(Boolean))) as string[];
+
+    const currentCars = [...(currentCustomer.cars || [])];
+    let hasChanges = false;
+
+    // 1. Sync from legacy 'vehicles' field if present on customer doc
+    const legacyVehicles: any[] = Array.isArray((currentCustomer as any).vehicles)
+      ? (currentCustomer as any).vehicles
+      : [];
+
+    legacyVehicles.forEach((v: any) => {
+      const vMake = (v.make || '').trim();
+      const vModel = (v.model || '').trim();
+      if (!vMake && !vModel) return;
+
+      const make = vMake || vModel.split(' ')[0] || 'سيارة';
+      const model = vModel || vMake;
+      const year = (v.year || '').toString().trim() || new Date().getFullYear().toString();
+      const plate = (v.plateNumber || '').trim();
+
+      const exists = currentCars.some(c =>
+        c.make?.toLowerCase().trim() === make.toLowerCase() &&
+        c.model?.toLowerCase().trim() === model.toLowerCase()
+      );
+
+      if (!exists) {
+        currentCars.push({
+          id: 'car_sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+          make,
+          model,
+          year,
+          plateNumber: plate,
+          addedAt: new Date().toISOString()
+        });
+        hasChanges = true;
+      }
+    });
+
+    // 2. Fetch past and current bookings from 'maintenance' collection
+    const fetchedBookings: any[] = [];
+    if (phoneVariants.length > 0) {
+      try {
+        const qPhone = query(
+          collection(db, 'maintenance'),
+          where('customerPhone', 'in', phoneVariants.slice(0, 10))
+        );
+        const snapPhone = await getDocs(qPhone);
+        snapPhone.forEach(d => fetchedBookings.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn('Phone bookings query error:', err);
+      }
+    }
+
+    if (currentCustomer.id) {
+      try {
+        const qId = query(
+          collection(db, 'maintenance'),
+          where('customerId', '==', currentCustomer.id)
+        );
+        const snapId = await getDocs(qId);
+        snapId.forEach(d => fetchedBookings.push({ id: d.id, ...d.data() }));
+      } catch (err) {
+        console.warn('Customer ID bookings query error:', err);
+      }
+    }
+
+    // 3. Extract and merge unique cars from bookings
+    fetchedBookings.forEach((b: any) => {
+      const bMake = (b.carMake || '').trim();
+      const bModel = (b.carModel || '').trim();
+      if (!bMake && !bModel) return;
+
+      const make = bMake || bModel.split(' ')[0] || 'سيارة';
+      const model = bModel || bMake;
+      const year = (b.carYear || '').toString().trim() || new Date().getFullYear().toString();
+      const plate = (b.plateNumber || '').trim();
+
+      const exists = currentCars.some(c => {
+        const sameMakeModel =
+          c.make?.toLowerCase().trim() === make.toLowerCase() &&
+          c.model?.toLowerCase().trim() === model.toLowerCase();
+        if (plate && c.plateNumber) {
+          return c.plateNumber.replace(/\s+/g, '') === plate.replace(/\s+/g, '');
+        }
+        return sameMakeModel;
+      });
+
+      if (!exists) {
+        currentCars.push({
+          id: 'car_booking_' + (b.id || Date.now()) + '_' + Math.random().toString(36).substring(2, 6),
+          make,
+          model,
+          year,
+          plateNumber: plate,
+          addedAt: new Date().toISOString()
+        });
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      const customerRef = doc(db, 'customers', currentCustomer.id);
+      await updateDoc(customerRef, {
+        cars: currentCars,
+        updatedAt: serverTimestamp()
+      }).catch(err => console.warn('Could not update customer cars in Firestore:', err));
+
+      const updated = { ...currentCustomer, cars: currentCars };
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    }
+  } catch (err) {
+    console.warn('syncCustomerCarsWithBookings error:', err);
+  }
+
+  return currentCustomer;
+};
+
 interface CustomerContextType {
   customer: CustomerProfile | null;
   loading: boolean;
@@ -205,8 +347,28 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('Customer sync error:', err);
     });
 
+    // Initial background car sync
+    syncCustomerCarsWithBookings(customer).then(updated => {
+      if (updated && updated.cars && updated.cars.length !== (customer.cars || []).length) {
+        setCustomer(updated);
+      }
+    }).catch(() => {});
+
     return () => unsub();
   }, [customer?.id]);
+
+  // Listen to new bookings created anywhere in app to auto-sync cars
+  useEffect(() => {
+    const handleCarsUpdateEvent = () => {
+      if (customer?.id) {
+        syncCustomerCarsWithBookings(customer).then(updated => {
+          if (updated) setCustomer(updated);
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('drfix_customer_cars_updated', handleCarsUpdateEvent);
+    return () => window.removeEventListener('drfix_customer_cars_updated', handleCarsUpdateEvent);
+  }, [customer]);
 
   const login = async (rawPhone: string, pass?: string): Promise<{ success: boolean; error?: string }> => {
     const phone = cleanSaudiPhone(rawPhone);
@@ -255,6 +417,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       setCustomer(loggedUser);
       localStorage.setItem('drfix_customer_session', JSON.stringify(loggedUser));
+
+      // Auto-sync cars from past/current bookings into customer profile
+      syncCustomerCarsWithBookings(loggedUser).then(synced => {
+        if (synced && synced.cars && synced.cars.length !== loggedUser.cars.length) {
+          setCustomer(synced);
+        }
+      }).catch(() => {});
+
       setIsAuthOpen(false);
       setLoading(false);
       return { success: true };
@@ -330,6 +500,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setCustomer(profile);
     localStorage.setItem('drfix_customer_session', JSON.stringify(profile));
+
+    // Auto-sync cars from maintenance bookings
+    syncCustomerCarsWithBookings(profile).then(synced => {
+      if (synced && synced.cars && synced.cars.length !== profile.cars.length) {
+        setCustomer(synced);
+      }
+    }).catch(() => {});
+
     setIsAuthOpen(false);
     setLoading(false);
     return { success: true };
@@ -364,7 +542,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLoading(false);
       return { 
         success: false, 
-        error: 'لتسجيل الدخول السريع، يمكنك إدخال رقم جوالك السعودي أدناه بدون كلمة مرور لفتح حسابك وسجل صياناتك مباشرة.' 
+        error: 'لتسجيل الدخول السريع، يمكنك إدخال رقم جوالك أدناه بدون كلمة مرور لفتح حسابك وسجل صياناتك مباشرة.' 
       };
     }
 
@@ -391,6 +569,25 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const customerRef = doc(db, 'customers', phone);
       const snap = await getDoc(customerRef);
 
+      // Check if user already exists
+      let alreadyExists = snap.exists();
+      if (!alreadyExists) {
+        const qPhone = query(collection(db, 'customers'), where('phone', '==', phone));
+        const qSnap = await getDocs(qPhone);
+        if (!qSnap.empty) {
+          alreadyExists = true;
+        }
+      }
+
+      // If user is already registered, notify them clearly
+      if (alreadyExists) {
+        setLoading(false);
+        return { 
+          success: false, 
+          error: 'لديك حساب بالفعل برقم الجوال هذا. يرجى تسجيل الدخول بدلاً من ذلك.' 
+        };
+      }
+
       const carsList: CustomerCar[] = [];
       if (initialCar && initialCar.make && initialCar.model) {
         carsList.push({
@@ -404,40 +601,38 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
 
-      if (snap.exists()) {
-        // Account exists, let's update profile smoothly
-        const existingData = snap.data() as CustomerProfile;
-        const mergedCars = existingData.cars && existingData.cars.length > 0 
-          ? [...existingData.cars, ...carsList] 
-          : carsList;
+      const newProfile: CustomerProfile = {
+        id: phone,
+        name: name.trim(),
+        phone,
+        password: pass || '',
+        cars: carsList,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
 
-        const updatedProfile: CustomerProfile = {
-          ...existingData,
-          name: name.trim() || existingData.name,
-          phone,
-          password: pass || existingData.password || '',
-          cars: mergedCars,
-          updatedAt: serverTimestamp()
-        };
+      await setDoc(customerRef, newProfile);
+      setCustomer(newProfile);
+      localStorage.setItem('drfix_customer_session', JSON.stringify(newProfile));
 
-        await setDoc(customerRef, updatedProfile, { merge: true });
-        setCustomer({ ...updatedProfile, id: phone });
-        localStorage.setItem('drfix_customer_session', JSON.stringify({ ...updatedProfile, id: phone }));
-      } else {
-        const newProfile: CustomerProfile = {
-          id: phone,
-          name: name.trim(),
-          phone,
-          password: pass || '',
-          cars: carsList,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
+      // 1. Notify Admin on Telegram & Firestore
+      notifyAdminNewCustomerRegistration({
+        name: newProfile.name,
+        phone: newProfile.phone,
+        car: initialCar && initialCar.make && initialCar.model ? {
+          make: initialCar.make,
+          model: initialCar.model,
+          year: initialCar.year
+        } : undefined,
+        source: 'phone_register'
+      });
 
-        await setDoc(customerRef, newProfile);
-        setCustomer(newProfile);
-        localStorage.setItem('drfix_customer_session', JSON.stringify(newProfile));
-      }
+      // 2. Auto-sync any past bookings made with this phone into customer cars
+      syncCustomerCarsWithBookings(newProfile).then(synced => {
+        if (synced && synced.cars && synced.cars.length > newProfile.cars.length) {
+          setCustomer(synced);
+        }
+      }).catch(() => {});
 
       setIsAuthOpen(false);
       setLoading(false);
@@ -615,79 +810,107 @@ export const CustomerAuthModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn" dir="rtl">
-      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto" 
+      dir="rtl"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setIsAuthOpen(false);
+      }}
+    >
+      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] my-auto overflow-hidden animate-fadeIn">
         {/* Background decorative glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-brand-red/10 rounded-full blur-3xl -z-10 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-40 h-40 bg-brand-red/10 rounded-full blur-3xl -z-10 pointer-events-none" />
 
-        {/* Close button */}
-        <button 
-          onClick={() => setIsAuthOpen(false)}
-          className="absolute top-4 left-4 p-2 text-gray-400 hover:text-white rounded-full bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Header with DR.FIX Logo */}
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-black border border-white/10 rounded-2xl mx-auto flex items-center justify-center mb-3 shadow-lg overflow-hidden">
-            <img src="/logo-custom.png" alt="DR.FIX" className="w-full h-full object-cover" />
-          </div>
-          <h3 className="text-xl font-display font-black text-white">
-            {authMode === 'login' ? 'تسجيل دخول العملاء' : 'إنشاء حساب عميل جديد'}
-          </h3>
-          <p className="text-xs text-gray-400 mt-1">
-            {authMode === 'login' 
-              ? 'سجل دخولك بحساب Google أو برقم جوالك للوصول لسياراتك وسجل صيانتك' 
-              : 'سجل حسابك لحفظ سياراتك وتتبع الصيانة بضغطة زر'}
-          </p>
-        </div>
-
-        {/* Auth Mode Toggle Tabs */}
-        <div className="grid grid-cols-2 p-1 bg-black/40 border border-white/10 rounded-xl mb-5">
-          <button
-            type="button"
-            onClick={() => { setAuthMode('login'); setErrorMsg(null); }}
-            className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              authMode === 'login' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            تسجيل الدخول
-          </button>
-          <button
-            type="button"
-            onClick={() => { setAuthMode('register'); setErrorMsg(null); }}
-            className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-              authMode === 'register' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            إنشاء حساب جديد
-          </button>
-        </div>
-
-        {errorMsg && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-neutral-800/90 border border-brand-red/30 text-xs flex flex-col gap-2.5 shadow-lg">
-            <div className="flex items-start gap-2.5 text-gray-200">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-brand-red" />
-              <span className="leading-relaxed">{errorMsg}</span>
+        {/* Sticky Header with Title and Close Button - ALWAYS visible and never off-screen */}
+        <div className="px-5 py-4 border-b border-white/10 bg-black/50 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-black border border-white/10 rounded-xl flex items-center justify-center shadow-lg overflow-hidden shrink-0">
+              <img src="/logo-custom.png" alt="DR.FIX" className="w-full h-full object-cover" />
             </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-display font-black text-white leading-tight">
+                {authMode === 'login' ? 'تسجيل دخول العملاء' : 'إنشاء حساب عميل جديد'}
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                {authMode === 'login' 
+                  ? 'لوحة تتبع الصيانة وسياراتك' 
+                  : 'احفظ سياراتك وتتبع صيانتك بضغطة زر'}
+              </p>
+            </div>
+          </div>
+
+          <button 
+            type="button"
+            onClick={() => setIsAuthOpen(false)}
+            className="p-2.5 text-gray-400 hover:text-white rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer shrink-0 border border-white/10"
+            title="إغلاق النافذة"
+            aria-label="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Scrollable Modal Body */}
+        <div className="overflow-y-auto p-5 sm:p-6 space-y-4 flex-1">
+          {/* Auth Mode Toggle Tabs */}
+          <div className="grid grid-cols-2 p-1 bg-black/50 border border-white/10 rounded-xl">
             <button
               type="button"
-              onClick={() => {
-                phoneInputRef.current?.focus();
-                phoneInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }}
-              className="self-start text-[11px] font-bold text-white bg-brand-red hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+              onClick={() => { setAuthMode('login'); setErrorMsg(null); }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                authMode === 'login' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
+              }`}
             >
-              <Phone className="w-3.5 h-3.5" />
-              <span>المتابعة برقم الجوال أدناه</span>
+              تسجيل الدخول
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('register'); setErrorMsg(null); }}
+              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                authMode === 'register' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              إنشاء حساب جديد
             </button>
           </div>
-        )}
 
-        {/* Google Fast Authentication Button */}
-        <div className="mb-5">
+          {errorMsg && (
+            <div className="p-3.5 rounded-2xl bg-neutral-800/95 border border-brand-red/40 text-xs flex flex-col gap-2.5 shadow-lg animate-fadeIn">
+              <div className="flex items-start gap-2.5 text-white">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-brand-red" />
+                <span className="leading-relaxed font-medium">{errorMsg}</span>
+              </div>
+              {errorMsg.includes('لديك حساب بالفعل') ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setErrorMsg(null);
+                  }}
+                  className="w-full py-2.5 bg-brand-red hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-md mt-1"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>الضغط هنا لتسجيل الدخول فوراً بهذا الرقم</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    phoneInputRef.current?.focus();
+                    phoneInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  className="self-start text-[11px] font-bold text-white bg-brand-red hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>المتابعة برقم الجوال أدناه</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Google Fast Authentication Button */}
+          <div className="mb-2">
           <button
             type="button"
             onClick={handleGoogleSignIn}
@@ -886,6 +1109,7 @@ export const CustomerAuthModal: React.FC = () => {
         </div>
       </div>
     </div>
+  </div>
   );
 };
 
@@ -955,6 +1179,15 @@ export const CustomerPortalModal: React.FC = () => {
       });
       setMyBookings(list);
       setLoadingBookings(false);
+
+      // Auto-sync cars from maintenance cards into customer cars
+      if (customer) {
+        syncCustomerCarsWithBookings(customer).then(updated => {
+          if (updated && updated.cars && updated.cars.length !== (customer.cars || []).length) {
+            // Updated in context via snapshot/state
+          }
+        }).catch(() => {});
+      }
     };
 
     if (phoneVariants.length > 0) {
@@ -1166,7 +1399,7 @@ export const CustomerPortalModal: React.FC = () => {
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <h4 className="text-xs font-bold text-white mb-1">خطوة مهمة: يرجى إضافة رقم جوالك السعودي</h4>
+                <h4 className="text-xs font-bold text-white mb-1">خطوة مهمة: يرجى إضافة رقم جوالك</h4>
                 <p className="text-[11px] text-gray-300 mb-2.5">
                   لربط كرت الصيانة التلقائي وتسهيل اتصال الفني بك عند التوجه لموقعك في جدة.
                 </p>
@@ -1647,7 +1880,7 @@ export const CustomerPortalModal: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-gray-300 block mb-1">رقم الجوال السعودي</label>
+                <label className="text-xs font-bold text-gray-300 block mb-1">رقم الجوال</label>
                 <input
                   type="tel"
                   value={editPhone}

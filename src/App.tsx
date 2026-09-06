@@ -2001,27 +2001,60 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           year: data.carYear.trim()
         };
 
+        const carItem = {
+          id: 'car_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+          make: data.carMake.trim(),
+          model: data.carModel.trim(),
+          year: data.carYear.trim(),
+          plateNumber: (data as any).plateNumber?.trim() || '',
+          color: '',
+          addedAt: new Date().toISOString()
+        };
+
         if (!custSnap.empty) {
           const existingDoc = custSnap.docs[0];
           const existingData = existingDoc.data();
           const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
+          const existingCars: any[] = Array.isArray(existingData.cars) ? existingData.cars : [];
           
           const hasCar = existingVehicles.some(v => 
             v.model?.toLowerCase() === carInfo.model.toLowerCase() ||
             (v.make?.toLowerCase() === carInfo.make.toLowerCase() && v.model?.toLowerCase() === data.carModel.trim().toLowerCase())
           );
           const updatedVehicles = hasCar ? existingVehicles : [...existingVehicles, carInfo];
+
+          const hasCarInCars = existingCars.some(c =>
+            c.make?.toLowerCase().trim() === data.carMake.trim().toLowerCase() &&
+            c.model?.toLowerCase().trim() === data.carModel.trim().toLowerCase()
+          );
+          const updatedCars = hasCarInCars ? existingCars : [...existingCars, carItem];
+
           const newVisits = (Number(existingData.totalVisits) || 1) + 1;
 
           await updateDoc(doc(db, 'customers', existingDoc.id), {
             name: (resolvedCustomerName && resolvedCustomerName !== 'عميل' && (!existingData.name || existingData.name.includes('عميل'))) ? resolvedCustomerName : existingData.name,
             vehicles: updatedVehicles,
+            cars: updatedCars,
             totalVisits: newVisits,
             lastVisitDate: new Date().toISOString(),
             status: newVisits >= 3 ? 'vip' : (existingData.status || 'regular'),
             notes: existingData.notes ? `${existingData.notes}\n• حجز جديد: ${serviceTitle}` : `حجز خدمة: ${serviceTitle}`,
             updatedAt: serverTimestamp()
           });
+
+          // Also ensure direct doc by phone ID is updated if it exists
+          if (existingDoc.id !== cleanPhone) {
+            try {
+              const directPhoneRef = doc(db, 'customers', cleanPhone);
+              const dSnap = await getDoc(directPhoneRef);
+              if (dSnap.exists()) {
+                const dCars: any[] = Array.isArray(dSnap.data()?.cars) ? dSnap.data()?.cars : [];
+                if (!dCars.some(c => c.model?.toLowerCase().trim() === data.carModel.trim().toLowerCase())) {
+                  await updateDoc(directPhoneRef, { cars: [...dCars, carItem], updatedAt: serverTimestamp() });
+                }
+              }
+            } catch {}
+          }
         } else {
           // Open a brand new customer file
           await addDoc(customersRef, {
@@ -2030,6 +2063,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
             city: 'جدة',
             address: locationName || 'جدة',
             vehicles: [carInfo],
+            cars: [carItem],
             totalVisits: 1,
             firstVisitDate: new Date().toISOString(),
             lastVisitDate: new Date().toISOString(),
@@ -2038,7 +2072,24 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
+
+          // Also create doc under customers/{cleanPhone} for instant customer portal access
+          try {
+            await setDoc(doc(db, 'customers', cleanPhone), {
+              id: cleanPhone,
+              name: resolvedCustomerName || 'عميل كريم',
+              phone: cleanPhone,
+              cars: [carItem],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          } catch {}
         }
+
+        // Dispatch browser event to instantly update "My Cars" for logged-in customer
+        window.dispatchEvent(new CustomEvent('drfix_customer_cars_updated', {
+          detail: { phone: cleanPhone, car: carItem }
+        }));
       } catch (custFileErr) {
         console.warn('Error opening customer file on booking:', custFileErr);
       }

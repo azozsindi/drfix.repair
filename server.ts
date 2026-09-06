@@ -71,11 +71,25 @@ async function startServer() {
     await accountingHandler(req, res);
   });
 
-  // Explicit Static Content-Type routes for SEO & Social Previews
-  app.get('/logo.png', (req, res) => {
+  // Explicit Static Content-Type routes for SEO, Googlebot-Favicon & Social Previews
+  app.get('/favicon.ico', (req, res) => {
+    res.setHeader('Content-Type', 'image/x-icon');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(process.cwd(), 'public', 'favicon.ico'));
+  });
+
+  app.get(['/favicon-48x48.png', '/favicon-96x96.png', '/favicon-192x192.png', '/apple-touch-icon.png'], (req, res) => {
+    const filename = path.basename(req.path);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.sendFile(path.join(process.cwd(), 'public', 'logo.png'));
+    res.sendFile(path.join(process.cwd(), 'public', filename));
+  });
+
+  app.get(['/logo.png', '/logo-custom.png'], (req, res) => {
+    const filename = path.basename(req.path);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(process.cwd(), 'public', filename));
   });
 
   app.get('/sitemap.xml', (req, res) => {
@@ -88,9 +102,9 @@ async function startServer() {
     res.sendFile(path.join(process.cwd(), 'public', 'robots.txt'));
   });
 
-  app.get('/manifest.webmanifest', (req, res) => {
+  app.get(['/manifest.json', '/manifest.webmanifest'], (req, res) => {
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-    res.sendFile(path.join(process.cwd(), 'public', 'manifest.webmanifest'));
+    res.sendFile(path.join(process.cwd(), 'public', 'manifest.json'));
   });
 
   // Vite Middleware for SPA Development & Production Serving
