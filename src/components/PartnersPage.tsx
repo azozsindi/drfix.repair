@@ -348,7 +348,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
 
             <div className="pt-2 flex flex-wrap justify-center gap-3 sm:gap-4">
               <a
-                href={`https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent('السلام عليكم، أرغب في الانضمام إلى شبكة شركاء نجاح Dr.Fix مع ورشتي / متجري')}`}
+                href={`https://api.whatsapp.com/send?phone=${whatsappSupportNumber}&text=${encodeURIComponent('السلام عليكم، أرغب في الانضمام إلى شبكة شركاء نجاح Dr.Fix مع ورشتي / متجري')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-6 py-3 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-[#25D366]/20 transition-all active:scale-95"

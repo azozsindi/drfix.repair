@@ -31,22 +31,158 @@ export interface ServiceStepPhoto {
   url: string;
   caption?: string;
   isInternalOnly?: boolean; // true = hidden from customer (admin & technician only), false = visible to customer
+  isCustomerVisible?: boolean;
   uploadedAt: any;
   uploadedBy?: string;
 }
 
-export type ServiceStepKey = 'assigned' | 'on_the_way' | 'arrived_inspection' | 'in_progress' | 'completed' | 'custom';
+export type ServiceStepKey = 'assigned' | 'accepted' | 'on_the_way' | 'arrived_inspection' | 'in_progress' | 'completed' | 'custom';
+
+export type BookingStatus = 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled' | 'rescheduled' | 'no_show';
+
+export interface PricingBreakdown {
+  laborCost: number;       // سعر الخدمة (أجور اليد)
+  partsCost: number;       // تكلفة قطع الغيار
+  travelFee: number;       // رسوم الانتقال والميدان
+  discount: number;        // الخصم
+  taxRate: number;         // نسبة الضريبة % (e.g. 15)
+  taxAmount: number;       // مبلغ الضريبة
+  grandTotal: number;      // الإجمالي النهائي
+  notes?: string;
+  updatedBy?: string;
+  updatedAt?: any;
+}
+
+export interface QuotationItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  isPart: boolean;
+}
+
+export interface CustomerRepairApproval {
+  id: string;
+  quotationNumber: string;
+  title: string;
+  items: QuotationItem[];
+  subtotal: number;
+  taxAmount: number;
+  grandTotal: number;
+  notes?: string;
+  status: 'draft' | 'sent_to_customer' | 'approved' | 'rejected';
+  approvedAt?: any;
+  approvedByName?: string;
+  customerSignature?: string; // Digital signature / text confirmation
+  rejectionReason?: string;
+  sentAt?: any;
+  createdAt: any;
+  createdByStaffName?: string;
+  createdByStaffId?: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  recordId?: string;
+  bookingId?: string;
+  actionType: 'status_change' | 'price_update' | 'note_update' | 'technician_assigned' | 'repair_approved' | 'repair_quotation_sent' | 'complaint_logged' | 'complaint_updated' | 'warranty_issued' | 'rescheduled' | 'cancelled' | 'no_show' | 'other';
+  actionTitle: string;
+  details?: string;
+  oldValue?: string;
+  newValue?: string;
+  performedByStaffId?: string;
+  performedByStaffName: string;
+  performedByRole?: string;
+  timestamp: any;
+}
+
+export interface WarrantyDetails {
+  hasWarranty: boolean;
+  durationDays: number; // e.g., 30, 90, 180, 365
+  warrantyPeriodLabel?: string; // "30 يوم", "3 أشهر", "6 أشهر", "سنة"
+  startDate: any;
+  endDate: any;
+  coverageNotes: string; // تشمل أجور اليد، قطع الغيار المستبدلة، إلخ
+  status: 'active' | 'expired' | 'voided';
+  issuedByStaffName?: string;
+  issuedAt?: any;
+}
+
+export interface ServiceComplaint {
+  id: string;
+  recordId: string;
+  bookingId?: string;
+  customerName: string;
+  customerPhone: string;
+  carModel: string;
+  complaintTitle: string;
+  description: string;
+  assignedStaffId?: string;
+  assignedStaffName?: string; // المسؤول عن متابعة الحل
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'open' | 'under_investigation' | 'resolved' | 'closed';
+  resolutionNotes?: string;
+  resolvedAt?: any;
+  resolvedBy?: string;
+  createdAt: any;
+  createdBy: string;
+}
+
+export interface TechnicianDetailedReview {
+  workQualityRating: number;   // جودة العمل (1-5)
+  punctualityRating: number;   // الالتزام بالموعد (1-5)
+  mannerRating: number;        // أسلوب الفني وتعاملة (1-5)
+  cleanlinessRating: number;   // نظافة الموقع والسيارة (1-5)
+  overallRating: number;       // المتوسط الإجمالي
+  feedbackNotes?: string;
+  submittedAt: any;
+  submittedByCustomerName?: string;
+}
+
+export interface ServiceZone {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  type: 'standard' | 'extended' | 'remote' | 'excluded';
+  maxRadiusKm: number;
+  travelFee: number; // رسوم إضافية للمنطقة بالريال
+  districtsAr: string[];
+  color: string;
+  descriptionAr: string;
+}
+
+export interface ServiceRangeConfig {
+  centerLat: number;
+  centerLng: number;
+  centerName: string;
+  autoRejectOutOfRange: boolean;
+  maxServiceRadiusKm: number;
+  zones: ServiceZone[];
+}
+
+export interface ZoneCheckResult {
+  isInRange: boolean;
+  zone: ServiceZone;
+  distanceKm: number;
+  travelFee: number;
+  statusMessage: string;
+  canBook: boolean;
+}
 
 export interface ServiceStepLog {
   id: string;
   stepKey: ServiceStepKey;
   title: string;
   note?: string;
+  estimatedArrival?: string;
+  isInternalOnly?: boolean;
+  isCustomerVisible?: boolean;
   photos: ServiceStepPhoto[];
   recordedBy?: string;
   recordedByStaffId?: string;
   recordedAt: any;
-  statusChangeTo?: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
+  statusChangeTo?: BookingStatus;
 }
 
 export interface MaintenanceRecord {
@@ -67,13 +203,43 @@ export interface MaintenanceRecord {
     longitude: number;
   };
   cost?: number | string;
-  status: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
+  status: BookingStatus;
   assignedStaffId?: string;
   assignedStaffName?: string;
   assignedStaffPhone?: string;
   assignedAt?: any;
+  estimatedArrival?: string;
+  completedAt?: any;
   serviceSteps?: ServiceStepLog[];
   createdAt?: any;
+  updatedAt?: any;
+
+  // Additional status metadata
+  cancellationReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: any;
+  rescheduledDate?: any;
+  rescheduleReason?: string;
+  noShowNotes?: string;
+  noShowAt?: any;
+  customerConfirmedAt?: any;
+  customerConfirmationStatus?: 'confirmed' | 'requested_change' | 'pending';
+
+  // 1. Transparent Pricing Breakdown
+  pricing?: PricingBreakdown;
+
+  // 2. Customer Electronic Approval for Repairs
+  repairApproval?: CustomerRepairApproval;
+
+  // 3. System Audit Log / Activity Trail
+  auditLogs?: AuditLogEntry[];
+
+  // 4. Warranty & Complaints
+  warranty?: WarrantyDetails;
+  complaints?: ServiceComplaint[];
+
+  // 5. Detailed Technician Review
+  techDetailedReview?: TechnicianDetailedReview;
 }
 
 export interface TestimonialData {
@@ -332,4 +498,141 @@ export const DEFAULT_PARTNERS: Partner[] = [
     order: 4
   }
 ];
+
+/**
+ * Safely extracts epoch milliseconds from any MaintenanceRecord (or booking object).
+ * Evaluates: createdAt (Firestore Timestamp, Date, string, seconds),
+ * bookingId (base36 timestamp generated at creation), serviceDate, and updatedAt.
+ */
+export const getBookingTimestamp = (b: any): number => {
+  if (!b) return 0;
+  
+  // 1. Check createdAt (Timestamp, seconds, Date, string)
+  if (b.createdAt) {
+    if (typeof b.createdAt.toMillis === 'function') {
+      const ms = b.createdAt.toMillis();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.createdAt.toDate === 'function') {
+      const ms = b.createdAt.toDate().getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.createdAt.seconds === 'number') {
+      const ms = b.createdAt.seconds * 1000;
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (b.createdAt instanceof Date) {
+      const ms = b.createdAt.getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.createdAt === 'string' || typeof b.createdAt === 'number') {
+      const t = new Date(b.createdAt).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+  }
+
+  // 2. Extract timestamp from bookingId (e.g., DRF-MNDXYZ-1234 uses base-36 ms timestamp)
+  if (b.bookingId && typeof b.bookingId === 'string') {
+    const parts = b.bookingId.split('-');
+    if (parts.length >= 2 && parts[1]) {
+      const parsed36 = parseInt(parts[1], 36);
+      if (!isNaN(parsed36) && parsed36 > 1600000000000 && parsed36 < 3000000000000) {
+        return parsed36;
+      }
+    }
+    const numMatch = b.bookingId.match(/\d{10,13}/);
+    if (numMatch) {
+      const n = parseInt(numMatch[0], 10);
+      if (!isNaN(n) && n > 0) return n > 100000000000 ? n : n * 1000;
+    }
+  }
+
+  // 3. Check serviceDate
+  if (b.serviceDate) {
+    if (typeof b.serviceDate.toMillis === 'function') {
+      const ms = b.serviceDate.toMillis();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.serviceDate.toDate === 'function') {
+      const ms = b.serviceDate.toDate().getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.serviceDate.seconds === 'number') {
+      const ms = b.serviceDate.seconds * 1000;
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (b.serviceDate instanceof Date) {
+      const ms = b.serviceDate.getTime();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.serviceDate === 'string' || typeof b.serviceDate === 'number') {
+      const t = new Date(b.serviceDate).getTime();
+      if (!isNaN(t) && t > 0) return t;
+    }
+  }
+
+  // 4. Check updatedAt
+  if (b.updatedAt) {
+    if (typeof b.updatedAt.toMillis === 'function') {
+      const ms = b.updatedAt.toMillis();
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+    if (typeof b.updatedAt.seconds === 'number') {
+      const ms = b.updatedAt.seconds * 1000;
+      if (!isNaN(ms) && ms > 0) return ms;
+    }
+  }
+
+  return 0;
+};
+
+/**
+ * Sorts an array of MaintenanceRecords from newest to oldest.
+ */
+export const sortBookingsNewestFirst = <T extends Partial<MaintenanceRecord>>(records: T[]): T[] => {
+  return [...records].sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
+};
+
+export type InventoryCategory = 
+  | 'oil' 
+  | 'filter' 
+  | 'brake' 
+  | 'battery' 
+  | 'spark_plug' 
+  | 'fluids' 
+  | 'belts' 
+  | 'electrical' 
+  | 'other';
+
+export interface InventoryItem {
+  id: string;
+  sku: string;
+  nameAr: string;
+  nameEn?: string;
+  category: InventoryCategory;
+  quantity: number;
+  unit: string; // 'علبة' | 'لتر' | 'طقم' | 'حبة'
+  minAlertLevel: number;
+  costPrice: number;
+  sellingPrice: number;
+  supplier?: string;
+  storageLocation?: string; // 'مستودع المركز' | 'سيارة الخدمة 1' | 'سيارة الخدمة 2'
+  notes?: string;
+  compatibility?: string; // e.g. 'تويوتا، كيا، هيونداي'
+  lastRestockedAt?: string;
+  updatedAt?: string;
+}
+
+export interface InventoryTransaction {
+  id: string;
+  itemId: string;
+  itemName: string;
+  type: 'in' | 'out' | 'adjustment'; // توريد / صرف لطلب صيانة / جرد وتعديل
+  quantityChange: number;
+  newQuantity: number;
+  bookingId?: string;
+  technicianName?: string;
+  reason?: string;
+  timestamp: string;
+}
 

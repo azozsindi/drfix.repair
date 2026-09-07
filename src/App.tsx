@@ -4,7 +4,7 @@
  */
 console.log("App.tsx module is being evaluated");
 
-import React, { useState, useCallback, useEffect, useRef, createContext, useContext, Component } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, createContext, useContext, Component } from 'react';
 import { Helmet, HelmetProvider } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
@@ -103,16 +103,33 @@ import {
   deduplicateCarsList
 } from './components/CustomerAccountSystem';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
+import { ServiceTimelineModal } from './components/ServiceTimelineModal';
+import { CustomerRepairApprovalModal } from './components/CustomerRepairApprovalModal';
+import { WarrantyAndComplaintsModal } from './components/WarrantyAndComplaintsModal';
+import { AuditLogModal } from './components/AuditLogModal';
+import { PricingBreakdownModal } from './components/PricingBreakdownModal';
+import { StatusChangeModal } from './components/StatusChangeModal';
+import { TechnicianReviewModal } from './components/TechnicianReviewModal';
 import { PartnersPage } from './components/PartnersPage';
 import { AdminPartnersManager } from './components/AdminPartnersManager';
 import { 
+  MaintenanceRecord,
   StaffUser, 
   StaffRole, 
   StaffPermissions, 
   DEFAULT_SUPER_ADMIN_PERMISSIONS, 
   ROLE_PRESETS,
   Partner,
-  DEFAULT_PARTNERS
+  DEFAULT_PARTNERS,
+  getBookingTimestamp,
+  sortBookingsNewestFirst,
+  BookingStatus,
+  PricingBreakdown,
+  CustomerRepairApproval,
+  AuditLogEntry,
+  WarrantyDetails,
+  ServiceComplaint,
+  TechnicianDetailedReview
 } from './types';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
@@ -2379,7 +2396,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         setIsSubmitted(true);
 
         const targetPhone = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
-        const whatsappUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(messageText)}`;
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(messageText)}`;
         window.open(whatsappUrl, '_blank');
 
         setTimeout(() => {
@@ -2724,7 +2741,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 <p className="text-xs text-gray-400 mt-3">تم إرسال طلبك بنجاح وجاري تجهيز الخدمة فوراً.</p>
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                   <a
-                    href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}`)}`}
+                    href={`https://api.whatsapp.com/send?phone=${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}&text=${encodeURIComponent(`السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-5 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-green-500/20 cursor-pointer transition-all active:scale-95"
@@ -3103,28 +3120,6 @@ const AddTestimonialForm = () => {
   );
 };
 
-interface MaintenanceRecord {
-  id: string;
-  bookingId?: string;
-  customerName?: string;
-  name?: string;
-  customerPhone: string;
-  carModel: string;
-  carMake?: string;
-  carYear?: string;
-  serviceDate: any;
-  serviceType: string;
-  notes?: string;
-  location?: string;
-  coordinates?: {
-    latitude: number;
-    longitude: number;
-  };
-  cost?: number;
-  status: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
-  createdAt?: any;
-}
-
 interface GalleryItem {
   id: string;
   imageUrl: string;
@@ -3143,24 +3138,6 @@ interface ServiceItem {
   price?: string;
   order?: number;
 }
-
-// Helper to extract numeric epoch timestamp from Firestore booking document
-const getBookingTimestamp = (b: any): number => {
-  if (!b) return 0;
-  if (b.createdAt?.toMillis) return b.createdAt.toMillis();
-  if (b.createdAt?.seconds) return b.createdAt.seconds * 1000;
-  if (b.serviceDate?.toMillis) return b.serviceDate.toMillis();
-  if (b.serviceDate?.seconds) return b.serviceDate.seconds * 1000;
-  if (typeof b.createdAt === 'string') {
-    const t = new Date(b.createdAt).getTime();
-    if (!isNaN(t) && t > 0) return t;
-  }
-  if (typeof b.serviceDate === 'string') {
-    const t = new Date(b.serviceDate).getTime();
-    if (!isNaN(t) && t > 0) return t;
-  }
-  return 0;
-};
 
 const AdminDashboard = ({ 
   isAdmin, 
@@ -3211,9 +3188,26 @@ const AdminDashboard = ({
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
-  const [bookingStatusFilter, setBookingStatusFilter] = useState<'all' | 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled'>('all');
+  const [bookingStatusFilter, setBookingStatusFilter] = useState<'all' | BookingStatus>('all');
   const [bookingSearch, setBookingSearch] = useState('');
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<MaintenanceRecord | null>(null);
+  const [timelineBookingRecord, setTimelineBookingRecord] = useState<MaintenanceRecord | null>(null);
+  const [timelineInitialTab, setTimelineInitialTab] = useState<'timeline' | 'add_step' | 'assign'>('timeline');
+
+  // New Modals for Repair Approval, Warranty & Complaints, Audit Log, Pricing Breakdown, Status Change, and Technician Reviews
+  const [repairApprovalRecord, setRepairApprovalRecord] = useState<MaintenanceRecord | null>(null);
+  const [warrantyComplaintsRecord, setWarrantyComplaintsRecord] = useState<MaintenanceRecord | null>(null);
+  const [auditLogRecord, setAuditLogRecord] = useState<MaintenanceRecord | null>(null);
+  const [pricingBreakdownRecord, setPricingBreakdownRecord] = useState<MaintenanceRecord | null>(null);
+  const [statusChangeModalData, setStatusChangeModalData] = useState<{ record: MaintenanceRecord; targetStatus: BookingStatus } | null>(null);
+  const [techReviewRecord, setTechReviewRecord] = useState<MaintenanceRecord | null>(null);
+
+  const handleOpenTimeline = (record: MaintenanceRecord, tab: 'timeline' | 'add_step' | 'assign' = 'timeline') => {
+    setTimelineBookingRecord(record);
+    const safeTab = (currentStaffUser?.role === 'technician' && tab === 'assign') ? 'timeline' : tab;
+    setTimelineInitialTab(safeTab);
+  };
+  const [techTaskFilter, setTechTaskFilter] = useState<'all' | 'my_tasks'>('all');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [galleryCategoryFilter, setGalleryCategoryFilter] = useState<string>('all');
@@ -3292,7 +3286,25 @@ const AdminDashboard = ({
         msg = `❌ DR.FIX | تم إلغاء الحجز\n\n` +
           `${customerGreeting} 👋\n` +
           `نحيطك علماً بأنه تم إلغاء حجز الصيانة رقم #${bId} لسيارة (${car}).\n\n` +
+          (record.cancellationReason ? `📌 سبب الإلغاء: ${record.cancellationReason}\n\n` : '') +
           `إذا كان لديك أي استفسار أو ترغب في إعادة الجدولة، يسعدنا تواصلكم دائماً 🚗⚡`;
+        break;
+      case 'rescheduled':
+        const resDate = record.rescheduledDate 
+          ? new Date(record.rescheduledDate).toLocaleString('ar-SA', { weekday: 'long', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+          : 'الموعد المحدد لاحقاً';
+        msg = `📅🔄 DR.FIX | تم تأجيل وإعادة جدولة الموعد\n\n` +
+          `${customerGreeting} 👋\n` +
+          `تم تحديث وتأجيل موعد الصيانة الميدانية لسيارة (${car}) رقم الحجز #${bId}.\n\n` +
+          `🗓️ الموعد الجديد: ${resDate}\n` +
+          (record.rescheduleReason ? `📌 ملاحظة: ${record.rescheduleReason}\n\n` : '\n') +
+          `ننتظركم في الموعد الجديد، أو تواصل معنا لأي استفسار 🚗💨`;
+        break;
+      case 'no_show':
+        msg = `⚠️ DR.FIX | تعذر التواصل بموقع العميل\n\n` +
+          `${customerGreeting} 👋\n` +
+          `حضر الفني الميداني لموقعكم المحدد لخدمة سيارة (${car}) رقم الحجز #${bId}، وتعذر اللقاء أو التواصل.\n\n` +
+          `نرجو التواصل معنا لتحديد موعد بديل أو تأكيد طلبكم 🚗⚡`;
         break;
       default:
         msg = `🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n` +
@@ -3301,6 +3313,35 @@ const AdminDashboard = ({
           `كيف نقدر نخدمك؟ 🔧⚡`;
         break;
     }
+
+    return `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+  };
+
+  const getPreAppointmentConfirmationWhatsAppUrl = (record: MaintenanceRecord): string => {
+    const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
+    const waPhone = cleanPhone.startsWith('966') 
+      ? cleanPhone 
+      : cleanPhone.startsWith('05') 
+      ? '966' + cleanPhone.slice(1) 
+      : cleanPhone.startsWith('5') 
+      ? '966' + cleanPhone 
+      : (cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone);
+
+    const bId = record.bookingId || record.id || '';
+    const car = record.carModel || 'السيارة';
+    const customer = (record.customerName || record.name || '').trim();
+    const customerGreeting = customer ? `هلا ${customer}` : 'هلا بك';
+    const sDate = record.serviceDate 
+      ? getRecordDate(record.serviceDate).toLocaleString('ar-SA', { weekday: 'long', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+      : 'الموعد المحدد';
+
+    const msg = `🚗⚡ DR.FIX | تأكيد موعد الصيانة الميدانية\n\n` +
+      `${customerGreeting} 👋\n` +
+      `نود تأكيد موعد صيانة سيارتكم (${car}) رقم الحجز #${bId}.\n\n` +
+      `📅 الموعد: ${sDate}\n` +
+      `🔧 الخدمة: ${record.serviceType}\n\n` +
+      `نرجو تأكيد الموعد وجاهزية السيارة بالرد بكلمة (تأكيد ✅)، أو إبلاغنا في حال رغبتكم بتعديل الموعد 🔄\n\n` +
+      `فريق DR.FIX في خدمتكم دائماً 🚗💨`;
 
     return `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
   };
@@ -3573,6 +3614,7 @@ const AdminDashboard = ({
           knownBookingIds.current.add(doc.id);
           results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
         });
+        results.sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
         setRecords(results);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'maintenance'));
 
@@ -4208,6 +4250,304 @@ const AdminDashboard = ({
     }).catch(error => {
       console.error("Error updating status in Firestore:", error);
     });
+
+    // Record in system audit trail
+    logAuditEvent(
+      id,
+      newStatus === 'cancelled' ? 'cancelled' : 'status_change',
+      `تحديث حالة الطلب إلى: ${statusLabelAr}`,
+      undefined,
+      target?.status,
+      newStatus
+    );
+  };
+
+  const logAuditEvent = async (
+    recordId: string, 
+    actionType: AuditLogEntry['actionType'], 
+    actionTitle: string, 
+    details?: string, 
+    oldValue?: string, 
+    newValue?: string
+  ) => {
+    const target = records.find(r => r.id === recordId);
+    const newEntry: AuditLogEntry = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      recordId,
+      bookingId: target?.bookingId || recordId,
+      actionType,
+      actionTitle,
+      details,
+      oldValue,
+      newValue,
+      performedByStaffName: currentStaffUser?.fullName || 'إدارة المركز',
+      performedByRole: currentStaffUser?.roleTitleAr || currentStaffUser?.role || 'الإدارة',
+      timestamp: new Date().toISOString()
+    };
+
+    const updatedLogs = [newEntry, ...(target?.auditLogs || [])];
+
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        auditLogs: updatedLogs,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn('Could not persist audit log to firestore:', err);
+    }
+
+    setRecords(prev => prev.map(r => r.id === recordId ? { ...r, auditLogs: updatedLogs } : r));
+    if (selectedBookingDetails?.id === recordId) {
+      setSelectedBookingDetails(prev => prev ? { ...prev, auditLogs: updatedLogs } : null);
+    }
+  };
+
+  const handleSaveRepairApproval = async (approval: CustomerRepairApproval) => {
+    if (!repairApprovalRecord) return;
+    const recordId = repairApprovalRecord.id;
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        repairApproval: approval,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, repairApproval: approval } : r));
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, repairApproval: approval } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        approval.status === 'approved' ? 'repair_approved' : 'repair_quotation_sent',
+        approval.status === 'approved' ? 'اعتماد موافقة وتوقيع العميل على بدء الإصلاح' : 'إرسال عرض أسعار الإصلاح للعميل',
+        `حالة الموافقة: ${approval.status} • الإجمالي: ${approval.grandTotal} ر.س`
+      );
+    } catch (err) {
+      console.error('Error saving repair approval:', err);
+      alert('حدث خطأ أثناء حفظ موافقة الإصلاح');
+    }
+  };
+
+  const handleSavePricing = async (pricing: PricingBreakdown) => {
+    if (!pricingBreakdownRecord) return;
+    const recordId = pricingBreakdownRecord.id;
+    const oldCost = pricingBreakdownRecord.cost || 0;
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        pricing,
+        cost: pricing.grandTotal,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, pricing, cost: pricing.grandTotal } : r));
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, pricing, cost: pricing.grandTotal } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        'price_update',
+        'تعديل تفاصيل تسعير الطلب والفاتورة',
+        `أجور يد: ${pricing.laborCost} ر.س | قطع غيار: ${pricing.partsCost} ر.س | رسوم انتقال: ${pricing.travelFee} ر.س | خصم: ${pricing.discount} ر.س`,
+        `${oldCost} ر.س`,
+        `${pricing.grandTotal} ر.س`
+      );
+    } catch (err) {
+      console.error('Error saving pricing:', err);
+      alert('حدث خطأ أثناء حفظ تفاصيل التسعير');
+    }
+  };
+
+  const handleSaveWarranty = async (warranty: WarrantyDetails) => {
+    if (!warrantyComplaintsRecord) return;
+    const recordId = warrantyComplaintsRecord.id;
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        warranty,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, warranty } : r));
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, warranty } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        'warranty_issued',
+        'إصدار وتوثيق شهادة الضمان المعتمدة',
+        `المدة: ${warranty.warrantyPeriodLabel} • ساري حتى: ${new Date(warranty.endDate).toLocaleDateString('ar-SA')}`
+      );
+    } catch (err) {
+      console.error('Error saving warranty:', err);
+      alert('حدث خطأ أثناء حفظ بيانات الضمان');
+    }
+  };
+
+  const handleAddComplaint = async (complaint: ServiceComplaint) => {
+    if (!warrantyComplaintsRecord) return;
+    const recordId = warrantyComplaintsRecord.id;
+    const existing = warrantyComplaintsRecord.complaints || [];
+    const updated = [complaint, ...existing];
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        complaints: updated,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, complaints: updated } : r));
+      setWarrantyComplaintsRecord(prev => prev ? { ...prev, complaints: updated } : null);
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, complaints: updated } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        'complaint_logged',
+        `تسجيل بلاغ/شكوى جديدة: ${complaint.complaintTitle}`,
+        `المسؤول المكلف: ${complaint.assignedStaffName} • الأولوية: ${complaint.priority}`
+      );
+    } catch (err) {
+      console.error('Error adding complaint:', err);
+      alert('حدث خطأ أثناء حفظ الشكوى');
+    }
+  };
+
+  const handleUpdateComplaint = async (complaintId: string, updates: Partial<ServiceComplaint>) => {
+    if (!warrantyComplaintsRecord) return;
+    const recordId = warrantyComplaintsRecord.id;
+    const existing = warrantyComplaintsRecord.complaints || [];
+    const updated = existing.map(c => c.id === complaintId ? { ...c, ...updates } : c);
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        complaints: updated,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, complaints: updated } : r));
+      setWarrantyComplaintsRecord(prev => prev ? { ...prev, complaints: updated } : null);
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, complaints: updated } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        'complaint_updated',
+        'تحديث ومعالجة الشكوى',
+        updates.resolutionNotes ? `تم الحل: ${updates.resolutionNotes}` : 'تم تغيير بيانات الشكوى'
+      );
+    } catch (err) {
+      console.error('Error updating complaint:', err);
+      alert('حدث خطأ أثناء تحديث الشكوى');
+    }
+  };
+
+  const handleConfirmStatusChange = async (
+    newStatus: BookingStatus,
+    details: {
+      cancellationReason?: string;
+      rescheduledDate?: string;
+      rescheduleReason?: string;
+      noShowNotes?: string;
+    }
+  ) => {
+    if (!statusChangeModalData) return;
+    const { record } = statusChangeModalData;
+    const recordId = record.id;
+    const oldStatus = record.status;
+
+    try {
+      const updatePayload: any = {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+        ...details
+      };
+
+      await updateDoc(doc(db, 'maintenance', recordId), updatePayload);
+
+      const updatedRecord = { ...record, ...updatePayload };
+      setRecords(prev => prev.map(r => r.id === recordId ? updatedRecord : r));
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(updatedRecord);
+      }
+
+      let actionTitle = `تغيير الحالة إلى ${newStatus}`;
+      if (newStatus === 'cancelled') actionTitle = 'إلغاء الطلب وتوثيق السبب';
+      if (newStatus === 'rescheduled') actionTitle = 'تأجيل الموعد وإعادة الجدولة';
+      if (newStatus === 'no_show') actionTitle = 'توثيق حالة عدم حضور العميل';
+
+      const detailsStr = details.cancellationReason || details.rescheduleReason || details.noShowNotes || '';
+
+      await logAuditEvent(
+        recordId,
+        newStatus === 'cancelled' ? 'cancelled' : newStatus === 'rescheduled' ? 'rescheduled' : 'status_change',
+        actionTitle,
+        detailsStr,
+        oldStatus,
+        newStatus
+      );
+
+      if (record.customerPhone) {
+        const waUrl = getWhatsAppStatusUrl(updatedRecord, newStatus);
+        window.open(waUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error changing status with details:', err);
+      alert('حدث خطأ أثناء تغيير الحالة');
+    }
+  };
+
+  const handleSaveTechReview = async (review: TechnicianDetailedReview) => {
+    if (!techReviewRecord) return;
+    const recordId = techReviewRecord.id;
+    try {
+      await updateDoc(doc(db, 'maintenance', recordId), {
+        techDetailedReview: review,
+        updatedAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === recordId ? { ...r, techDetailedReview: review } : r));
+      if (selectedBookingDetails?.id === recordId) {
+        setSelectedBookingDetails(prev => prev ? { ...prev, techDetailedReview: review } : null);
+      }
+
+      await logAuditEvent(
+        recordId,
+        'other',
+        'تسجيل تقييم تفصيلي لأداء الفني',
+        `المتوسط: ${review.overallRating}/5 (جودة: ${review.workQualityRating}، التزام: ${review.punctualityRating}، أسلوب: ${review.mannerRating}، نظافة: ${review.cleanlinessRating})`
+      );
+    } catch (err) {
+      console.error('Error saving tech review:', err);
+      alert('حدث خطأ أثناء حفظ التقييم');
+    }
+  };
+
+  const handleSendPreAppointmentConfirmation = async (record: MaintenanceRecord) => {
+    const waUrl = getPreAppointmentConfirmationWhatsAppUrl(record);
+    window.open(waUrl, '_blank');
+
+    try {
+      await updateDoc(doc(db, 'maintenance', record.id), {
+        customerConfirmationStatus: 'sent',
+        preAppointmentConfirmationSentAt: new Date().toISOString()
+      });
+
+      setRecords(prev => prev.map(r => r.id === record.id ? { 
+        ...r, 
+        customerConfirmationStatus: 'sent', 
+        preAppointmentConfirmationSentAt: new Date().toISOString() 
+      } : r));
+
+      await logAuditEvent(
+        record.id,
+        'other',
+        'إرسال تذكير وتأكيد الموعد عبر واتساب',
+        'تم إرسال طلب تأكيد الحضور وجاهزية السيارة للعميل'
+      );
+    } catch (err) {
+      console.warn('Could not update confirmation status:', err);
+    }
   };
 
   const handleReply = async (testimonialId: string) => {
@@ -4352,6 +4692,19 @@ const AdminDashboard = ({
   const COLORS = ['#E31837', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#3B82F6', '#10B981'];
 
   const userPermissions: StaffPermissions = currentStaffUser?.permissions || DEFAULT_SUPER_ADMIN_PERMISSIONS;
+  const isTechnician = currentStaffUser?.role === 'technician';
+
+  // Strictly filter records for technicians: they can ONLY see tasks assigned to them
+  const accessibleRecords = useMemo(() => {
+    if (isTechnician && currentStaffUser) {
+      const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
+      return records.filter(r => 
+        r.assignedStaffId === currentStaffUser.id || 
+        (r.assignedStaffName && staffName && r.assignedStaffName.trim().toLowerCase() === staffName)
+      );
+    }
+    return records;
+  }, [records, isTechnician, currentStaffUser]);
 
   const allowedNavTabs = [
     { id: 'dashboard', label: 'الإحصائيات ونظرة عامة', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
@@ -4387,7 +4740,9 @@ const AdminDashboard = ({
             <div className="flex items-center gap-3 text-gray-400 text-xs sm:text-sm">
               <span>إدارة الحجوزات والمواعيد والعملاء</span>
               <span className="w-1.5 h-1.5 bg-brand-red rounded-full" />
-              <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold">{records.length} حجز إجمالي</span>
+              <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold">
+                {isTechnician ? `${accessibleRecords.length} مهمة مسندة إليك` : `${records.length} حجز إجمالي`}
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
@@ -4778,17 +5133,63 @@ const AdminDashboard = ({
 
               {/* Filter & Search Bar */}
               <div className="glass-card p-6 border-white/5 space-y-4">
+                {/* Mode Selector for Staff / Technicians */}
+                {isTechnician ? (
+                  <div className="flex items-center gap-2.5 px-4 py-2 bg-brand-red/15 border border-brand-red/30 rounded-2xl w-fit">
+                    <Wrench className="w-4 h-4 text-yellow-300" />
+                    <span className="text-xs font-bold text-white">المهام الميدانية المسندة إليك فقط</span>
+                    <span className="bg-brand-red text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                      {accessibleRecords.length} مهمة
+                    </span>
+                  </div>
+                ) : currentStaffUser && (
+                  <div className="flex items-center gap-2 p-1.5 bg-black/40 border border-white/10 rounded-2xl w-fit flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setTechTaskFilter('all')}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                        techTaskFilter === 'all'
+                          ? "bg-white/15 text-white shadow-sm"
+                          : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      <span>جميع الحجوزات</span>
+                      <span className="bg-white/10 text-gray-300 text-[10px] px-1.5 py-0.5 rounded-full">{records.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTechTaskFilter('my_tasks')}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                        techTaskFilter === 'my_tasks'
+                          ? "bg-brand-red text-white shadow-lg shadow-brand-red/25"
+                          : "text-gray-400 hover:text-white"
+                      )}
+                    >
+                      <Wrench className="w-3.5 h-3.5 text-yellow-300" />
+                      <span>مهامي الميدانية المسندة إلي</span>
+                      <span className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
+                        techTaskFilter === 'my_tasks' ? "bg-black/40 text-yellow-300" : "bg-white/10 text-gray-300"
+                      )}>
+                        {accessibleRecords.length}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   {/* Status Filter Badges */}
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { id: 'all', label: 'الكل', count: records.length },
-                      { id: 'new', label: 'جديد', count: records.filter(r => r.status === 'new').length },
-                      { id: 'accepted', label: 'تم القبول', count: records.filter(r => r.status === 'accepted').length },
-                      { id: 'on_the_way', label: 'الفني بالطريق', count: records.filter(r => r.status === 'on_the_way').length },
-                      { id: 'in-progress', label: 'قيد العمل', count: records.filter(r => r.status === 'in-progress').length },
-                      { id: 'completed', label: 'مكتمل', count: records.filter(r => r.status === 'completed').length },
-                      { id: 'cancelled', label: 'ملغي', count: records.filter(r => r.status === 'cancelled').length },
+                      { id: 'all', label: 'الكل', count: (isTechnician ? accessibleRecords : records).length },
+                      { id: 'new', label: 'جديد', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'new').length },
+                      { id: 'accepted', label: 'تم القبول', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'accepted').length },
+                      { id: 'on_the_way', label: 'الفني بالطريق', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'on_the_way').length },
+                      { id: 'in-progress', label: 'قيد العمل', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'in-progress').length },
+                      { id: 'completed', label: 'مكتمل', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'completed').length },
+                      { id: 'cancelled', label: 'ملغي', count: (isTechnician ? accessibleRecords : records).filter(r => r.status === 'cancelled').length },
                     ].map(f => (
                       <button
                         key={f.id}
@@ -4859,7 +5260,7 @@ const AdminDashboard = ({
                     type="text"
                     value={bookingSearch}
                     onChange={e => setBookingSearch(e.target.value)}
-                    placeholder="ابحث برقم الجوال، نوع السيارة، الخدمة، أو رقم الحجز..."
+                    placeholder="ابحث برقم الجوال، اسم الفني، نوع السيارة، الخدمة، أو رقم الحجز..."
                     className="w-full bg-black/40 border border-white/10 rounded-xl pr-11 pl-4 py-3 text-xs outline-none focus:border-brand-red transition-all text-white placeholder:text-gray-500"
                   />
                   {bookingSearch && (
@@ -4875,7 +5276,11 @@ const AdminDashboard = ({
 
               {/* Bookings Selection & Batch Controls */}
               {(() => {
-                const displayedBookings = records
+                const baseRecords = isTechnician 
+                  ? accessibleRecords 
+                  : (techTaskFilter === 'my_tasks' && currentStaffUser ? accessibleRecords : records);
+
+                const displayedBookings = baseRecords
                   .filter(r => bookingStatusFilter === 'all' || r.status === bookingStatusFilter)
                   .filter(r => {
                     if (!bookingSearch.trim()) return true;
@@ -4886,9 +5291,11 @@ const AdminDashboard = ({
                       (r.carModel || '').toLowerCase().includes(q) ||
                       (r.serviceType || '').toLowerCase().includes(q) ||
                       (r.location || '').toLowerCase().includes(q) ||
-                      (r.notes || '').toLowerCase().includes(q)
+                      (r.notes || '').toLowerCase().includes(q) ||
+                      (r.assignedStaffName || '').toLowerCase().includes(q)
                     );
-                  });
+                  })
+                  .sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
 
                 const allDisplayedSelected = displayedBookings.length > 0 && displayedBookings.every(b => selectedBookingIds.has(b.id));
                 const selectedCount = selectedBookingIds.size;
@@ -5015,7 +5422,7 @@ const AdminDashboard = ({
                                     <div className="font-bold text-sm text-gray-200" dir="ltr">{record.customerPhone}</div>
                                     <div className="flex flex-wrap items-center gap-2 mt-1.5">
                                       <a 
-                                        href={`https://wa.me/${waPhone}?text=${waMsg}`}
+                                        href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="px-2.5 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
@@ -5058,6 +5465,29 @@ const AdminDashboard = ({
                                         "{record.notes}"
                                       </div>
                                     )}
+                                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                      {record.assignedStaffName ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenTimeline(record, 'timeline')}
+                                          className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                          title="الفني الميداني المسند - اضغط لفتح التوثيق ومراحل العمل"
+                                        >
+                                          <UserCheck className="w-2.5 h-2.5 text-emerald-400" />
+                                          <span>الفني: {record.assignedStaffName}</span>
+                                        </button>
+                                      ) : !isTechnician ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenTimeline(record, 'assign')}
+                                          className="text-[10px] font-bold text-yellow-400/90 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                          title="إسناد الطلب لفني صيانة ميداني"
+                                        >
+                                          <Plus className="w-2.5 h-2.5" />
+                                          <span>+ إسناد لفني</span>
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   </td>
                                   <td className="px-6 py-4">
                                     <div className="space-y-1.5">
@@ -5111,6 +5541,26 @@ const AdminDashboard = ({
                                   </td>
                                   <td className="px-6 py-4">
                                     <div className="flex items-center justify-center gap-1">
+                                      {/* Field Photo & Step Documentation */}
+                                      <button
+                                        type="button"
+                                        onClick={() => setTimelineBookingRecord(record)}
+                                        className={cn(
+                                          "p-2 rounded-lg transition-all cursor-pointer relative",
+                                          record.serviceSteps && record.serviceSteps.length > 0
+                                            ? "text-brand-red bg-brand-red/15 hover:bg-brand-red/25 border border-brand-red/30"
+                                            : "text-gray-400 hover:text-white hover:bg-white/10"
+                                        )}
+                                        title="مراحل العمل وتوثيق الصور الميدانية"
+                                      >
+                                        <Camera className="w-4 h-4" />
+                                        {record.serviceSteps && record.serviceSteps.length > 0 && (
+                                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-brand-red text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                                            {record.serviceSteps.length}
+                                          </span>
+                                        )}
+                                      </button>
+
                                       <a
                                         href={getWhatsAppStatusUrl(record, record.status)}
                                         target="_blank"
@@ -5120,6 +5570,19 @@ const AdminDashboard = ({
                                       >
                                         <MessageSquare className="w-4 h-4" />
                                       </a>
+                                      <button 
+                                        type="button"
+                                        onClick={() => handleOpenTimeline(record, 'timeline')}
+                                        className="p-2 text-indigo-400 hover:text-white hover:bg-indigo-500/20 rounded-lg transition-colors cursor-pointer relative"
+                                        title="توثيق ومراحل العمل وصور الفحص الميداني 📸"
+                                      >
+                                        <Camera className="w-4 h-4" />
+                                        {(record.serviceSteps?.length || 0) > 0 && (
+                                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-indigo-500 text-white rounded-full text-[9px] flex items-center justify-center font-bold">
+                                            {record.serviceSteps!.length}
+                                          </span>
+                                        )}
+                                      </button>
                                       <button 
                                         onClick={() => setSelectedBookingDetails(record)}
                                         className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
@@ -5216,6 +5679,29 @@ const AdminDashboard = ({
                                   <span className="text-gray-500">الخدمة:</span>
                                   <span className="font-bold text-white">{record.serviceType}</span>
                                 </div>
+                                <div className="flex justify-between items-center text-gray-300 pt-1.5 border-t border-white/5">
+                                  <span className="text-gray-500">الفني الميداني:</span>
+                                  {record.assignedStaffName ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenTimeline(record, 'timeline')}
+                                      className="font-bold text-emerald-300 text-[11px] flex items-center gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/30 cursor-pointer"
+                                      title="عرض مراحل العمل وتوثيق الصور"
+                                    >
+                                      <UserCheck className="w-3 h-3 text-emerald-400" />
+                                      <span>{record.assignedStaffName}</span>
+                                    </button>
+                                  ) : !isTechnician ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenTimeline(record, 'assign')}
+                                      className="text-yellow-400 hover:text-yellow-300 font-bold text-[11px] flex items-center gap-1 bg-yellow-500/10 px-2 py-0.5 rounded-lg border border-yellow-500/20 cursor-pointer"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>+ إسناد لفني</span>
+                                    </button>
+                                  ) : null}
+                                </div>
                                 {record.notes && (
                                   <div className="text-gray-400 italic pt-1 border-t border-white/5">
                                     "{record.notes}"
@@ -5246,7 +5732,7 @@ const AdminDashboard = ({
                                     ✅ قبول
                                   </a>
                                   <a 
-                                    href={`https://wa.me/${waPhone}?text=${waMsg}`}
+                                    href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
@@ -5275,6 +5761,26 @@ const AdminDashboard = ({
                                 </div>
 
                                 <div className="flex items-center gap-1">
+                                  {/* Field Photo & Step Documentation */}
+                                  <button 
+                                    type="button"
+                                    onClick={() => handleOpenTimeline(record, 'timeline')}
+                                    className={cn(
+                                      "p-2 rounded-xl cursor-pointer relative transition-all",
+                                      record.serviceSteps && record.serviceSteps.length > 0
+                                        ? "text-brand-red bg-brand-red/15 border border-brand-red/30"
+                                        : "text-gray-400 hover:text-white bg-white/5"
+                                    )}
+                                    title="مراحل العمل وتوثيق الصور الميدانية"
+                                  >
+                                    <Camera className="w-4 h-4" />
+                                    {record.serviceSteps && record.serviceSteps.length > 0 && (
+                                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-brand-red text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                                        {record.serviceSteps.length}
+                                      </span>
+                                    )}
+                                  </button>
+
                                   <a
                                     href={getWhatsAppStatusUrl(record, record.status)}
                                     target="_blank"
@@ -5403,12 +5909,12 @@ const AdminDashboard = ({
                   <div>
                     <span className="text-xs text-gray-400 block mb-1">مواعيد هذا الشهر</span>
                     <span className="text-2xl font-black font-display text-brand-red">
-                      {records.filter(r => {
+                      {(isTechnician ? accessibleRecords : records).filter(r => {
                         const d = getRecordDate(r.serviceDate);
                         return d.getFullYear() === calendarMonth.getFullYear() && d.getMonth() === calendarMonth.getMonth();
                       }).length}
                     </span>
-                    <span className="text-xs text-gray-500 mr-2">حجز مسجل</span>
+                    <span className="text-xs text-gray-500 mr-2">{isTechnician ? 'مهمة مسندة' : 'حجز مسجل'}</span>
                   </div>
                   <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400">
                     <Calendar className="w-6 h-6" />
@@ -5445,7 +5951,7 @@ const AdminDashboard = ({
                       for (let day = 1; day <= totalDays; day++) {
                         const currentDate = new Date(year, month, day);
                         const dateStr = currentDate.toISOString().split('T')[0];
-                        const dayBookings = records.filter(r => {
+                        const dayBookings = (isTechnician ? accessibleRecords : records).filter(r => {
                           const d = getRecordDate(r.serviceDate);
                           return d.toISOString().split('T')[0] === dateStr;
                         });
@@ -5509,30 +6015,32 @@ const AdminDashboard = ({
                         مواعيد {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'long', month: 'numeric', day: 'numeric' })}
                       </h4>
                       <p className="text-xs text-gray-400">
-                        {records.filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length} مواعيد مجدولة
+                        {(isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length} {isTechnician ? 'مهام مسندة' : 'مواعيد مجدولة'}
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setFormData({
-                          customerPhone: '',
-                          carModel: '',
-                          serviceType: '',
-                          notes: '',
-                          cost: '',
-                          status: 'pending'
-                        });
-                        setIsAdding(true);
-                      }}
-                      className="p-2 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white rounded-xl transition-all cursor-pointer"
-                      title="حجز موعد جديد في هذا اليوم"
-                    >
-                      <PlusCircle className="w-5 h-5" />
-                    </button>
+                    {!isTechnician && (
+                      <button
+                        onClick={() => {
+                          setFormData({
+                            customerPhone: '',
+                            carModel: '',
+                            serviceType: '',
+                            notes: '',
+                            cost: '',
+                            status: 'pending'
+                          });
+                          setIsAdding(true);
+                        }}
+                        className="p-2 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white rounded-xl transition-all cursor-pointer"
+                        title="حجز موعد جديد في هذا اليوم"
+                      >
+                        <PlusCircle className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-3 max-h-[480px] overflow-y-auto no-scrollbar pr-1">
-                    {records
+                    {(isTechnician ? accessibleRecords : records)
                       .filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString())
                       .map((record) => {
                         const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
@@ -5812,7 +6320,7 @@ const AdminDashboard = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
             >
-              <ReportsView records={records} />
+              <ReportsView records={isTechnician ? accessibleRecords : records} />
             </motion.div>
           )}
 
@@ -8108,6 +8616,24 @@ const AdminDashboard = ({
                     </div>
                   </div>
 
+                  {/* Assigned Technician Card */}
+                  <div className="bg-white/5 p-4 rounded-xl flex items-center justify-between border border-white/5">
+                    <div>
+                      <div className="text-xs text-gray-400">الفني الميداني المسؤول</div>
+                      <div className="font-bold text-white text-sm mt-0.5 flex items-center gap-1.5">
+                        <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{selectedBookingDetails.assignedStaffName || 'لم يُسند لفني بعد'}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTimeline(selectedBookingDetails, isTechnician ? 'timeline' : (selectedBookingDetails.assignedStaffId ? 'timeline' : 'assign'))}
+                      className="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    >
+                      {isTechnician ? 'عرض التوثيق والسند' : (selectedBookingDetails.assignedStaffId ? 'إدارة التوثيق والفني' : '+ إسناد لفني الآن')}
+                    </button>
+                  </div>
+
                   <div className="bg-white/5 p-4 rounded-xl space-y-1">
                     <div className="text-xs text-gray-400">نوع الخدمة المطلوبة</div>
                     <div className="font-bold text-white">{selectedBookingDetails.serviceType}</div>
@@ -8194,6 +8720,18 @@ const AdminDashboard = ({
                   </div>
                 </div>
 
+                {/* Big Button: Steps & Field Photos Timeline */}
+                <div className="pt-2">
+                  <button 
+                    type="button"
+                    onClick={() => setTimelineBookingRecord(selectedBookingDetails)}
+                    className="w-full py-3.5 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all border border-red-500/40"
+                  >
+                    <Camera className="w-4 h-4 text-yellow-300" />
+                    <span>مراحل العمل وتوثيق الصور الميدانية ({selectedBookingDetails.serviceSteps?.length || 0} مرحلة) 📸</span>
+                  </button>
+                </div>
+
                 {/* Quick actions in modal */}
                 <div className="space-y-2 pt-2">
                   <a 
@@ -8225,7 +8763,7 @@ const AdminDashboard = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <a 
-                      href={`https://wa.me/${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}?text=${encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim() ? `هلا ${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim()} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${selectedBookingDetails.carModel || 'السيارة'}) رقم #${selectedBookingDetails.bookingId || selectedBookingDetails.id || ''}\n\nكيف نقدر نخدمك؟ 🔧⚡`)}`}
+                      href={`https://api.whatsapp.com/send?phone=${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}&text=${encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim() ? `هلا ${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim()} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${selectedBookingDetails.carModel || 'السيارة'}) رقم #${selectedBookingDetails.bookingId || selectedBookingDetails.id || ''}\n\nكيف نقدر نخدمك؟ 🔧⚡`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -8246,6 +8784,28 @@ const AdminDashboard = ({
             </div>
           )}
         </AnimatePresence>
+
+        {/* Service Timeline & Photo Documentation Modal */}
+        {timelineBookingRecord && (
+          <ServiceTimelineModal
+            record={timelineBookingRecord}
+            staffList={staffList}
+            currentStaffUser={currentStaffUser}
+            initialTab={timelineInitialTab}
+            telegramConfig={{
+              botToken: settingsForm.telegramBotToken,
+              chatId: settingsForm.telegramChatId
+            }}
+            onClose={() => setTimelineBookingRecord(null)}
+            onUpdateRecord={(updatedRecord) => {
+              setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r).sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a)));
+              if (selectedBookingDetails?.id === updatedRecord.id) {
+                setSelectedBookingDetails(updatedRecord);
+              }
+              setTimelineBookingRecord(updatedRecord);
+            }}
+          />
+        )}
 
         {/* Delete Confirmation Modal (In-App Dialog - Safe for sandboxed iframes) */}
         <AnimatePresence>
@@ -9084,7 +9644,7 @@ const ContactSection = ({ settings }: { settings: AppSettings }) => {
       ? `*استفسار جديد من موقع Dr. Fix*\n\n*الاسم:* ${name}\n*وسيلة التواصل:* ${emailOrPhone || 'غير محدد'}\n*الرسالة:* ${message}`
       : `*New Inquiry from Dr. Fix Website*\n\n*Name:* ${name}\n*Contact Info:* ${emailOrPhone || 'N/A'}\n*Message:* ${message}`;
     const targetPhone = (settings.whatsapp || '966546870807').replace(/[^0-9]/g, '');
-    const url = `https://wa.me/${targetPhone}?text=${encodeURIComponent(text)}`;
+    const url = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
 
     setSent(true);

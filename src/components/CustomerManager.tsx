@@ -449,7 +449,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
     const clean = phone.replace(/\D/g, '');
     const intl = clean.startsWith('0') ? '966' + clean.slice(1) : (clean.startsWith('5') ? '966' + clean : clean);
     const msg = encodeURIComponent(`مرحباً بك أستاذ ${customerName} 👋\nمعك مركز DR.FIX للصيانة المتنقلة بجدة. نتشرف بخدمتك دائماً.`);
-    return `https://wa.me/${intl}?text=${msg}`;
+    return `https://api.whatsapp.com/send?phone=${intl}&text=${msg}`;
   };
 
   // Find all service records belonging to a customer

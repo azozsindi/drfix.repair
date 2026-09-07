@@ -30,12 +30,15 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
 
   const steps: ServiceStepLog[] = record.serviceSteps || [];
   
+  // Filter only customer-visible steps (internal/private steps are hidden)
+  const visibleSteps = steps.filter(step => step.isInternalOnly !== true && step.isCustomerVisible !== false);
+
   // Filter only customer-visible photos
   const customerVisiblePhotos: { photo: ServiceStepPhoto; stepTitle: string; stepKey: string; time: string }[] = [];
   
-  steps.forEach(step => {
+  visibleSteps.forEach(step => {
     (step.photos || []).forEach(photo => {
-      if (!photo.isInternalOnly) {
+      if (photo.isInternalOnly !== true && photo.isCustomerVisible !== false) {
         customerVisiblePhotos.push({
           photo,
           stepTitle: step.title,
@@ -46,7 +49,7 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
     });
   });
 
-  if (steps.length === 0 && customerVisiblePhotos.length === 0) {
+  if (visibleSteps.length === 0 && customerVisiblePhotos.length === 0) {
     return null; // Don't clutter if no steps are logged yet
   }
 
@@ -163,20 +166,26 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
             )}
 
             {/* Steps Timeline Details */}
-            {steps.length > 0 && (
+            {visibleSteps.length > 0 && (
               <div className="space-y-2 pt-1">
                 <div className="text-xs font-bold text-gray-300">سجل الخطوات والملاحظات:</div>
                 <div className="space-y-2">
-                  {steps.map((step, idx) => {
+                  {visibleSteps.map((step, idx) => {
                     const stepTime = step.recordedAt ? new Date(step.recordedAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : '';
                     return (
-                      <div key={step.id || idx} className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1 text-xs">
+                      <div key={step.id || idx} className="bg-white/5 p-3 rounded-xl border border-white/5 space-y-1.5 text-xs">
                         <div className="flex items-center justify-between font-bold text-white">
                           <span>{step.title}</span>
                           <span className="text-[10px] text-gray-400 font-normal font-mono">{stepTime}</span>
                         </div>
+                        {step.estimatedArrival && (
+                          <div className="text-[11px] text-indigo-300 font-semibold flex items-center gap-1 bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/20">
+                            <span>⏱️ المدة المتوقعة للوصول:</span>
+                            <span>{step.estimatedArrival}</span>
+                          </div>
+                        )}
                         {step.note && (
-                          <p className="text-[11px] text-gray-300 leading-relaxed pt-0.5">
+                          <p className="text-[11px] text-gray-300 leading-relaxed pt-0.5 whitespace-pre-line">
                             {step.note}
                           </p>
                         )}

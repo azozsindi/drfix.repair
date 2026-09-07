@@ -103,12 +103,13 @@ function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, wa
   }
 
   const encodedMsg = encodeURIComponent(msg);
+  const directApiUrl = `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodedMsg}`;
   return {
     msg,
     waPhone,
     appUrl: `whatsapp://send?phone=${waPhone}&text=${encodedMsg}`,
-    webUrl: `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodedMsg}`,
-    waMeUrl: `https://wa.me/${waPhone}?text=${encodedMsg}`
+    webUrl: directApiUrl,
+    waMeUrl: directApiUrl
   };
 }
 

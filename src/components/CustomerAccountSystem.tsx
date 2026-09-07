@@ -10,7 +10,8 @@ import {
 } from 'firebase/firestore';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../firebase';
-import { CustomerProfile, CustomerCar, MaintenanceRecord } from '../types';
+import { CustomerProfile, CustomerCar, MaintenanceRecord, sortBookingsNewestFirst } from '../types';
+import { CustomerVisualReport } from './CustomerVisualReport';
 
 // Helper to normalize Saudi phone numbers for consistent indexing
 export const cleanSaudiPhone = (raw: string): string => {
@@ -1483,12 +1484,8 @@ export const CustomerPortalModal: React.FC = () => {
 
     const updateAndSort = () => {
       const list = Array.from(resultMap.values());
-      list.sort((a, b) => {
-        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : new Date(a.serviceDate || 0).getTime();
-        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : new Date(b.serviceDate || 0).getTime();
-        return timeB - timeA;
-      });
-      setMyBookings(list);
+      const sorted = sortBookingsNewestFirst(list);
+      setMyBookings(sorted);
       setLoadingBookings(false);
 
       // Auto-sync cars from maintenance cards into customer cars
@@ -2189,11 +2186,14 @@ export const CustomerPortalModal: React.FC = () => {
                           )}
                         </div>
 
+                        {/* Customer Visual Inspection & Progress Report */}
+                        <CustomerVisualReport record={b} />
+
                         {/* Interactive Quick Action Buttons */}
                         <div className="flex flex-wrap items-center gap-2 pt-1">
                           {/* Direct WhatsApp with Card Info */}
                           <a
-                            href={`https://wa.me/966546870807?text=${encodeURIComponent(
+                            href={`https://api.whatsapp.com/send?phone=966546870807&text=${encodeURIComponent(
                               `السلام عليكم DR.FIX، أستفسر عن حالة كرت الصيانة رقم (${bookingCode}) للسيارة (${b.carModel || 'السيارة'}) - الحالة الحالية: ${statusInfo.label}`
                             )}`}
                             target="_blank"
@@ -2370,7 +2370,7 @@ export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => 
       }
     >
       <User className="w-3.5 h-3.5 text-brand-red shrink-0" />
-      <span>دخول / كرت الصيانة</span>
+      <span>تسجيل دخول</span>
     </button>
   );
 };
