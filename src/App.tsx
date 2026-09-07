@@ -91,7 +91,17 @@ import {
 import { ReportsView } from './components/ReportsView';
 import { StaffManagement } from './components/StaffManagement';
 import { CustomerManager } from './components/CustomerManager';
-import { CustomerProvider, CustomerNavButton, useCustomer } from './components/CustomerAccountSystem';
+import { 
+  CustomerProvider, 
+  CustomerNavButton, 
+  useCustomer,
+  cleanCarMake,
+  cleanCarYear,
+  cleanCarModel,
+  areCarsEqual,
+  getCarSignature,
+  deduplicateCarsList
+} from './components/CustomerAccountSystem';
 import { exportBookingsToWord, exportSingleBookingWord } from './lib/reportUtils';
 import { PartnersPage } from './components/PartnersPage';
 import { AdminPartnersManager } from './components/AdminPartnersManager';
@@ -904,7 +914,15 @@ const Ticker = ({ settings }: { settings: AppSettings }) => {
   );
 };
 
-const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolean }) => {
+const Navbar = ({ 
+  settings, 
+  isAdmin, 
+  isMaintenance 
+}: { 
+  settings: AppSettings; 
+  isAdmin?: boolean; 
+  isMaintenance?: boolean;
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -928,6 +946,11 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   }, [isAdmin, navigate]);
 
   const handleLogoClick = (e: React.MouseEvent) => {
+    // In maintenance mode, prevent default navigation to avoid page jitter during clicks
+    if (isMaintenance && !isAdmin) {
+      e.preventDefault();
+    }
+
     const now = Date.now();
     if (now - lastLogoClickTimeRef.current > 2500) {
       logoClicksRef.current = 1;
@@ -988,200 +1011,182 @@ const Navbar = ({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolea
   };
 
   return (
-    <nav className="fixed top-7 md:top-8 left-0 right-0 z-50 bg-brand-black/90 backdrop-blur-xl border-b border-white/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 md:py-4 flex justify-between items-center">
-        {/* Brand Logo & Customer Name Quick Profile Badge */}
-        <div className="flex items-center gap-2.5 sm:gap-4">
-          <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 sm:gap-3 group select-none shrink-0">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 bg-black rounded-xl sm:rounded-2xl p-1 flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors">
-              <img 
-                src={settings.logoUrl || '/logo-custom.png'} 
-                alt={settings.siteName || "DR.FIX"} 
-                className="w-full h-full object-contain" 
-                referrerPolicy="no-referrer" 
-                loading="eager"
-                decoding="async"
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors">
-                {settings.siteName || 'Dr. Fix'}
-              </span>
-              <span className="text-[10px] text-gray-400 hidden sm:inline-block">صيانة سيارات احترافية</span>
-            </div>
-          </Link>
-
-          {/* Customer Name & Maintenance Card Badge directly next to Logo */}
-          {settings.enableCustomerAccounts !== false && (
-            customer ? (
-              <button
-                type="button"
-                onClick={() => setIsPortalOpen(true)}
-                className="flex items-center gap-2 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-neutral-900/90 hover:bg-neutral-850 border border-brand-red/50 hover:border-brand-red text-white transition-all cursor-pointer group shadow-lg shadow-brand-red/10"
-                title="اضغط لفتح ملفك واستعراض كرت الصيانة المباشر"
-              >
-                <div className="relative shrink-0">
-                  {customer.photoURL ? (
-                    <img 
-                      src={customer.photoURL} 
-                      alt={customer.name} 
-                      className="w-6 h-6 rounded-full object-cover border border-brand-red/50" 
-                      referrerPolicy="no-referrer" 
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-brand-red text-white flex items-center justify-center text-xs font-black shadow-inner">
-                      {customer.name?.charAt(0) || <User className="w-3.5 h-3.5" />}
-                    </div>
-                  )}
-                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                </div>
-                <div className="flex flex-col text-right">
-                  <span className="text-xs font-bold text-gray-100 group-hover:text-white max-w-[85px] xs:max-w-[110px] sm:max-w-[150px] truncate leading-tight">
-                    {customer.name}
-                  </span>
-                  <span className="text-[9px] text-brand-red font-bold leading-none flex items-center gap-0.5 mt-0.5">
-                    <FileText className="w-2.5 h-2.5" />
-                    <span>كرت الصيانة</span>
-                  </span>
-                </div>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setIsAuthOpen(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
-                title="تسجيل الدخول / كرت الصيانة"
-              >
-                <User className="w-3.5 h-3.5 text-brand-red" />
-                <span>دخول / كرت الصيانة</span>
-              </button>
-            )
-          )}
-        </div>
+    <nav className="fixed top-8 md:top-8.5 left-0 right-0 z-50 bg-brand-black/95 backdrop-blur-xl border-b border-white/10" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex justify-between items-center gap-4">
+        {/* Brand Logo */}
+        <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 sm:gap-3 group select-none shrink-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-black rounded-xl p-1 flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors shrink-0">
+            <img 
+              src={settings.logoUrl || '/logo-custom.png'} 
+              alt={settings.siteName || "DR.FIX"} 
+              className="w-full h-full object-contain" 
+              referrerPolicy="no-referrer" 
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+          <div className="flex flex-col">
+            <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors whitespace-nowrap">
+              {settings.siteName || 'Dr. Fix'}
+            </span>
+            <span className="text-[10px] text-gray-400 hidden sm:inline-block whitespace-nowrap">صيانة سيارات احترافية</span>
+          </div>
+        </Link>
         
         {/* Desktop Menu */}
-        <div className="hidden lg:flex items-center gap-5 xl:gap-7 text-sm font-bold uppercase tracking-wider">
-          {navLinks.map((link) => (
-            <button 
-              key={link.path} 
-              onClick={() => handleNavClick(link.path)}
-              className={cn("transition-colors hover:text-brand-red cursor-pointer py-1", location.pathname === link.path ? "text-brand-red" : "text-white")}
-            >
-              {link.name}
-            </button>
-          ))}
-          <LanguageToggle />
-          {settings.enableCustomerAccounts !== false && (
-            <CustomerNavButton />
-          )}
-          <div className="flex items-center gap-2">
-            <a 
-              href={`tel:${settings.phone || '0546870807'}`} 
-              className="p-2.5 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all"
-              title="اتصال هاتفي"
-            >
-              <Phone className="w-4 h-4" />
-            </a>
-            <a 
-              href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="p-2.5 rounded-full bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-all shadow-sm shadow-green-500/20"
-              title="واتساب"
-            >
-              <MessageCircle className="w-4 h-4" />
-            </a>
+        {isMaintenance && !isAdmin ? (
+          <div className="hidden lg:flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-red/10 border border-brand-red/25 text-brand-red text-xs font-bold shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-brand-red animate-pulse" />
+              <span>وضع الصيانة مفعل</span>
+            </div>
+            <div className="h-4 w-px bg-white/15 mx-1" />
+            <LanguageToggle />
           </div>
-          <button 
-            onClick={handleBookNow} 
-            className="px-5 py-2.5 bg-brand-red rounded-full text-white font-display font-black text-xs md:text-sm red-glow-hover transition-all cursor-pointer flex items-center gap-2"
-          >
-            <Car className="w-4 h-4" />
-            {t.nav.bookNow}
-          </button>
-        </div>
+        ) : (
+          <div className="hidden lg:flex items-center gap-3 xl:gap-5 text-xs xl:text-sm font-bold uppercase tracking-wider shrink-0">
+            {navLinks.map((link) => (
+              <button 
+                key={link.path} 
+                onClick={() => handleNavClick(link.path)}
+                className={cn(
+                  "transition-colors hover:text-brand-red cursor-pointer py-1 px-1.5 whitespace-nowrap", 
+                  location.pathname === link.path ? "text-brand-red font-black" : "text-gray-200"
+                )}
+              >
+                {link.name}
+              </button>
+            ))}
+
+            <div className="h-4 w-px bg-white/15 mx-0.5 shrink-0" />
+
+            <LanguageToggle />
+
+            {settings.enableCustomerAccounts !== false && (
+              <CustomerNavButton />
+            )}
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <a 
+                href={`tel:${settings.phone || '0546870807'}`} 
+                className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all shrink-0"
+                title="اتصال هاتفي"
+              >
+                <Phone className="w-3.5 h-3.5" />
+              </a>
+              <a 
+                href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="p-2 rounded-full bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-all shadow-sm shadow-green-500/20 shrink-0"
+                title="واتساب"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            <button 
+              onClick={handleBookNow} 
+              className="px-4 py-2 bg-brand-red hover:bg-red-700 rounded-full text-white font-display font-black text-xs red-glow-hover transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-md shadow-brand-red/30"
+            >
+              <Car className="w-3.5 h-3.5" />
+              <span>{t.nav.bookNow}</span>
+            </button>
+          </div>
+        )}
 
         {/* Mobile / Tablet Menu Toggle */}
-        <div className="flex items-center gap-2 lg:hidden">
-          <LanguageToggle />
-          <button 
-            onClick={() => setIsOpen(!isOpen)}
-            className="p-2 rounded-xl bg-white/5 border border-white/10 text-white hover:text-brand-red hover:border-brand-red/30 transition-all cursor-pointer"
-            aria-label="Toggle menu"
-          >
-            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+        {isMaintenance && !isAdmin ? (
+          <div className="flex items-center gap-2 lg:hidden shrink-0">
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-red/10 text-brand-red border border-brand-red/20 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-red animate-pulse" />
+              <span>صيانة</span>
+            </span>
+            <LanguageToggle />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 lg:hidden shrink-0">
+            <LanguageToggle />
+            <button 
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 rounded-xl bg-white/5 border border-white/10 text-white hover:text-brand-red hover:border-brand-red/30 transition-all cursor-pointer"
+              aria-label="Toggle menu"
+            >
+              {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Mobile Menu Overlay */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="lg:hidden bg-brand-dark/98 backdrop-blur-2xl border-b border-white/10 overflow-hidden shadow-2xl"
-          >
-            <div className="flex flex-col p-5 sm:p-6 gap-4 text-base font-bold">
-              {navLinks.map((link) => (
-                <button 
-                  key={link.path} 
-                  onClick={() => handleNavClick(link.path)}
-                  className={cn(
-                    "text-right py-2 px-3 rounded-xl transition-all flex items-center justify-between hover:bg-white/5",
-                    location.pathname === link.path ? "text-brand-red bg-brand-red/10" : "text-white"
-                  )}
-                >
-                  <span>{link.name}</span>
-                  <ChevronLeft className="w-4 h-4 opacity-50" />
-                </button>
-              ))}
+      {!isMaintenance && (
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden bg-brand-dark/98 backdrop-blur-2xl border-b border-white/10 overflow-hidden shadow-2xl"
+            >
+              <div className="flex flex-col p-5 sm:p-6 gap-4 text-base font-bold">
+                {navLinks.map((link) => (
+                  <button 
+                    key={link.path} 
+                    onClick={() => handleNavClick(link.path)}
+                    className={cn(
+                      "text-right py-2 px-3 rounded-xl transition-all flex items-center justify-between hover:bg-white/5",
+                      location.pathname === link.path ? "text-brand-red bg-brand-red/10" : "text-white"
+                    )}
+                  >
+                    <span>{link.name}</span>
+                    <ChevronLeft className="w-4 h-4 opacity-50" />
+                  </button>
+                ))}
 
-              {settings.enableCustomerAccounts !== false && (
-                <div className="pt-1">
-                  <CustomerNavButton isMobile />
+                {settings.enableCustomerAccounts !== false && (
+                  <div className="pt-1">
+                    <CustomerNavButton isMobile onAction={() => setIsOpen(false)} />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <a 
+                    href={`tel:${settings.phone || '0546870807'}`} 
+                    onClick={() => setIsOpen(false)}
+                    className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 transition-colors"
+                  >
+                    <Phone className="w-4 h-4 text-brand-red" />
+                    <span>اتصال هاتفي</span>
+                  </a>
+                  <a 
+                    href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    onClick={() => setIsOpen(false)}
+                    className="py-3 px-4 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center gap-2 text-sm text-green-400 hover:bg-[#25D366]/30 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>واتساب</span>
+                  </a>
                 </div>
-              )}
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <a 
-                  href={`tel:${settings.phone || '0546870807'}`} 
-                  className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 transition-colors"
+                <button 
+                  onClick={handleBookNow} 
+                  className="bg-brand-red py-3.5 px-6 rounded-xl text-center font-display text-white font-black text-sm shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2"
                 >
-                  <Phone className="w-4 h-4 text-brand-red" />
-                  <span>اتصال هاتفي</span>
-                </a>
-                <a 
-                  href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="py-3 px-4 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center gap-2 text-sm text-green-400 hover:bg-[#25D366]/30 transition-colors"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>واتساب</span>
-                </a>
-              </div>
+                  <Car className="w-4 h-4" />
+                  {t.nav.bookNow}
+                </button>
 
-              <button 
-                onClick={handleBookNow} 
-                className="bg-brand-red py-3.5 px-6 rounded-xl text-center font-display text-white font-black text-sm shadow-lg shadow-brand-red/20 flex items-center justify-center gap-2"
-              >
-                <Car className="w-4 h-4" />
-                {t.nav.bookNow}
-              </button>
-
-              <div className="flex justify-between items-center text-[10px] text-gray-500 pt-2 px-1 font-mono border-t border-white/5">
-                <span>Dr. Fix Auto Services</span>
-                <span>v2.5 • Verified</span>
+                <div className="flex justify-between items-center text-[10px] text-gray-500 pt-2 px-1 font-mono border-t border-white/5">
+                  <span>Dr. Fix Auto Services</span>
+                  <span>v2.5 • Verified</span>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </nav>
   );
 };
@@ -1873,6 +1878,8 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationName, setLocationName] = useState('');
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [showLocationHelp, setShowLocationHelp] = useState(false);
   
   const { t, lang } = useLanguage();
   const { customer } = useCustomer();
@@ -1927,27 +1934,124 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
     }
   }, [selectedService, setValue]);
 
+  // Reverse geocode lat/long to readable Saudi district or city name
+  const reverseGeocode = async (lat: number, lon: number) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=ar`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const json = await res.json();
+        const addr = json.address || {};
+        const district = addr.neighbourhood || addr.suburb || addr.quarter || addr.city_district || addr.district || '';
+        const city = addr.city || addr.town || addr.municipality || 'جدة';
+        if (district) {
+          return `${city} - حي ${district.replace(/^حي\s+/, '')}`;
+        } else if (json.display_name) {
+          return json.display_name.split(',').slice(0, 2).join(' - ');
+        }
+      }
+    } catch {}
+    return '';
+  };
+
+  const applyLocationSuccess = async (pos: GeolocationPosition) => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    setCoords({ latitude: lat, longitude: lon });
+    setLocationError(null);
+    setShowLocationHelp(false);
+
+    const prettyAddress = await reverseGeocode(lat, lon);
+    if (prettyAddress) {
+      setLocationName(prettyAddress);
+    } else {
+      setLocationName(lang === 'ar' ? `موقع محدد عبر GPS (${lat.toFixed(4)}, ${lon.toFixed(4)})` : `GPS (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
+    }
+    setLocating(false);
+  };
+
+  // Resilient multi-tier geolocation specifically optimized for iPhone / iOS Safari
   const handleGetLocation = () => {
-    if (!navigator.geolocation) {
-      alert(lang === 'ar' ? 'خاصية تحديد الموقع غير مدعومة في متصفحك.' : 'Geolocation is not supported by your browser.');
+    setLocationError(null);
+    const isIOS = typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    if (!navigator || !navigator.geolocation) {
+      setLocationError(lang === 'ar' ? 'خاصية تحديد الموقع غير مدعومة في متصفحك الحالي.' : 'Geolocation is not supported by your browser.');
+      setShowLocationHelp(true);
       return;
     }
+
+    if (typeof window !== 'undefined' && window.isSecureContext === false && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      setLocationError(lang === 'ar' ? 'يتطلب تحديد الموقع اتصالاً آمناً (HTTPS).' : 'Location requires a secure HTTPS connection.');
+      setShowLocationHelp(true);
+      return;
+    }
+
     setLocating(true);
+
+    // Tier 1: Try GPS with 8s timeout and allow recent cache (60s)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCoords({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude
-        });
-        setLocationName(lang === 'ar' ? 'تم تحديد إحداثيات موقعك بنجاح 📍' : 'GPS Coordinates Captured 📍');
-        setLocating(false);
+        applyLocationSuccess(pos);
       },
       (err) => {
-        console.warn('Geolocation error:', err);
-        setLocating(false);
-        alert(lang === 'ar' ? 'تعذر الوصول إلى موقعك تلقائياً. يمكنك كتابة الحي أو العنوان في خانة الوصف.' : 'Unable to access your location. Please specify your district in the description.');
+        console.warn('Geolocation Tier 1 error:', err);
+
+        // If user actively denied permission on iOS/Safari, guide them on how to unblock
+        if (err.code === 1) { // PERMISSION_DENIED
+          setLocating(false);
+          const msg = isIOS
+            ? (lang === 'ar' 
+                ? 'تم رفض إذن الموقع في متصفح سفاري (Safari). لتفعيله: اضغط على رمز (aA) أو القفل بجانب شريط العنوان > إعدادات موقع الويب > الموقع > السماح.' 
+                : 'Location denied in Safari. Tap (aA) next to address bar > Website Settings > Location > Allow.')
+            : (lang === 'ar' 
+                ? 'تم رفض إذن الوصول للموقع في متصفحك. يرجى تفعيل إذن الموقع من شريط العنوان أو كتابة الحي يدوياً.' 
+                : 'Location access denied. Please allow location in browser or type district manually.');
+          setLocationError(msg);
+          setShowLocationHelp(true);
+          return;
+        }
+
+        // Tier 2 Fallback: If TIMEOUT (code 3) or POSITION_UNAVAILABLE (code 2), retry with low accuracy & longer cache!
+        // This resolves the classic iPhone Safari timeout indoors by using Wi-Fi / Cell tower triangulation.
+        navigator.geolocation.getCurrentPosition(
+          (fallbackPos) => {
+            applyLocationSuccess(fallbackPos);
+          },
+          (fallbackErr) => {
+            console.warn('Geolocation Tier 2 error:', fallbackErr);
+            setLocating(false);
+            if (fallbackErr.code === 1) {
+              const msg = isIOS
+                ? (lang === 'ar' 
+                    ? 'تم رفض إذن الموقع. لتفعيله: اضغط على (aA) بجانب شريط العنوان > إعدادات موقع الويب > الموقع > السماح.' 
+                    : 'Location denied. Tap (aA) > Website Settings > Location > Allow.')
+                : (lang === 'ar' ? 'تم رفض إذن الموقع في المتصفح.' : 'Location permission denied.');
+              setLocationError(msg);
+            } else {
+              const msg = lang === 'ar'
+                ? 'تعذر التقاط إشارة GPS بدقة حالياً. يمكنك كتابة الحي أو العنوان في الخانة أدناه بسهولة.'
+                : 'Could not acquire GPS signal. You can type your district or address below.';
+              setLocationError(msg);
+            }
+            setShowLocationHelp(true);
+          },
+          {
+            enableHighAccuracy: false,
+            timeout: 15000,
+            maximumAge: 300000 // 5 minutes cache
+          }
+        );
       },
-      { timeout: 10000, enableHighAccuracy: true }
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 60000 // 1 minute cache
+      }
     );
   };
 
@@ -1979,15 +2083,21 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
     try {
       // 1. Write strictly to Firebase Firestore first
       const resolvedCustomerName = data.customerName?.trim() || cleanPhone;
+      const normalizedMake = cleanCarMake(data.carMake, data.carModel);
+      const normalizedYear = cleanCarYear(data.carYear, data.carModel) || (data.carYear || '').toString().trim() || new Date().getFullYear().toString();
+      const normalizedPlate = ((data as any).plateNumber || '').trim();
+      const normalizedModel = cleanCarModel(normalizedMake, data.carModel.trim(), normalizedYear);
+
       const bookingDocData = {
         bookingId: uniqueBookingId,
         customerId: customer?.id || null,
         customerEmail: customer?.email || '',
         customerPhone: cleanPhone,
         customerName: resolvedCustomerName,
-        carMake: data.carMake.trim(),
-        carModel: `${data.carMake.trim()} ${data.carModel.trim()} ${data.carYear.trim()}`,
-        carYear: data.carYear.trim(),
+        carMake: normalizedMake,
+        carModel: normalizedModel || data.carModel.trim(),
+        carYear: normalizedYear,
+        plateNumber: normalizedPlate,
         serviceType: serviceTitle,
         notes: data.description.trim(),
         location: locationName || 'جدة',
@@ -2006,38 +2116,47 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         const customersRef = collection(db, 'customers');
         const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
         const carInfo = {
-          make: data.carMake.trim(),
-          model: `${data.carMake.trim()} ${data.carModel.trim()}`.trim(),
-          year: data.carYear.trim()
+          make: normalizedMake,
+          model: normalizedModel,
+          year: normalizedYear
         };
 
         const carItem = {
           id: 'car_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-          make: data.carMake.trim(),
-          model: data.carModel.trim(),
-          year: data.carYear.trim(),
-          plateNumber: (data as any).plateNumber?.trim() || '',
+          make: normalizedMake,
+          model: normalizedModel,
+          year: normalizedYear,
+          plateNumber: normalizedPlate,
           color: '',
           addedAt: new Date().toISOString()
         };
+
+        const carSignature = getCarSignature(normalizedMake, normalizedModel, normalizedPlate, normalizedYear);
 
         if (!custSnap.empty) {
           const existingDoc = custSnap.docs[0];
           const existingData = existingDoc.data();
           const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
           const existingCars: any[] = Array.isArray(existingData.cars) ? existingData.cars : [];
+          const existingRemoved: string[] = Array.isArray(existingData.removedCars) ? existingData.removedCars : [];
           
-          const hasCar = existingVehicles.some(v => 
-            v.model?.toLowerCase() === carInfo.model.toLowerCase() ||
-            (v.make?.toLowerCase() === carInfo.make.toLowerCase() && v.model?.toLowerCase() === data.carModel.trim().toLowerCase())
+          const hasCarInVehicles = existingVehicles.some(v => 
+            areCarsEqual(
+              { make: v.make || '', model: v.model || '', year: v.year || '' }, 
+              carItem
+            )
           );
-          const updatedVehicles = hasCar ? existingVehicles : [...existingVehicles, carInfo];
+          const updatedVehicles = hasCarInVehicles ? existingVehicles : [...existingVehicles, carInfo];
 
-          const hasCarInCars = existingCars.some(c =>
-            c.make?.toLowerCase().trim() === data.carMake.trim().toLowerCase() &&
-            c.model?.toLowerCase().trim() === data.carModel.trim().toLowerCase()
-          );
-          const updatedCars = hasCarInCars ? existingCars : [...existingCars, carItem];
+          // Check if car already exists using robust deduplication
+          const alreadyInCars = existingCars.some(c => areCarsEqual(c, carItem));
+          // Check if customer explicitly deleted this car
+          const wasExplicitlyRemoved = existingRemoved.includes(carSignature);
+
+          let updatedCars = deduplicateCarsList(existingCars, existingRemoved);
+          if (!alreadyInCars && !wasExplicitlyRemoved) {
+            updatedCars = deduplicateCarsList([...updatedCars, carItem], existingRemoved);
+          }
 
           const newVisits = (Number(existingData.totalVisits) || 1) + 1;
 
@@ -2058,13 +2177,30 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               const directPhoneRef = doc(db, 'customers', cleanPhone);
               const dSnap = await getDoc(directPhoneRef);
               if (dSnap.exists()) {
-                const dCars: any[] = Array.isArray(dSnap.data()?.cars) ? dSnap.data()?.cars : [];
-                if (!dCars.some(c => c.model?.toLowerCase().trim() === data.carModel.trim().toLowerCase())) {
-                  await updateDoc(directPhoneRef, { cars: [...dCars, carItem], updatedAt: serverTimestamp() });
+                const dData = dSnap.data();
+                const dCars: any[] = Array.isArray(dData?.cars) ? dData.cars : [];
+                const dRemoved: string[] = Array.isArray(dData?.removedCars) ? dData.removedCars : [];
+                const cleanDCars = deduplicateCarsList(dCars, dRemoved);
+                if (!cleanDCars.some(c => areCarsEqual(c, carItem)) && !dRemoved.includes(carSignature)) {
+                  await updateDoc(directPhoneRef, { cars: deduplicateCarsList([...cleanDCars, carItem], dRemoved), updatedAt: serverTimestamp() });
+                } else if (cleanDCars.length !== dCars.length) {
+                  await updateDoc(directPhoneRef, { cars: cleanDCars, updatedAt: serverTimestamp() });
                 }
               }
             } catch {}
           }
+
+          // Sync localStorage session if active customer matches
+          try {
+            const savedSession = localStorage.getItem('drfix_customer_session');
+            if (savedSession) {
+              const sObj = JSON.parse(savedSession);
+              if (sObj.id === existingDoc.id || sObj.phone === cleanPhone) {
+                sObj.cars = updatedCars;
+                localStorage.setItem('drfix_customer_session', JSON.stringify(sObj));
+              }
+            }
+          } catch {}
         } else {
           // Open a brand new customer file
           await addDoc(customersRef, {
@@ -2224,7 +2360,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         `*نوع الخدمة:* ${serviceTitle}\n` +
         `*وصف المشكلة:* ${data.description}\n` +
         `*رقم الجوال:* ${cleanPhone}\n` +
-        (coords ? `*الموقع الجغرافي:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : `*المدينة:* جدة`)
+        (coords ? `*الموقع الجغرافي:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : (locationName.trim() ? `*الموقع/الحي:* ${locationName.trim()}` : `*المدينة:* جدة`))
       ) : (
         `*Confirmed Booking Request from DR.FIX*\n` +
         `🔖 *Booking ID:* ${uniqueBookingId}\n\n` +
@@ -2234,7 +2370,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         `*Service:* ${serviceTitle}\n` +
         `*Issue:* ${data.description}\n` +
         `*Phone:* ${cleanPhone}\n` +
-        (coords ? `*Location:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : `*City:* Jeddah`)
+        (coords ? `*Location:* https://www.google.com/maps?q=${coords.latitude},${coords.longitude}` : (locationName.trim() ? `*Location/District:* ${locationName.trim()}` : `*City:* Jeddah`))
       );
 
       // 4. Show Success & Redirect to WhatsApp
@@ -2251,6 +2387,8 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           reset();
           setCoords(null);
           setLocationName('');
+          setLocationError(null);
+          setShowLocationHelp(false);
         }, 8000);
       }, 1500);
 
@@ -2381,32 +2519,121 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               />
             </div>
 
-            {/* GPS Location Selector */}
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3 text-right">
-                <span className="text-2xl">📍</span>
-                <div>
-                  <div className="text-sm font-bold text-white">
-                    {coords ? (lang === 'ar' ? 'تم تحديد موقعك بدقة (GPS)' : 'Location captured (GPS)') : (lang === 'ar' ? 'تحديد موقع السيارة عند المنزل/العمل' : 'Car location at your spot')}
+            {/* GPS Location Selector & District Input */}
+            <div className="space-y-3">
+              <div className={cn(
+                "p-4 rounded-xl border transition-all flex flex-col gap-3",
+                coords 
+                  ? "bg-green-500/10 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.1)]" 
+                  : "bg-white/5 border-white/10"
+              )}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start sm:items-center gap-3 text-right">
+                    <span className="text-2xl mt-0.5 sm:mt-0">📍</span>
+                    <div>
+                      <div className="text-sm font-bold text-white flex items-center gap-2">
+                        {coords ? (
+                          <span className="text-green-400 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                            {lang === 'ar' ? 'تم تحديد موقعك بدقة (GPS)' : 'GPS Location Captured'}
+                          </span>
+                        ) : (
+                          <span>{lang === 'ar' ? 'تحديد موقع السيارة عند المنزل أو العمل' : 'Car location at home or work'}</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {coords ? (
+                          <span>{locationName || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`}</span>
+                        ) : (
+                          <span>{lang === 'ar' ? 'اضغط لتوجيه الفني إليك مباشرة عبر Google Maps' : 'Click to send your pin to the mobile mechanic'}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {coords ? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}` : (lang === 'ar' ? 'اضغط لتوجيه الفني إليك مباشرة عبر Google Maps' : 'Click to send Google Maps pin to the mechanic')}
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                    {coords ? (
+                      <>
+                        <a
+                          href={`https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 sm:flex-none px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all text-center"
+                        >
+                          🗺️ {lang === 'ar' ? 'عرض على الخريطة' : 'View on Map'}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoords(null);
+                            setLocationName('');
+                            setLocationError(null);
+                          }}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs transition-all"
+                        >
+                          {lang === 'ar' ? 'تغيير' : 'Reset'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleGetLocation}
+                        disabled={locating}
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer bg-brand-red/20 text-brand-red border border-brand-red/30 hover:bg-brand-red hover:text-white disabled:opacity-50"
+                      >
+                        {locating ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+                            <span>{lang === 'ar' ? 'جارٍ تحديد الموقع...' : 'Detecting GPS...'}</span>
+                          </>
+                        ) : (
+                          <span>{lang === 'ar' ? '📍 تحديد موقعي الحالي' : '📍 Detect My Location'}</span>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleGetLocation}
-                disabled={locating}
-                className={cn(
-                  "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0",
-                  coords 
-                    ? "bg-green-500/20 text-green-400 border border-green-500/30" 
-                    : "bg-brand-red/20 text-brand-red border border-brand-red/30 hover:bg-brand-red hover:text-white"
+
+                {/* iPhone / Browser Location Guidance Banner */}
+                {locationError && (
+                  <div className="mt-1 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base shrink-0">⚠️</span>
+                      <div className="space-y-1">
+                        <div className="font-bold">{locationError}</div>
+                        <div className="text-gray-300 text-[11px] leading-relaxed">
+                          {lang === 'ar' 
+                            ? 'إذا كنت تستخدم الآيفون (iPhone Safari): اضغط على رمز (aA) أو القفل يسار شريط العنوان > اختر "إعدادات موقع الويب" > "الموقع" واجعله "السماح".' 
+                            : 'On iPhone Safari: Tap the (aA) icon in the address bar > Website Settings > Location > choose "Allow".'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleGetLocation}
+                        className="px-3 py-1.5 bg-amber-500 text-black font-bold rounded-lg text-xs hover:bg-amber-400 transition-all cursor-pointer"
+                      >
+                        🔄 {lang === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
+                      </button>
+                      <span className="text-gray-400 text-[11px]">
+                        {lang === 'ar' ? 'أو يمكنك كتابة الحي أو العنوان بالأسفل دون الحاجة للـ GPS' : 'Or simply enter your district below'}
+                      </span>
+                    </div>
+                  </div>
                 )}
-              >
-                {locating ? (lang === 'ar' ? 'جارٍ التحديد...' : 'Locating...') : (coords ? (lang === 'ar' ? '✓ تم تحديد الموقع' : '✓ Location Set') : (lang === 'ar' ? '📍 تحديد موقعي الحالي' : '📍 Detect Location'))}
-              </button>
+
+                {/* Manual Address / District input as reliable alternative or complement */}
+                <div className="pt-2 border-t border-white/5">
+                  <input
+                    type="text"
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={lang === 'ar' ? 'الحي / الشارع / معلم قريب (مثال: جدة، حي الروضة - شارع الكيال)' : 'District / Street / Landmark (e.g. Jeddah, Al-Rawdah)'}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:border-brand-red focus:outline-none transition-all placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="p-4 rounded-xl bg-brand-red/5 border border-brand-red/20 flex items-start gap-3">
@@ -2494,13 +2721,41 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                   </div>
                 )}
                 <p className="text-gray-300 text-base max-w-md">{t.booking.successDesc}</p>
-                <p className="text-xs text-gray-400 mt-3">تم فتح محادثة WhatsApp تلقائياً لتأكيد التفاصيل مع المهندس.</p>
-                <button 
-                  onClick={() => setIsSubmitted(false)}
-                  className="mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-sm transition-all cursor-pointer"
-                >
-                  {t.booking.close}
-                </button>
+                <p className="text-xs text-gray-400 mt-3">تم إرسال طلبك بنجاح وجاري تجهيز الخدمة فوراً.</p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <a
+                    href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-5 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-green-500/20 cursor-pointer transition-all active:scale-95"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>تأكيد عبر واتساب</span>
+                  </a>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsSubmitted(false);
+                      const el = document.getElementById('history');
+                      if (el) {
+                        el.scrollIntoView({ behavior: 'smooth' });
+                      } else {
+                        window.location.hash = '#/history';
+                      }
+                    }}
+                    className="px-5 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/20 cursor-pointer transition-all active:scale-95"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>متابعة حالة الحجز</span>
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsSubmitted(false)}
+                    className="px-4 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                  >
+                    {t.booking.close}
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -2889,6 +3144,24 @@ interface ServiceItem {
   order?: number;
 }
 
+// Helper to extract numeric epoch timestamp from Firestore booking document
+const getBookingTimestamp = (b: any): number => {
+  if (!b) return 0;
+  if (b.createdAt?.toMillis) return b.createdAt.toMillis();
+  if (b.createdAt?.seconds) return b.createdAt.seconds * 1000;
+  if (b.serviceDate?.toMillis) return b.serviceDate.toMillis();
+  if (b.serviceDate?.seconds) return b.serviceDate.seconds * 1000;
+  if (typeof b.createdAt === 'string') {
+    const t = new Date(b.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (typeof b.serviceDate === 'string') {
+    const t = new Date(b.serviceDate).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  return 0;
+};
+
 const AdminDashboard = ({ 
   isAdmin, 
   onLogout, 
@@ -2900,6 +3173,11 @@ const AdminDashboard = ({
   settings: AppSettings;
   currentStaffUser?: StaffUser | null;
 }) => {
+  const dashboardMountTime = useRef<number>(Date.now());
+  const knownBookingIds = useRef<Set<string>>(new Set());
+  const isSyncStabilized = useRef<boolean>(false);
+  const lastChimeTime = useRef<number>(0);
+
   const [records, setRecords] = useState<MaintenanceRecord[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialData[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -3238,31 +3516,64 @@ const AdminDashboard = ({
       }
 
       // Maintenance
+      dashboardMountTime.current = Date.now();
+      isSyncStabilized.current = false;
+
+      // 4-second stabilization window: allow Firestore local cache and server catch-up to settle completely
+      // This strictly prevents existing bookings from spamming sound/notifications on dashboard open
+      const stabilizationTimer = setTimeout(() => {
+        isSyncStabilized.current = true;
+      }, 4000);
+
       const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'));
-      let isInitialLoad = true;
 
       const unsubM = onSnapshot(qM, (snapshot) => {
         const results: MaintenanceRecord[] = [];
+        
         snapshot.docChanges().forEach((change) => {
-          if (change.type === "added" && !isInitialLoad) {
+          const docId = change.doc.id;
+          const wasAlreadyKnown = knownBookingIds.current.has(docId);
+          knownBookingIds.current.add(docId);
+
+          // ONLY trigger alerts for records that:
+          // 1. Are 'added'
+          // 2. We have passed the initial 4-second stabilization window (never on initial load or cache sync)
+          // 3. Document ID was not previously seen
+          // 4. Not an unsynced local pending write from the current user
+          // 5. Booking creation timestamp is genuinely new (after or within 10s before opening dashboard)
+          if (change.type === "added" && isSyncStabilized.current && !wasAlreadyKnown && !change.doc.metadata.hasPendingWrites) {
             const newBooking = change.doc.data() as MaintenanceRecord;
-            if (settings.enableSoundAlerts !== false) {
-              playNotificationSound();
-            }
-            if (Notification.permission === "granted") {
-              new Notification("حجز جديد! 🚗", {
-                body: `حجز جديد لسيارة ${newBooking.carModel} - ${newBooking.serviceType}`,
-                icon: settings.logoUrl || "/favicon.ico"
-              });
+            const bTimestamp = getBookingTimestamp(newBooking);
+            const isFresh = bTimestamp === 0 || bTimestamp >= (dashboardMountTime.current - 10000);
+
+            if (isFresh) {
+              const now = Date.now();
+              // Throttled sound alert (max 1 sound chime every 4 seconds)
+              if (settings.enableSoundAlerts !== false && now - lastChimeTime.current > 4000) {
+                lastChimeTime.current = now;
+                playNotificationSound();
+              }
+
+              // Desktop browser notification
+              if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+                try {
+                  const carTitle = newBooking.carModel ? `${newBooking.carModel}` : 'سيارة';
+                  const serviceTitle = newBooking.serviceType || 'صيانة متنقلة';
+                  new Notification("حجز جديد! 🚗", {
+                    body: `حجز جديد لـ ${carTitle} - ${serviceTitle}`,
+                    icon: settings.logoUrl || "/favicon.ico"
+                  });
+                } catch {}
+              }
             }
           }
         });
 
         snapshot.forEach((doc) => {
+          knownBookingIds.current.add(doc.id);
           results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
         });
         setRecords(results);
-        isInitialLoad = false;
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'maintenance'));
 
       // Testimonials
@@ -3338,6 +3649,7 @@ const AdminDashboard = ({
       });
 
       return () => {
+        clearTimeout(stabilizationTimer);
         unsubM();
         unsubT();
         unsubO();
@@ -8688,21 +9000,53 @@ function DynamicStyles({ settings }: { settings: AppSettings }) {
   );
 };
 
-const MaintenancePage = ({ message }: { message?: string }) => {
+const MaintenancePage = ({ 
+  message, 
+  onSecretTrigger 
+}: { 
+  message?: string; 
+  onSecretTrigger?: () => void;
+}) => {
+  const secretClicks = useRef(0);
+  const lastClickTime = useRef(0);
+
+  const handleIconClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastClickTime.current > 2500) {
+      secretClicks.current = 1;
+    } else {
+      secretClicks.current += 1;
+    }
+    lastClickTime.current = now;
+
+    if (secretClicks.current >= 5) {
+      secretClicks.current = 0;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(60);
+      }
+      onSecretTrigger?.();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-brand-black flex items-center justify-center p-6 text-center">
+    <div className="w-full flex items-center justify-center p-6 text-center select-none">
       <div className="max-w-md">
-        <div className="w-20 h-20 bg-brand-red/10 rounded-full flex items-center justify-center mx-auto mb-8">
+        <div 
+          onClick={handleIconClick}
+          className="w-20 h-20 bg-brand-red/10 rounded-2xl flex items-center justify-center mx-auto mb-8 border border-brand-red/20 cursor-pointer transition-transform active:scale-90 hover:border-brand-red/40 shadow-lg shadow-brand-red/5"
+          title="Dr. Fix"
+        >
           <ShieldAlert className="w-10 h-10 text-brand-red" />
         </div>
-        <h1 className="text-3xl font-display font-black mb-4 uppercase italic">الموقع تحت الصيانة</h1>
-        <p className="text-gray-400 leading-relaxed">
-          {message || 'نحن نقوم ببعض التحديثات لتحسين تجربتكم. سنعود قريباً!'}
+        <h1 className="text-2xl sm:text-3xl font-display font-black mb-4 uppercase italic">الموقع تحت الصيانة</h1>
+        <p className="text-gray-400 leading-relaxed text-sm sm:text-base">
+          {message || 'نحن نقوم ببعض التحديثات والتحسينات الدورية. سنعود لخدمتكم قريباً!'}
         </p>
-        <div className="mt-12 flex justify-center gap-4">
-          <div className="w-2 h-2 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0s' }} />
-          <div className="w-2 h-2 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0.2s' }} />
-          <div className="w-2 h-2 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0.4s' }} />
+        <div className="mt-8 flex justify-center gap-3">
+          <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0s' }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0.2s' }} />
+          <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-bounce" style={{ animationDelay: '0.4s' }} />
         </div>
       </div>
     </div>
@@ -9119,15 +9463,51 @@ function MainContent() {
     }
   };
 
-  if (settings.maintenanceMode && !isAdminLoggedIn && location.pathname !== '/login') {
-    return <MaintenancePage message={settings.maintenanceMessage} />;
+  const handleOfferSelect = (offer: Offer) => {
+    const offerTitle = lang === 'ar' ? offer.title : (offer.titleEn || offer.title);
+    setSelectedService(`عرض خاص: ${offerTitle} (${offer.price})`);
+    if (location.pathname === '/') {
+      const element = document.getElementById('booking');
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      navigate('/booking');
+    }
+  };
+
+  const isAuthOrAdminRoute = location.pathname === '/login' || 
+                             location.pathname.startsWith('/login/') || 
+                             location.pathname === '/admin' || 
+                             location.pathname.startsWith('/admin/');
+
+  const isMaintenanceActive = Boolean(settings.maintenanceMode && !isAdminLoggedIn);
+
+  if (isMaintenanceActive && !isAuthOrAdminRoute) {
+    return (
+      <div className="min-h-screen bg-brand-black text-white flex flex-col" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <DynamicStyles settings={settings} />
+        <Ticker settings={{
+          ...settings,
+          tickerText: 'الموقع تحت الصيانة والتحديث المؤقت • نعود لخدمتكم قريباً • DR. FIX AUTO SERVICES'
+        }} />
+        <Navbar settings={settings} isAdmin={isAdminLoggedIn} isMaintenance={true} />
+        
+        <main className="flex-1 pt-24 sm:pt-28 md:pt-32 pb-16 flex items-center justify-center">
+          <MaintenancePage 
+            message={settings.maintenanceMessage} 
+            onSecretTrigger={() => navigate('/login')} 
+          />
+        </main>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-brand-black text-white" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <DynamicStyles settings={settings} />
       <Ticker settings={settings} />
-      <Navbar settings={settings} isAdmin={isAdminLoggedIn} />
+      <Navbar settings={settings} isAdmin={isAdminLoggedIn} isMaintenance={isMaintenanceActive} />
       
       <main className="pt-20 sm:pt-24 md:pt-28 pb-24 md:pb-0">
         <Routes>
@@ -9136,7 +9516,7 @@ function MainContent() {
               <Hero settings={settings} />
               {(settings.showStats !== false) && <Stats />}
               {(settings.showServices !== false) && <Services onServiceSelect={handleServiceSelect} />}
-              {(settings.showOffers !== false) && <Offers />}
+              {(settings.showOffers !== false) && <Offers onOfferSelect={handleOfferSelect} />}
               {(settings.showGallery !== false) && <Gallery />}
               <Process />
               <BookingForm selectedService={selectedService} settings={settings} />
@@ -9145,7 +9525,7 @@ function MainContent() {
             </>
           } />
           <Route path="/services" element={<Services onServiceSelect={handleServiceSelect} />} />
-          <Route path="/offers" element={<Offers />} />
+          <Route path="/offers" element={<Offers onOfferSelect={handleOfferSelect} />} />
           <Route path="/partners" element={
             <PartnersPage 
               partners={partners} 

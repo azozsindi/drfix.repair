@@ -23,6 +23,177 @@ export const cleanSaudiPhone = (raw: string): string => {
   return cleaned;
 };
 
+// Car normalization and deduplication helpers
+export const normalizeCarText = (text?: string): string => {
+  return (text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ');
+};
+
+// Clean and extract 4-digit manufacturing year
+export const cleanCarYear = (year?: any, fallbackText?: string): string => {
+  const str = String(year || '').trim();
+  const match = str.match(/\b(19\d{2}|20[0-3]\d)\b/);
+  if (match) return match[1];
+  if (fallbackText) {
+    const fallbackMatch = String(fallbackText).match(/\b(19\d{2}|20[0-3]\d)\b/);
+    if (fallbackMatch) return fallbackMatch[1];
+  }
+  return str;
+};
+
+// Clean make name and remove repeated words (e.g. "تويوتا تويوتا" -> "تويوتا")
+export const cleanCarMake = (make?: string, model?: string): string => {
+  let mk = (make || '').trim();
+  if (!mk && model) {
+    const firstWord = model.trim().split(/\s+/)[0];
+    if (firstWord && firstWord.length >= 2) mk = firstWord;
+  }
+  const words = mk.split(/\s+/).filter(Boolean);
+  const uniqueWords: string[] = [];
+  words.forEach(w => {
+    if (!uniqueWords.some(u => normalizeCarText(u) === normalizeCarText(w))) {
+      uniqueWords.push(w);
+    }
+  });
+  return uniqueWords.join(' ') || (mk || 'سيارة');
+};
+
+// Deeply clean car model: removes repeated make, repeated year, brackets, and repeated words
+export const cleanCarModel = (make?: string, model?: string, year?: string): string => {
+  let m = (model || '').trim();
+  const mk = cleanCarMake(make, model);
+
+  // 1. Remove bracketed years and numbers (e.g. "(1989)", "[2021]")
+  m = m.replace(/\s*[\(\[\{]\s*(19\d{2}|20[0-3]\d|\d+)\s*[\)\]\}]\s*/g, ' ');
+  m = m.replace(/[\(\)\[\]\{\}]/g, ' ');
+
+  // 2. Remove all 4-digit years (e.g. 1989, 2021, 2025)
+  m = m.replace(/\b(19\d{2}|20[0-3]\d)\b/g, ' ');
+
+  // 3. Remove all occurrences of make words (e.g. "تويوتا", "Toyota") from the model
+  if (mk) {
+    const mkWords = mk.split(/\s+/).filter(w => w.length >= 2);
+    mkWords.forEach(w => {
+      const normW = normalizeCarText(w);
+      const words = m.split(/\s+/);
+      m = words.filter(word => normalizeCarText(word) !== normW).join(' ');
+    });
+  }
+
+  // 4. Remove consecutive duplicate words (e.g. "ياريس ياريس" -> "ياريس")
+  const words = m.split(/\s+/).filter(Boolean);
+  const deduplicatedWords: string[] = [];
+  words.forEach(w => {
+    if (deduplicatedWords.length === 0 || normalizeCarText(deduplicatedWords[deduplicatedWords.length - 1]) !== normalizeCarText(w)) {
+      deduplicatedWords.push(w);
+    }
+  });
+  m = deduplicatedWords.join(' ').trim();
+
+  // Clean double spaces
+  m = m.replace(/\s+/g, ' ').trim();
+  return m || 'عام';
+};
+
+export const getCarSignature = (make?: string, model?: string, plate?: string, year?: string): string => {
+  const normMk = normalizeCarText(cleanCarMake(make, model));
+  const cleanM = normalizeCarText(cleanCarModel(make, model, year));
+  const normPl = (plate || '').replace(/\s+/g, '');
+  const cleanYr = cleanCarYear(year, model);
+  return `${normMk}__${cleanM}${cleanYr ? `__${cleanYr}` : ''}${normPl ? `__${normPl}` : ''}`;
+};
+
+export const areCarsEqual = (
+  carA?: { make?: string; model?: string; year?: string; plateNumber?: string } | null,
+  carB?: { make?: string; model?: string; year?: string; plateNumber?: string } | null
+): boolean => {
+  if (!carA || !carB) return false;
+
+  // 1. Plate match (if both have plate numbers of 3+ chars)
+  const plateA = (carA.plateNumber || '').replace(/\s+/g, '');
+  const plateB = (carB.plateNumber || '').replace(/\s+/g, '');
+  if (plateA && plateB && plateA.length >= 3 && plateB.length >= 3) {
+    if (plateA === plateB) return true;
+  }
+
+  // 2. Normalize makes
+  const makeA = normalizeCarText(cleanCarMake(carA.make, carA.model));
+  const makeB = normalizeCarText(cleanCarMake(carB.make, carB.model));
+
+  // 3. Clean models
+  const modelA = normalizeCarText(cleanCarModel(carA.make, carA.model, carA.year));
+  const modelB = normalizeCarText(cleanCarModel(carB.make, carB.model, carB.year));
+
+  // 4. Years
+  const yearA = cleanCarYear(carA.year, carA.model);
+  const yearB = cleanCarYear(carB.year, carB.model);
+
+  if (makeA && makeB && makeA === makeB) {
+    if (modelA === modelB) {
+      if (yearA && yearB && yearA !== yearB) {
+        return false;
+      }
+      return true;
+    }
+    if (modelA && modelB && (modelA.includes(modelB) || modelB.includes(modelA))) {
+      if (yearA && yearB && yearA !== yearB) {
+        return false;
+      }
+      return true;
+    }
+  }
+
+  // 5. Fallback: full normalized combined string
+  const fullA = normalizeCarText(`${makeA} ${modelA}`);
+  const fullB = normalizeCarText(`${makeB} ${modelB}`);
+  if (fullA && fullB && fullA === fullB) {
+    if (yearA && yearB && yearA !== yearB) return false;
+    return true;
+  }
+
+  return false;
+};
+
+// Comprehensive deduplicator that purges duplicate cars and cleans corrupted names
+export const deduplicateCarsList = (cars: CustomerCar[] = [], removedSignatures: string[] = []): CustomerCar[] => {
+  if (!Array.isArray(cars)) return [];
+  const result: CustomerCar[] = [];
+
+  for (const rawCar of cars) {
+    if (!rawCar) continue;
+    const cleanMake = cleanCarMake(rawCar.make, rawCar.model);
+    const cleanModel = cleanCarModel(rawCar.make, rawCar.model, rawCar.year);
+    const cleanYear = cleanCarYear(rawCar.year, rawCar.model) || (rawCar.year || '').toString().trim();
+    const cleanPlate = (rawCar.plateNumber || '').trim();
+
+    const cleanCar: CustomerCar = {
+      ...rawCar,
+      id: rawCar.id || ('car_' + Math.random().toString(36).substring(2, 9)),
+      make: cleanMake,
+      model: cleanModel,
+      year: cleanYear,
+      plateNumber: cleanPlate
+    };
+
+    const sig = getCarSignature(cleanMake, cleanModel, cleanPlate, cleanYear);
+    if (removedSignatures.includes(sig)) {
+      continue;
+    }
+
+    const isDup = result.some(existing => areCarsEqual(existing, cleanCar));
+    if (!isDup) {
+      result.push(cleanCar);
+    }
+  }
+
+  return result;
+};
+
 // Notification dispatcher when a customer registers or joins
 export const notifyAdminNewCustomerRegistration = async (params: {
   name: string;
@@ -169,8 +340,14 @@ export const syncCustomerCarsWithBookings = async (
       rawPhone.replace(/\s+/g, '')
     ].filter(Boolean))) as string[];
 
-    const currentCars = [...(currentCustomer.cars || [])];
-    let hasChanges = false;
+    const removedSignatures: string[] = Array.isArray(currentCustomer.removedCars)
+      ? currentCustomer.removedCars
+      : [];
+
+    // 0. Clean and deduplicate existing cars list
+    const initialCars = Array.isArray(currentCustomer.cars) ? currentCustomer.cars : [];
+    let currentCars = deduplicateCarsList(initialCars, removedSignatures);
+    let hasChanges = currentCars.length !== initialCars.length;
 
     // 1. Sync from legacy 'vehicles' field if present on customer doc
     const legacyVehicles: any[] = Array.isArray((currentCustomer as any).vehicles)
@@ -178,29 +355,30 @@ export const syncCustomerCarsWithBookings = async (
       : [];
 
     legacyVehicles.forEach((v: any) => {
-      const vMake = (v.make || '').trim();
-      const vModel = (v.model || '').trim();
-      if (!vMake && !vModel) return;
+      const rawMake = (v.make || '').trim();
+      const rawModel = (v.model || '').trim();
+      if (!rawMake && !rawModel) return;
 
-      const make = vMake || vModel.split(' ')[0] || 'سيارة';
-      const model = vModel || vMake;
-      const year = (v.year || '').toString().trim() || new Date().getFullYear().toString();
+      const make = cleanCarMake(rawMake, rawModel);
+      const year = cleanCarYear(v.year, rawModel) || (v.year || '').toString().trim() || new Date().getFullYear().toString();
+      const model = cleanCarModel(make, rawModel, year);
       const plate = (v.plateNumber || '').trim();
 
-      const exists = currentCars.some(c =>
-        c.make?.toLowerCase().trim() === make.toLowerCase() &&
-        c.model?.toLowerCase().trim() === model.toLowerCase()
-      );
+      const candidateCar: CustomerCar = {
+        id: 'car_sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        make,
+        model,
+        year,
+        plateNumber: plate,
+        addedAt: new Date().toISOString()
+      };
 
+      const sig = getCarSignature(make, model, plate, year);
+      if (removedSignatures.includes(sig)) return;
+
+      const exists = currentCars.some((c) => areCarsEqual(c, candidateCar));
       if (!exists) {
-        currentCars.push({
-          id: 'car_sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-          make,
-          model,
-          year,
-          plateNumber: plate,
-          addedAt: new Date().toISOString()
-        });
+        currentCars.push(candidateCar);
         hasChanges = true;
       }
     });
@@ -239,33 +417,36 @@ export const syncCustomerCarsWithBookings = async (
       const bModel = (b.carModel || '').trim();
       if (!bMake && !bModel) return;
 
-      const make = bMake || bModel.split(' ')[0] || 'سيارة';
-      const model = bModel || bMake;
-      const year = (b.carYear || '').toString().trim() || new Date().getFullYear().toString();
+      const make = cleanCarMake(bMake, bModel);
+      const year = cleanCarYear(b.carYear, bModel) || (b.carYear || '').toString().trim() || new Date().getFullYear().toString();
+      const model = cleanCarModel(make, bModel, year);
       const plate = (b.plateNumber || '').trim();
 
-      const exists = currentCars.some(c => {
-        const sameMakeModel =
-          c.make?.toLowerCase().trim() === make.toLowerCase() &&
-          c.model?.toLowerCase().trim() === model.toLowerCase();
-        if (plate && c.plateNumber) {
-          return c.plateNumber.replace(/\s+/g, '') === plate.replace(/\s+/g, '');
-        }
-        return sameMakeModel;
-      });
+      const candidateCar: CustomerCar = {
+        id: 'car_booking_' + (b.id || Date.now()) + '_' + Math.random().toString(36).substring(2, 6),
+        make,
+        model,
+        year,
+        plateNumber: plate,
+        addedAt: new Date().toISOString()
+      };
 
+      const sig = getCarSignature(make, model, plate, year);
+      if (removedSignatures.includes(sig)) return;
+
+      const exists = currentCars.some((c) => areCarsEqual(c, candidateCar));
       if (!exists) {
-        currentCars.push({
-          id: 'car_booking_' + (b.id || Date.now()) + '_' + Math.random().toString(36).substring(2, 6),
-          make,
-          model,
-          year,
-          plateNumber: plate,
-          addedAt: new Date().toISOString()
-        });
+        currentCars.push(candidateCar);
         hasChanges = true;
       }
     });
+
+    // Run final deduplication
+    const finalCleanCars = deduplicateCarsList(currentCars, removedSignatures);
+    if (finalCleanCars.length !== initialCars.length || JSON.stringify(finalCleanCars) !== JSON.stringify(initialCars)) {
+      hasChanges = true;
+      currentCars = finalCleanCars;
+    }
 
     if (hasChanges) {
       const customerRef = doc(db, 'customers', currentCustomer.id);
@@ -273,6 +454,19 @@ export const syncCustomerCarsWithBookings = async (
         cars: currentCars,
         updatedAt: serverTimestamp()
       }).catch(err => console.warn('Could not update customer cars in Firestore:', err));
+
+      if (currentCustomer.phone && currentCustomer.phone !== currentCustomer.id) {
+        try {
+          const directPhoneRef = doc(db, 'customers', currentCustomer.phone);
+          const pSnap = await getDoc(directPhoneRef);
+          if (pSnap.exists()) {
+            await updateDoc(directPhoneRef, {
+              cars: currentCars,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch {}
+      }
 
       const updated = { ...currentCustomer, cars: currentCars };
       try {
@@ -320,7 +514,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [customer, setCustomer] = useState<CustomerProfile | null>(() => {
     try {
       const saved = localStorage.getItem('drfix_customer_session');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.cars)) {
+          parsed.cars = deduplicateCarsList(parsed.cars, parsed.removedCars || []);
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -337,7 +538,27 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const unsub = onSnapshot(ref, (snap) => {
       if (snap.exists()) {
         const data = snap.data() as CustomerProfile;
-        const updated = { ...data, id: snap.id };
+        const rawCars: CustomerCar[] = Array.isArray(data.cars) ? data.cars : [];
+        const cleanCars = deduplicateCarsList(rawCars, data.removedCars || []);
+
+        // Self-heal corrupted or duplicate entries in Firestore immediately!
+        if (cleanCars.length !== rawCars.length || JSON.stringify(cleanCars) !== JSON.stringify(rawCars)) {
+          updateDoc(ref, {
+            cars: cleanCars,
+            updatedAt: serverTimestamp()
+          }).catch(err => console.warn('Could not self-heal cars in Firestore:', err));
+
+          if (data.phone && data.phone !== snap.id) {
+            try {
+              updateDoc(doc(db, 'customers', data.phone), {
+                cars: cleanCars,
+                updatedAt: serverTimestamp()
+              }).catch(() => {});
+            } catch {}
+          }
+        }
+
+        const updated = { ...data, id: snap.id, cars: cleanCars };
         setCustomer(updated);
         try {
           localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
@@ -405,15 +626,21 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { success: false, error: 'كلمة المرور غير صحيحة.' };
       }
 
+      const rawCars = Array.isArray(data.cars) ? data.cars : [];
+      const cleanCars = deduplicateCarsList(rawCars, data.removedCars || []);
+
       const loggedUser: CustomerProfile = {
         ...data,
         id: snap.id,
         phone: data.phone || phone,
-        cars: data.cars || []
+        cars: cleanCars
       };
 
       // Update lastLoginAt
-      await updateDoc(customerRef, { lastLoginAt: serverTimestamp() }).catch(() => {});
+      await updateDoc(customerRef, { 
+        lastLoginAt: serverTimestamp(),
+        cars: cleanCars
+      }).catch(() => {});
 
       setCustomer(loggedUser);
       localStorage.setItem('drfix_customer_session', JSON.stringify(loggedUser));
@@ -461,6 +688,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (snap.exists()) {
       const existingData = snap.data() as CustomerProfile;
+      const rawCars = Array.isArray(existingData.cars) ? existingData.cars : [];
+      const cleanCars = deduplicateCarsList(rawCars, existingData.removedCars || []);
       profile = {
         ...existingData,
         id: snap.id,
@@ -468,13 +697,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         email: user.email || existingData.email || '',
         photoURL: user.photoURL || existingData.photoURL,
         googleUid: user.uid,
-        cars: existingData.cars || []
+        cars: cleanCars
       };
       await updateDoc(customerRef, {
         lastLoginAt: serverTimestamp(),
         googleUid: user.uid,
         photoURL: user.photoURL || existingData.photoURL || null,
-        email: user.email || existingData.email || ''
+        email: user.email || existingData.email || '',
+        cars: cleanCars
       }).catch((err) => console.warn('Non-critical customer update:', err));
     } else {
       profile = {
@@ -656,18 +886,59 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCar = async (car: Omit<CustomerCar, 'id' | 'addedAt'>): Promise<boolean> => {
     if (!customer?.id) return false;
     try {
+      const cleanMake = cleanCarMake(car.make, car.model);
+      const cleanYear = cleanCarYear(car.year, car.model) || (car.year || '').toString().trim() || new Date().getFullYear().toString();
+      const cleanModel = cleanCarModel(cleanMake, car.model, cleanYear);
+      const cleanPlate = (car.plateNumber || '').trim();
+
       const newCar: CustomerCar = {
         ...car,
-        id: 'car_' + Date.now(),
+        make: cleanMake,
+        model: cleanModel,
+        year: cleanYear,
+        plateNumber: cleanPlate,
+        id: 'car_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         addedAt: new Date().toISOString()
       };
-      const updatedCars = [...(customer.cars || []), newCar];
+
+      const existingCars = Array.isArray(customer.cars) ? customer.cars : [];
+      const updatedCars = deduplicateCarsList([...existingCars, newCar], customer.removedCars || []);
+
+      // Remove car signature from removedCars if it was previously deleted
+      const currentRemoved: string[] = Array.isArray(customer.removedCars) ? customer.removedCars : [];
+      const carSig = getCarSignature(newCar.make, newCar.model, newCar.plateNumber, newCar.year);
+      const updatedRemoved = currentRemoved.filter(s => s !== carSig);
+
       const customerRef = doc(db, 'customers', customer.id);
       await updateDoc(customerRef, {
         cars: updatedCars,
+        removedCars: updatedRemoved,
         updatedAt: serverTimestamp()
       });
-      setCustomer(prev => prev ? { ...prev, cars: updatedCars } : null);
+
+      if (customer.phone && customer.phone !== customer.id) {
+        try {
+          const directPhoneRef = doc(db, 'customers', customer.phone);
+          const pSnap = await getDoc(directPhoneRef);
+          if (pSnap.exists()) {
+            await updateDoc(directPhoneRef, {
+              cars: updatedCars,
+              removedCars: updatedRemoved,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch {}
+      }
+
+      const updatedCustomer = {
+        ...customer,
+        cars: updatedCars,
+        removedCars: updatedRemoved
+      };
+      setCustomer(updatedCustomer);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(updatedCustomer));
+      } catch {}
       return true;
     } catch (err) {
       console.error('Error adding car:', err);
@@ -678,13 +949,50 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const removeCar = async (carId: string): Promise<boolean> => {
     if (!customer?.id) return false;
     try {
-      const updatedCars = (customer.cars || []).filter(c => c.id !== carId);
+      const existingCars = Array.isArray(customer.cars) ? customer.cars : [];
+      const carToRemove = existingCars.find(c => c.id === carId);
+      const updatedCars = existingCars.filter(c => c.id !== carId);
+
+      // Record signature in removedCars so auto-sync never resurrects it
+      const currentRemoved: string[] = Array.isArray(customer.removedCars) ? customer.removedCars : [];
+      let updatedRemoved = [...currentRemoved];
+      if (carToRemove) {
+        const sig = getCarSignature(carToRemove.make, carToRemove.model, carToRemove.plateNumber, carToRemove.year);
+        if (!updatedRemoved.includes(sig)) {
+          updatedRemoved.push(sig);
+        }
+      }
+
       const customerRef = doc(db, 'customers', customer.id);
       await updateDoc(customerRef, {
         cars: updatedCars,
+        removedCars: updatedRemoved,
         updatedAt: serverTimestamp()
       });
-      setCustomer(prev => prev ? { ...prev, cars: updatedCars } : null);
+
+      if (customer.phone && customer.phone !== customer.id) {
+        try {
+          const directPhoneRef = doc(db, 'customers', customer.phone);
+          const pSnap = await getDoc(directPhoneRef);
+          if (pSnap.exists()) {
+            await updateDoc(directPhoneRef, {
+              cars: updatedCars,
+              removedCars: updatedRemoved,
+              updatedAt: serverTimestamp()
+            });
+          }
+        } catch {}
+      }
+
+      const updatedCustomer = {
+        ...customer,
+        cars: updatedCars,
+        removedCars: updatedRemoved
+      };
+      setCustomer(updatedCustomer);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(updatedCustomer));
+      } catch {}
       return true;
     } catch (err) {
       console.error('Error removing car:', err);
@@ -1130,6 +1438,9 @@ export const CustomerPortalModal: React.FC = () => {
   const [newPlate, setNewPlate] = useState('');
   const [newColor, setNewColor] = useState('');
   const [addingCar, setAddingCar] = useState(false);
+  const [confirmDeleteCarId, setConfirmDeleteCarId] = useState<string | null>(null);
+  const [deletingCar, setDeletingCar] = useState(false);
+  const [carActionMsg, setCarActionMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   // Customer bookings listener
   const [myBookings, setMyBookings] = useState<MaintenanceRecord[]>([]);
@@ -1564,6 +1875,22 @@ export const CustomerPortalModal: React.FC = () => {
                 </form>
               )}
 
+              {/* Action Message Banner */}
+              {carActionMsg && (
+                <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn ${
+                  carActionMsg.type === 'success' 
+                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300"
+                    : "bg-red-500/15 border border-red-500/30 text-red-300"
+                }`}>
+                  {carActionMsg.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  )}
+                  <span>{carActionMsg.text}</span>
+                </div>
+              )}
+
               {/* Cars List */}
               {(!customer.cars || customer.cars.length === 0) ? (
                 <div className="text-center py-8 bg-black/30 border border-white/5 rounded-2xl p-6">
@@ -1585,27 +1912,62 @@ export const CustomerPortalModal: React.FC = () => {
                       className="p-4 rounded-2xl bg-black/40 border border-white/10 hover:border-brand-red/40 transition-all flex flex-col justify-between"
                     >
                       <div>
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="p-2 rounded-xl bg-brand-red/10 border border-brand-red/20 text-brand-red">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="p-2 rounded-xl bg-brand-red/10 border border-brand-red/20 text-brand-red shrink-0">
                               <Car className="w-5 h-5" />
                             </div>
-                            <div>
-                              <h5 className="font-bold text-sm text-white">{car.make} {car.model}</h5>
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-sm text-white truncate">{car.make} {car.model}</h5>
                               <span className="text-[11px] text-gray-400">موديل {car.year}</span>
                             </div>
                           </div>
-                          <button
-                            onClick={() => {
-                              if (confirm(`هل أنت متأكد من حذف ${car.make} ${car.model}؟`)) {
-                                removeCar(car.id);
-                              }
-                            }}
-                            className="p-1 text-gray-500 hover:text-red-400 transition-colors"
-                            title="حذف السيارة"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+
+                          {confirmDeleteCarId === car.id ? (
+                            <div className="flex items-center gap-1.5 shrink-0 animate-fadeIn">
+                              <button
+                                type="button"
+                                disabled={deletingCar}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setDeletingCar(true);
+                                  const ok = await removeCar(car.id);
+                                  setDeletingCar(false);
+                                  setConfirmDeleteCarId(null);
+                                  if (ok) {
+                                    setCarActionMsg({ text: `تم حذف ${car.make} ${car.model} بنجاح`, type: 'success' });
+                                    setTimeout(() => setCarActionMsg(null), 3500);
+                                  } else {
+                                    setCarActionMsg({ text: 'تعذر حذف السيارة، يرجى المحاولة لاحقاً', type: 'error' });
+                                    setTimeout(() => setCarActionMsg(null), 3500);
+                                  }
+                                }}
+                                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-red-500/30 whitespace-nowrap"
+                              >
+                                {deletingCar ? 'جارِ الحذف...' : 'تأكيد الحذف'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={deletingCar}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteCarId(null);
+                                }}
+                                className="px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-[11px] transition-all cursor-pointer whitespace-nowrap"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteCarId(car.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="حذف السيارة"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
 
                         {car.plateNumber && (
@@ -1944,51 +2306,71 @@ export const CustomerPortalModal: React.FC = () => {
 // =========================================================================
 // Header Action Button for Public Navbar
 // =========================================================================
-export const CustomerNavButton: React.FC<{ isMobile?: boolean }> = ({ isMobile }) => {
+export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => void }> = ({ isMobile, onAction }) => {
   const { customer, setIsAuthOpen, setIsPortalOpen } = useCustomer();
+
+  const handleOpen = () => {
+    if (onAction) onAction();
+    if (customer) {
+      setIsPortalOpen(true);
+    } else {
+      setIsAuthOpen(true);
+    }
+  };
 
   if (customer) {
     return (
       <button
-        onClick={() => setIsPortalOpen(true)}
+        onClick={handleOpen}
         className={
           isMobile
             ? "w-full py-2.5 px-4 rounded-xl bg-brand-red/10 border border-brand-red/30 text-white font-bold text-xs flex items-center justify-between cursor-pointer"
-            : "flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-bold transition-all cursor-pointer group"
+            : "flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/90 hover:bg-neutral-800 border border-brand-red/40 hover:border-brand-red text-white text-xs font-bold transition-all cursor-pointer group shadow-sm shadow-brand-red/10 whitespace-nowrap shrink-0"
         }
-        title="حسابي وسياراتي"
+        title="ملفي الشخصي وسياراتي وكرت الصيانة"
       >
-        <div className="flex items-center gap-1.5">
-          {customer.photoURL ? (
-            <img 
-              src={customer.photoURL} 
-              alt={customer.name} 
-              className="w-5 h-5 rounded-full object-cover border border-white/20 shrink-0" 
-              referrerPolicy="no-referrer" 
-            />
-          ) : (
-            <div className="w-5 h-5 rounded-full bg-brand-red flex items-center justify-center text-[10px] text-white shrink-0">
-              {customer.name?.charAt(0) || <User className="w-3 h-3" />}
-            </div>
-          )}
-          <span className="max-w-[90px] truncate">{customer.name}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="relative shrink-0">
+            {customer.photoURL ? (
+              <img 
+                src={customer.photoURL} 
+                alt={customer.name} 
+                className="w-5 h-5 rounded-full object-cover border border-brand-red/50" 
+                referrerPolicy="no-referrer" 
+              />
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-brand-red flex items-center justify-center text-[10px] text-white shrink-0 font-black shadow-inner">
+                {customer.name?.charAt(0) || <User className="w-3 h-3" />}
+              </div>
+            )}
+            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          </div>
+          <span className="max-w-[80px] xl:max-w-[110px] truncate text-gray-200 group-hover:text-white leading-tight">
+            {customer.name}
+          </span>
         </div>
-        <span className="text-[10px] text-brand-red font-normal group-hover:underline">حسابي ▾</span>
+        <span className="text-[10px] text-brand-red font-bold flex items-center gap-0.5 group-hover:underline shrink-0">
+          <FileText className="w-3 h-3" />
+          <span>كرت الصيانة</span>
+        </span>
       </button>
     );
   }
 
   return (
     <button
-      onClick={() => setIsAuthOpen(true)}
+      onClick={handleOpen}
       className={
         isMobile
           ? "w-full py-2.5 px-4 rounded-xl bg-white/5 border border-white/10 text-gray-200 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-white/10"
-          : "flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 hover:text-white text-xs font-bold transition-all cursor-pointer"
+          : "flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-gray-200 hover:text-white text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
       }
     >
-      <User className="w-3.5 h-3.5 text-brand-red" />
-      <span>تسجيل الدخول</span>
+      <User className="w-3.5 h-3.5 text-brand-red shrink-0" />
+      <span>دخول / كرت الصيانة</span>
     </button>
   );
 };

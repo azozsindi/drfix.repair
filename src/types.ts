@@ -20,9 +20,33 @@ export interface CustomerProfile {
   googleUid?: string;
   address?: string;
   cars: CustomerCar[];
+  removedCars?: string[];
   password?: string;
   createdAt: any;
   updatedAt?: any;
+}
+
+export interface ServiceStepPhoto {
+  id: string;
+  url: string;
+  caption?: string;
+  isInternalOnly?: boolean; // true = hidden from customer (admin & technician only), false = visible to customer
+  uploadedAt: any;
+  uploadedBy?: string;
+}
+
+export type ServiceStepKey = 'assigned' | 'on_the_way' | 'arrived_inspection' | 'in_progress' | 'completed' | 'custom';
+
+export interface ServiceStepLog {
+  id: string;
+  stepKey: ServiceStepKey;
+  title: string;
+  note?: string;
+  photos: ServiceStepPhoto[];
+  recordedBy?: string;
+  recordedByStaffId?: string;
+  recordedAt: any;
+  statusChangeTo?: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
 }
 
 export interface MaintenanceRecord {
@@ -44,6 +68,11 @@ export interface MaintenanceRecord {
   };
   cost?: number | string;
   status: 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled';
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  assignedStaffPhone?: string;
+  assignedAt?: any;
+  serviceSteps?: ServiceStepLog[];
   createdAt?: any;
 }
 
