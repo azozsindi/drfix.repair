@@ -56,7 +56,7 @@ interface ReportsViewProps {
 }
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
-  const [activeReportTab, setActiveReportTab] = useState<'operations' | 'financial' | 'technicians'>('operations');
+  const [activeReportTab, setActiveReportTab] = useState<'operations' | 'technicians'>('operations');
   const [period, setPeriod] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -135,66 +135,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
     };
   }, [filteredRecords]);
 
-  // Financial Metrics Calculation (Revenue, Costs, Profits, Taxes)
-  const financialMetrics = useMemo(() => {
-    let grossRevenue = 0;
-    let totalLabor = 0;
-    let totalParts = 0;
-    let totalTravelFees = 0;
-    let totalDiscounts = 0;
-    let totalVat = 0;
-    let paidCount = 0;
-
-    filteredRecords.forEach(r => {
-      // If completed or accepted with cost
-      const p = r.pricing;
-      if (p) {
-        grossRevenue += (p.grandTotal || 0);
-        totalLabor += (p.laborCost || 0);
-        totalParts += (p.partsCost || 0);
-        totalTravelFees += (p.travelFee || 0);
-        totalDiscounts += (p.discount || 0);
-        totalVat += (p.taxAmount || 0);
-      } else {
-        const costNum = Number(r.cost) || 0;
-        grossRevenue += costNum;
-        totalLabor += Math.round(costNum * 0.7);
-        totalTravelFees += (r.travelFee || 0);
-      }
-
-      if (r.status === 'completed') {
-        paidCount++;
-      }
-    });
-
-    // Estimated wholesale parts cost is ~65% of parts sales
-    const estimatedPartsCost = Math.round(totalParts * 0.65);
-    // Estimated net profit before overheads
-    const estimatedNetProfit = grossRevenue - estimatedPartsCost - totalVat;
-    const profitMargin = grossRevenue > 0 ? Math.round((estimatedNetProfit / grossRevenue) * 100) : 0;
-
-    return {
-      grossRevenue,
-      totalLabor,
-      totalParts,
-      estimatedPartsCost,
-      totalTravelFees,
-      totalDiscounts,
-      totalVat,
-      estimatedNetProfit,
-      profitMargin,
-      paidCount
-    };
-  }, [filteredRecords]);
-
-  // Technician Performance Metrics
+  // Technician Performance Metrics (Operational & Quality only - no financial metrics)
   const technicianMetrics = useMemo(() => {
     const map = new Map<string, {
       staffName: string;
       totalJobs: number;
       completedJobs: number;
       inProgressJobs: number;
-      totalRevenue: number;
       ratingSum: number;
       ratingCount: number;
       punctualitySum: number;
@@ -208,7 +155,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
           totalJobs: 0,
           completedJobs: 0,
           inProgressJobs: 0,
-          totalRevenue: 0,
           ratingSum: 0,
           ratingCount: 0,
           punctualitySum: 0
@@ -219,11 +165,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
       stat.totalJobs++;
       if (r.status === 'completed') stat.completedJobs++;
       if (r.status === 'in-progress' || r.status === 'on_the_way') stat.inProgressJobs++;
-
-      const jobRev = r.pricing?.grandTotal || Number(r.cost) || 0;
-      if (r.status === 'completed') {
-        stat.totalRevenue += jobRev;
-      }
 
       // Ratings
       if (r.techDetailedReview?.overallRating) {

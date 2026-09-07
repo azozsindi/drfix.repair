@@ -3150,6 +3150,7 @@ const AdminDashboard = ({
   settings: AppSettings;
   currentStaffUser?: StaffUser | null;
 }) => {
+  const isTechnician = currentStaffUser?.role === 'technician';
   const dashboardMountTime = useRef<number>(Date.now());
   const knownBookingIds = useRef<Set<string>>(new Set());
   const isSyncStabilized = useRef<boolean>(false);
@@ -4203,7 +4204,7 @@ const AdminDashboard = ({
     if (newStatus === 'cancelled') statusLabelAr = 'ملغي ❌';
     if (newStatus === 'new') statusLabelAr = 'جديد 🆕';
 
-    if (target && target.customerPhone) {
+    if (!isTechnician && target && target.customerPhone) {
       waUrl = getWhatsAppStatusUrl(target, newStatus);
       
       // Synchronously open WhatsApp immediately in direct click context
@@ -4692,7 +4693,6 @@ const AdminDashboard = ({
   const COLORS = ['#E31837', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#3B82F6', '#10B981'];
 
   const userPermissions: StaffPermissions = currentStaffUser?.permissions || DEFAULT_SUPER_ADMIN_PERMISSIONS;
-  const isTechnician = currentStaffUser?.role === 'technician';
 
   // Strictly filter records for technicians: they can ONLY see tasks assigned to them
   const accessibleRecords = useMemo(() => {
@@ -5514,8 +5514,9 @@ const AdminDashboard = ({
                                         <option value="cancelled" className="bg-brand-dark text-red-400">ملغي</option>
                                       </select>
 
-                                      {/* Fast Direct WhatsApp Trigger Pills */}
-                                      <div className="flex items-center gap-1">
+                                      {/* Fast Direct WhatsApp Trigger Pills (Management only) */}
+                                      {!isTechnician && (
+                                        <div className="flex items-center gap-1">
                                         <a
                                           href={getWhatsAppStatusUrl(record, 'on_the_way')}
                                           target="_blank"
@@ -5536,7 +5537,8 @@ const AdminDashboard = ({
                                         >
                                           ✅ قبول
                                         </a>
-                                      </div>
+                                        </div>
+                                      )}
                                     </div>
                                   </td>
                                   <td className="px-6 py-4">
@@ -5561,15 +5563,17 @@ const AdminDashboard = ({
                                         )}
                                       </button>
 
-                                      <a
-                                        href={getWhatsAppStatusUrl(record, record.status)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
-                                        title="إرسال إشعار الحالة للعميل عبر الواتساب"
-                                      >
-                                        <MessageSquare className="w-4 h-4" />
-                                      </a>
+                                      {!isTechnician && (
+                                        <a
+                                          href={getWhatsAppStatusUrl(record, record.status)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-2 text-emerald-400 hover:text-white hover:bg-emerald-500/20 rounded-lg transition-colors cursor-pointer"
+                                          title="إرسال إشعار الحالة للعميل عبر الواتساب"
+                                        >
+                                          <MessageSquare className="w-4 h-4" />
+                                        </a>
+                                      )}
                                       <button 
                                         type="button"
                                         onClick={() => handleOpenTimeline(record, 'timeline')}
@@ -5711,35 +5715,39 @@ const AdminDashboard = ({
 
                               <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <a
-                                    href={getWhatsAppStatusUrl(record, 'on_the_way')}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
-                                    className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
-                                    title="الفني بالطريق وإرسال واتساب"
-                                  >
-                                    🚗 بالطريق
-                                  </a>
-                                  <a
-                                    href={getWhatsAppStatusUrl(record, 'accepted')}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => handleUpdateStatus(record.id, 'accepted')}
-                                    className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
-                                    title="قبول الحجز وإرسال واتساب"
-                                  >
-                                    ✅ قبول
-                                  </a>
-                                  <a 
-                                    href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                    واتساب
-                                  </a>
+                                  {!isTechnician && (
+                                    <>
+                                      <a
+                                        href={getWhatsAppStatusUrl(record, 'on_the_way')}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
+                                        className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                        title="الفني بالطريق وإرسال واتساب"
+                                      >
+                                        🚗 بالطريق
+                                      </a>
+                                      <a
+                                        href={getWhatsAppStatusUrl(record, 'accepted')}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={() => handleUpdateStatus(record.id, 'accepted')}
+                                        className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                        title="قبول الحجز وإرسال واتساب"
+                                      >
+                                        ✅ قبول
+                                      </a>
+                                      <a 
+                                        href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5" />
+                                        واتساب
+                                      </a>
+                                    </>
+                                  )}
                                   <a 
                                     href={`tel:${record.customerPhone}`}
                                     className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
@@ -8675,48 +8683,50 @@ const AdminDashboard = ({
                       </span>
                     </div>
 
-                    {/* Quick Status Changers with WhatsApp Trigger */}
-                    <div className="pt-2 border-t border-white/5 space-y-1.5">
-                      <div className="text-[11px] text-gray-400 font-bold">تحديث الحالة والانتقال الفوري للواتساب:</div>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <a
-                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'accepted')}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => {
-                            handleUpdateStatus(selectedBookingDetails.id, 'accepted');
-                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'accepted' } : null);
-                          }}
-                          className="px-2 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-                        >
-                          ✅ قبول الحجز
-                        </a>
-                        <a
-                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'on_the_way')}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => {
-                            handleUpdateStatus(selectedBookingDetails.id, 'on_the_way');
-                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'on_the_way' } : null);
-                          }}
-                          className="px-2 py-2 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-                        >
-                          🚗 الفني بالطريق
-                        </a>
-                        <a
-                          href={getWhatsAppStatusUrl(selectedBookingDetails, 'completed')}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => {
-                            handleUpdateStatus(selectedBookingDetails.id, 'completed');
-                            setSelectedBookingDetails(prev => prev ? { ...prev, status: 'completed' } : null);
-                          }}
-                          className="px-2 py-2 bg-green-500/15 hover:bg-green-500/25 text-green-400 border border-green-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
-                        >
-                          🏁 تم الإنجاز
-                        </a>
+                    {/* Quick Status Changers with WhatsApp Trigger - for management only */}
+                    {!isTechnician && (
+                      <div className="pt-2 border-t border-white/5 space-y-1.5">
+                        <div className="text-[11px] text-gray-400 font-bold">تحديث الحالة والانتقال الفوري للواتساب:</div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <a
+                            href={getWhatsAppStatusUrl(selectedBookingDetails, 'accepted')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              handleUpdateStatus(selectedBookingDetails.id, 'accepted');
+                              setSelectedBookingDetails(prev => prev ? { ...prev, status: 'accepted' } : null);
+                            }}
+                            className="px-2 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                          >
+                            ✅ قبول الحجز
+                          </a>
+                          <a
+                            href={getWhatsAppStatusUrl(selectedBookingDetails, 'on_the_way')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              handleUpdateStatus(selectedBookingDetails.id, 'on_the_way');
+                              setSelectedBookingDetails(prev => prev ? { ...prev, status: 'on_the_way' } : null);
+                            }}
+                            className="px-2 py-2 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                          >
+                            🚗 الفني بالطريق
+                          </a>
+                          <a
+                            href={getWhatsAppStatusUrl(selectedBookingDetails, 'completed')}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              handleUpdateStatus(selectedBookingDetails.id, 'completed');
+                              setSelectedBookingDetails(prev => prev ? { ...prev, status: 'completed' } : null);
+                            }}
+                            className="px-2 py-2 bg-green-500/15 hover:bg-green-500/25 text-green-400 border border-green-500/30 rounded-lg text-center text-[11px] font-bold transition-all cursor-pointer shadow-sm"
+                          >
+                            🏁 تم الإنجاز
+                          </a>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -8734,15 +8744,17 @@ const AdminDashboard = ({
 
                 {/* Quick actions in modal */}
                 <div className="space-y-2 pt-2">
-                  <a 
-                    href={getWhatsAppStatusUrl(selectedBookingDetails, selectedBookingDetails.status)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    <span>إرسال تحديث الحالة للعميل عبر الواتساب 📲</span>
-                  </a>
+                  {!isTechnician && (
+                    <a 
+                      href={getWhatsAppStatusUrl(selectedBookingDetails, selectedBookingDetails.status)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-600/20 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      <span>إرسال تحديث الحالة للعميل عبر الواتساب 📲</span>
+                    </a>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
@@ -8762,15 +8774,17 @@ const AdminDashboard = ({
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <a 
-                      href={`https://api.whatsapp.com/send?phone=${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}&text=${encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim() ? `هلا ${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim()} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${selectedBookingDetails.carModel || 'السيارة'}) رقم #${selectedBookingDetails.bookingId || selectedBookingDetails.id || ''}\n\nكيف نقدر نخدمك؟ 🔧⚡`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <MessageCircle className="w-4 h-4 text-emerald-400" />
-                      محادثة عامة
-                    </a>
+                    {!isTechnician && (
+                      <a 
+                        href={`https://api.whatsapp.com/send?phone=${(selectedBookingDetails.customerPhone || '').replace(/\D/g, '').replace(/^0/, '966')}&text=${encodeURIComponent(`🚗⚡ DR.FIX | خدمة ميكانيكي متنقل\n\n${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim() ? `هلا ${(selectedBookingDetails.customerName || selectedBookingDetails.name || '').trim()} 👋\n` : 'هلا بك 👋\n'}بخصوص حجزك (${selectedBookingDetails.carModel || 'السيارة'}) رقم #${selectedBookingDetails.bookingId || selectedBookingDetails.id || ''}\n\nكيف نقدر نخدمك؟ 🔧⚡`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400" />
+                        محادثة عامة
+                      </a>
+                    )}
                     <a 
                       href={`tel:${selectedBookingDetails.customerPhone}`}
                       className="py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
