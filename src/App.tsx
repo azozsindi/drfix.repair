@@ -1942,8 +1942,28 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   const [showLocationHelp, setShowLocationHelp] = useState(false);
   
   const { t, lang } = useLanguage();
-  const { customer } = useCustomer();
+  const { customer, loginWithGoogle, logout, setIsAuthOpen } = useCustomer();
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<BookingFormData>();
+
+  const isGoogleUser = Boolean(customer && (customer.googleUid || customer.email));
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleSigningIn(true);
+    setGoogleAuthError(null);
+    try {
+      const res = await loginWithGoogle();
+      if (!res.success) {
+        setGoogleAuthError(res.error || (lang === 'ar' ? 'تعذر تسجيل الدخول عبر Google. يرجى المحاولة مجدداً.' : 'Google sign-in failed. Please try again.'));
+      }
+    } catch (err: any) {
+      console.error('Google Sign-In Error:', err);
+      setGoogleAuthError(err?.message || (lang === 'ar' ? 'حدث خطأ أثناء الاتصال بحساب Google.' : 'Error connecting to Google.'));
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
 
   React.useEffect(() => {
     if (customer) {
@@ -2117,6 +2137,17 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
   const onSubmit = async (data: BookingFormData) => {
     if (isLoading) return;
+
+    // Strict Enforcement: Mandatory Google Registration & Sign-In
+    if (!isGoogleUser || !customer) {
+      setBookingError(
+        lang === 'ar'
+          ? 'عذراً، يجب تسجيل الدخول بحساب Google أولاً لتتمكن من إتمام الحجز وتوثيق بيانات سيارتك.'
+          : 'Google sign-in is required to complete your booking.'
+      );
+      return;
+    }
+
     setIsLoading(true);
     setBookingError(null);
 
@@ -2142,7 +2173,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
     try {
       // 1. Write strictly to Firebase Firestore first
-      const resolvedCustomerName = data.customerName?.trim() || cleanPhone;
+      const resolvedCustomerName = customer.name || data.customerName?.trim() || cleanPhone;
       const normalizedMake = cleanCarMake(data.carMake, data.carModel);
       const normalizedYear = cleanCarYear(data.carYear, data.carModel) || (data.carYear || '').toString().trim() || new Date().getFullYear().toString();
       const normalizedPlate = ((data as any).plateNumber || '').trim();
@@ -2150,8 +2181,9 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
       const bookingDocData = {
         bookingId: uniqueBookingId,
-        customerId: customer?.id || null,
-        customerEmail: customer?.email || '',
+        customerId: customer.id,
+        customerEmail: customer.email || '',
+        customerGoogleUid: customer.googleUid || '',
         customerPhone: cleanPhone,
         customerName: resolvedCustomerName,
         carMake: normalizedMake,
@@ -2484,7 +2516,160 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8">
+          {!isGoogleUser ? (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Mandatory Google Requirement Card */}
+              <div className="bg-neutral-900/90 border-2 border-brand-red/30 rounded-3xl p-6 sm:p-8 md:p-10 shadow-2xl relative overflow-hidden text-center">
+                {/* Ambient glow */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
+
+                <div className="relative z-10 max-w-xl mx-auto space-y-6">
+                  {/* Google Icon Badge */}
+                  <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto shadow-inner">
+                    <svg className="w-8 h-8" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-red/20 border border-brand-red/40 text-brand-red text-xs font-bold">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{lang === 'ar' ? 'التسجيل الإلزامي لحجز موعد' : 'Mandatory to Book'}</span>
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-black text-white font-display">
+                      {lang === 'ar' ? 'سجّل الدخول بحساب Google لحجز الموعد' : 'Sign in with Google to Book'}
+                    </h3>
+                    <p className="text-gray-300 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto">
+                      {lang === 'ar'
+                        ? 'يشترط النظام التسجيل بحساب Google المعتمد قبل ملء بيانات الحجز، وذلك لتوثيق ملفك وتتبع الفني الميداني على الخريطة فوراً وحفظ سجل فواتير وضمانات سيارتك.'
+                        : 'Google registration is required prior to booking to secure your service history and enable live GPS technician tracking.'}
+                    </p>
+                  </div>
+
+                  {/* Account state info if customer exists without googleUid */}
+                  {customer && !customer.googleUid && (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+                      {lang === 'ar'
+                        ? `أنت مسجل حالياً بالهاتف (${customer.phone || customer.name}). لإتمام الحجز، يرجى التوثيق بحساب Google للمتابعة.`
+                        : 'Please link your Google account to confirm this booking.'}
+                    </div>
+                  )}
+
+                  {/* Error display */}
+                  {googleAuthError && (
+                    <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs text-right space-y-1">
+                      <div className="font-bold flex items-center gap-1.5 text-red-200">
+                        <AlertCircle className="w-4 h-4 text-brand-red shrink-0" />
+                        <span>{googleAuthError}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        {lang === 'ar' 
+                          ? 'يرجى السماح بالنوافذ المنبثقة (Pop-ups) في إعدادات المتصفح إذا تم إغلاقها تلقائياً.' 
+                          : 'Please allow pop-ups in your browser settings.'}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Google Primary CTA Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      id="google-booking-gate-btn"
+                      onClick={handleGoogleSignIn}
+                      disabled={isGoogleSigningIn}
+                      className="w-full max-w-md mx-auto py-4 px-6 rounded-2xl bg-white hover:bg-gray-100 text-black font-black text-sm sm:text-base transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-[0.99] cursor-pointer disabled:opacity-60 group border border-white/20"
+                    >
+                      {isGoogleSigningIn ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin text-black" />
+                          <span>{lang === 'ar' ? 'جارٍ التحقق وتسجيل الدخول عبر Google...' : 'Signing in with Google...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                          </svg>
+                          <span className="group-hover:tracking-wide transition-all">
+                            {lang === 'ar' ? 'التسجيل والمتابعة بحساب Google' : 'Sign In with Google to Continue'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Benefits Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-white/10 text-right">
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="text-brand-red">⚡</span>
+                        <span>{lang === 'ar' ? 'توثيق الحجز الفوري' : 'Instant Verification'}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">
+                        {lang === 'ar' ? 'تأكيد الموعد وربطه بحسابك وتنبيه الإدارة فوراً.' : 'Direct booking confirmation.'}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="text-brand-red">📍</span>
+                        <span>{lang === 'ar' ? 'تتبع الفني الميداني' : 'Live GPS Tracking'}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">
+                        {lang === 'ar' ? 'متابعة مسار الفني على الخريطة ولحظة وصوله.' : 'Real-time technician tracking.'}
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="text-brand-red">🛡️</span>
+                        <span>{lang === 'ar' ? 'سجل وضمانات السيارة' : 'Digital Car History'}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">
+                        {lang === 'ar' ? 'حفظ فواتير وتقارير الفحص وضمانات القطع.' : 'Keep invoices and guarantees.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 animate-fadeIn">
+            {/* Logged in Customer Header Card */}
+            <div className="p-4 rounded-2xl bg-black/60 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                {customer?.photoURL ? (
+                  <img src={customer.photoURL} alt={customer.name} className="w-11 h-11 rounded-full border-2 border-emerald-500/50 object-cover shadow-sm shrink-0" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-emerald-500/20 border-2 border-emerald-500/50 flex items-center justify-center text-emerald-400 font-black text-base shrink-0">
+                    {customer?.name?.charAt(0) || 'G'}
+                  </div>
+                )}
+                <div className="text-right flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-white truncate">{customer?.name}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      {lang === 'ar' ? 'مسجل وموثق بحساب Google' : 'Verified Google Account'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-400 font-mono block truncate">{customer?.email || customer?.phone}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={logout}
+                className="w-full sm:w-auto text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تبديل الحساب' : 'Switch Account'}</span>
+              </button>
+            </div>
+
             {customer && customer.cars && customer.cars.length > 0 && (
               <div className="p-3.5 bg-brand-red/10 border border-brand-red/25 rounded-2xl animate-fadeIn">
                 <div className="flex items-center justify-between mb-2">
@@ -2735,6 +2920,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </form>
+          )}
 
           <AnimatePresence>
             {isLoading && (
