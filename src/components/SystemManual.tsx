@@ -73,7 +73,8 @@ export const SystemManual: React.FC<SystemManualProps> = ({ lang = 'ar' }) => {
     { id: 'core', nameAr: 'البنية الأساسية والعمليات', nameEn: 'Core & Operations' },
     { id: 'field', nameAr: 'الميدان والفنيين والتوثيق', nameEn: 'Field & Technicians' },
     { id: 'crm', nameAr: 'العملاء والضمان والمالية', nameEn: 'CRM & Warranty' },
-    { id: 'admin', nameAr: 'الإدارة والأمان والإعدادات', nameEn: 'Admin & System Control' }
+    { id: 'admin', nameAr: 'الإدارة والأمان والإعدادات', nameEn: 'Admin & System Control' },
+    { id: 'roadmap', nameAr: 'الخطة المستقبلية والتطويرات', nameEn: 'Future Roadmap' }
   ], []);
 
   const manualSections: ManualSection[] = useMemo(() => [
@@ -914,6 +915,67 @@ export const SystemManual: React.FC<SystemManualProps> = ({ lang = 'ar' }) => {
           title: 'Campaign Scheduling & Validity Limits',
           desc: 'Set start and expiration dates on offers to automate seasonal campaigns effortlessly.'
         }
+      ]
+    },
+    {
+      id: 'automated_whatsapp_otp',
+      number: '18',
+      titleAr: 'الخطة المستقبلية: نظام التحقق التلقائي برقم الجوال عبر بوابة واتساب السحابية',
+      titleEn: 'Future Roadmap: Automated WhatsApp OTP & Customer Verification Gateway',
+      categoryAr: 'roadmap',
+      categoryEn: 'roadmap',
+      icon: MessageCircle,
+      badgeAr: 'الخطة المستقبلية (قريباً)',
+      badgeEn: 'Future Roadmap (Planned)',
+      summaryAr: 'بوابة تقنية مستقبلية لإرسال رسائل التحقق (OTP) وتأكيد المواعيد تلقائياً إلى واتساب العميل مباشرة من رقم المنصة دون تدخل يدوي، مع الربط عبر بوابة WhatsApp Gateway (QR Code أو Cloud API).',
+      summaryEn: 'Planned automation gateway to transmit one-time passcodes (OTP) and booking confirmations automatically to customer WhatsApp from the business phone number.',
+      featuresAr: [
+        {
+          title: 'الإرسال التلقائي لأكواد التحقق في الخلفية (Automated Background OTP)',
+          desc: 'بمجرد كتابة العميل لرقم هاتفه في نموذج الحجز، يقوم السيرفر بإنشاء رمز تحقق مؤقت وإرساله فوراً إلى واتساب العميل من رقم المنصة دون أن يضطر العميل لفتح الواتساب أو كتابة رسالة بنفسه.'
+        },
+        {
+          title: 'الربط السريع عبر مسح رمز الاستجابة السريعة (QR Code Gateway - UltraMsg / Green API)',
+          desc: 'إمكانية ربط رقم واتساب المنصة الحالي بمسح رمز QR لمرة واحدة من تطبيق واتساب في الهاتف، ليعمل كبوابة إرسال آلية للرسائل والتنبيهات الميدانية بدون رسوم على كل رسالة وبتكلفة اشتراك شهري ثابتة.'
+        },
+        {
+          title: 'بديل التكامل مع واجهة ميتا الرسمية (Meta WhatsApp Cloud API)',
+          desc: 'دعم خيار الربط الرسمي مع Meta Business Manager لإرسال قوالب توثيق الهوية المعتمدة (Authentication Templates) مع شارة الأمان والتوثيق الأخضر للأعمال الكبرى.'
+        },
+        {
+          title: 'التأكيد الأوتوماتيكي للحجوزات ومسار الفني المباشر',
+          desc: 'إرسال ملخص الحجز ورابط التتبع الحي للفني وموقع الورشة المتنقلة عبر واتساب تلقائياً فور اعتماد الحجز من قبل مسؤولي العمليات.'
+        }
+      ],
+      featuresEn: [
+        {
+          title: 'Background Automated OTP Dispatching',
+          desc: 'Instant server-side dispatch of a temporary verification passcode to customer WhatsApp as soon as phone number is entered, requiring zero manual typing by the customer.'
+        },
+        {
+          title: 'Fast QR Code Gateway Integration (UltraMsg / Green API)',
+          desc: 'Pair the existing company WhatsApp number via a single QR scan to serve as a high-speed background message dispatcher with a flat monthly rate.'
+        },
+        {
+          title: 'Official Meta WhatsApp Cloud API Support',
+          desc: 'Optional enterprise-level integration with Meta Business Manager for verified authentication templates with guaranteed deliverability.'
+        },
+        {
+          title: 'Automated Booking Confirmations & Live GPS Dispatch Updates',
+          desc: 'Instant automated delivery of job summaries and live tracking links directly into customer WhatsApp chats.'
+        }
+      ],
+      workflowStepsAr: [
+        'العميل يدخل رقم جواله السعودي في صفحة الحجز',
+        'السيرفر يولد كود OTP مؤقت ومشفر ويرسله تلقائياً إلى واتساب العميل من رقم المنصة',
+        'العميل يستقبل الرسالة في تطبيق واتساب ويكتب الكود في شاشة الموقع لتأكيد هويته بنقرة واحدة',
+        'يتم توثيق الحساب فوراً وإرسال تأكيد الحجز وتتبع مسار الفني إلى محادثة الواتساب تلقائياً'
+      ],
+      workflowStepsEn: [
+        'Customer enters phone number in the booking portal',
+        'Server generates temporary OTP and dispatches it automatically to customer WhatsApp',
+        'Customer receives WhatsApp notification and confirms passcode on screen',
+        'Account verified and booking confirmation + technician GPS link dispatched automatically'
       ]
     }
   ], []);
