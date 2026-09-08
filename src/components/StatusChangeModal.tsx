@@ -86,7 +86,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
           targetStatus === 'cancelled'
             ? 'bg-gradient-to-r from-red-900/30 via-black/40 to-black/20'
             : targetStatus === 'rescheduled'
-            ? 'bg-gradient-to-r from-amber-900/30 via-black/40 to-black/20'
+            ? 'bg-gradient-to-r from-brand-red/20 via-black/40 to-black/20'
             : 'bg-gradient-to-r from-purple-900/30 via-black/40 to-black/20'
         }`}>
           <div className="flex items-center gap-3">
@@ -94,7 +94,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
               targetStatus === 'cancelled'
                 ? 'bg-red-500/20 text-red-400 border-red-500/40'
                 : targetStatus === 'rescheduled'
-                ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                ? 'bg-brand-red/20 text-white border-brand-red/40'
                 : 'bg-purple-500/20 text-purple-400 border-purple-500/40'
             }`}>
               {targetStatus === 'cancelled' && <XCircle className="w-5 h-5" />}
@@ -175,7 +175,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
                     type="datetime-local"
                     value={rescheduledDate}
                     onChange={e => setRescheduledDate(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-amber-500/60"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-brand-red/60"
                     required
                   />
                 </div>
@@ -187,7 +187,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
                   type="text"
                   value={rescheduleReason}
                   onChange={e => setRescheduleReason(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-amber-500/60"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-brand-red/60"
                   placeholder="مثال: انشغال العميل، انتظار وصول قطعة غيار من الوكالة"
                   required
                 />
@@ -235,7 +235,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
                 targetStatus === 'cancelled'
                   ? 'bg-red-600 hover:bg-red-700'
                   : targetStatus === 'rescheduled'
-                  ? 'bg-amber-600 hover:bg-amber-700'
+                  ? 'bg-brand-red hover:bg-red-700'
                   : 'bg-purple-600 hover:bg-purple-700'
               }`}
             >

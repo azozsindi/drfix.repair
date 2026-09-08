@@ -301,7 +301,7 @@ export const WarrantyAndComplaintsModal: React.FC<WarrantyAndComplaintsModalProp
                         }}
                         className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                           durationDays === p.days
-                            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                            ? 'bg-white/10 text-white border-white/20'
                             : 'bg-white/5 text-gray-400 border-white/10 hover:text-white'
                         }`}
                       >

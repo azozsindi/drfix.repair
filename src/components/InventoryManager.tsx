@@ -554,7 +554,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
               className="px-3.5 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/10 cursor-pointer"
               title="عرض سجل حركات التوريد والصرف"
             >
-              <History className="w-4 h-4 text-yellow-400" />
+              <History className="w-4 h-4 text-white" />
               <span className="hidden md:inline">سجل الحركات</span>
             </button>
 
@@ -590,9 +590,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 space-y-1 relative overflow-hidden">
             <div className="flex items-center justify-between text-gray-400 text-xs font-bold">
               <span>قيمة المخزون (بالتكلفة)</span>
-              <DollarSign className="w-4 h-4 text-yellow-400" />
+              <DollarSign className="w-4 h-4 text-brand-red" />
             </div>
-            <div className="text-2xl font-black text-yellow-300">
+            <div className="text-2xl font-black text-white">
               {stats.totalCostValue.toLocaleString('ar-SA')} <span className="text-xs font-normal text-gray-400">ر.س</span>
             </div>
             <div className="text-[11px] text-gray-400 font-medium">
@@ -739,7 +739,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
                   <tr 
                     key={item.id} 
                     className={`hover:bg-white/[0.02] transition-colors ${
-                      isCritical ? 'bg-red-500/10' : isLow ? 'bg-amber-500/5' : ''
+                      isCritical ? 'bg-red-500/10' : isLow ? 'bg-white/5' : ''
                     }`}
                   >
                     <td className="px-5 py-4">
@@ -750,7 +750,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
                             نفد المخزون!
                           </span>
                         ) : isLow ? (
-                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                          <span className="bg-brand-red/20 text-red-200 border border-brand-red/40 text-[9px] font-bold px-1.5 py-0.5 rounded">
                             قارب النفاد ⚠️
                           </span>
                         ) : null}
@@ -771,7 +771,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <span className={`text-base font-black ${
-                          isCritical ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-emerald-400'
+                          isCritical ? 'text-red-400' : isLow ? 'text-white' : 'text-emerald-400'
                         }`}>
                           {item.quantity}
                         </span>
@@ -888,7 +888,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
               <div 
                 key={item.id} 
                 className={`p-4 space-y-3 ${
-                  isCritical ? 'bg-red-500/10' : isLow ? 'bg-amber-500/5' : 'bg-black/20'
+                  isCritical ? 'bg-red-500/10' : isLow ? 'bg-white/5' : 'bg-black/20'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -900,7 +900,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
                           نفد!
                         </span>
                       ) : isLow ? (
-                        <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        <span className="bg-brand-red/20 text-red-200 border border-brand-red/40 text-[9px] font-bold px-1.5 py-0.5 rounded">
                           ⚠️ قارب النفاد
                         </span>
                       ) : null}
@@ -1324,7 +1324,7 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
           <div className="glass-card max-w-2xl w-full p-5 sm:p-6 border-white/10 rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 my-auto max-h-[88vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center text-yellow-400">
+                <div className="w-10 h-10 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red">
                   <History className="w-5 h-5" />
                 </div>
                 <div>

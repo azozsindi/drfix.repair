@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -39,6 +39,7 @@ import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto, ServiceStepKey, St
 interface ServiceTimelineModalProps {
   record: MaintenanceRecord;
   staffList: StaffUser[];
+  allRecords?: MaintenanceRecord[];
   currentStaffUser?: StaffUser | null;
   telegramConfig?: {
     botToken?: string;
@@ -128,6 +129,7 @@ const IN_PROGRESS_CATEGORIES = [
 export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   record,
   staffList,
+  allRecords = [],
   currentStaffUser,
   telegramConfig,
   initialTab,
@@ -144,6 +146,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   };
 
   const [activeTab, setActiveTab] = useState<'workflow' | 'timeline' | 'assign'>(getInitialTab());
+  const [techAvailabilityFilter, setTechAvailabilityFilter] = useState<'all' | 'free' | 'busy'>('all');
 
   // Determine active workflow stage based on record status
   const getInitialWorkflowStage = (): 1 | 2 | 3 | 4 => {
@@ -183,11 +186,41 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ url: string; caption?: string; title?: string } | null>(null);
 
+  const steps: ServiceStepLog[] = record.serviceSteps || [];
+
+  // Strictly filter technicians: ONLY active staff with technician role or 'فني' in their title
+  const technicians = useMemo(() => {
+    return (staffList || []).filter(s => {
+      if (s.isActive === false) return false;
+      // Exclude administrative/support roles
+      if (s.role === 'super_admin' || s.role === 'dispatcher' || s.role === 'support') {
+        return false;
+      }
+      if (s.role === 'technician') return true;
+      const roleStr = String(s.role || '').toLowerCase();
+      const titleStr = String(s.roleTitleAr || '').trim().toLowerCase();
+      return roleStr === 'tech' || roleStr.includes('technician') || titleStr.includes('فني') || titleStr.includes('technician');
+    });
+  }, [staffList]);
+
   // Technician Assignment State
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState(record.assignedStaffId || '');
-  const [assignmentMode, setAssignmentMode] = useState<'staff_list' | 'manual'>(
-    staffList && staffList.length > 0 ? 'staff_list' : 'manual'
-  );
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState(() => {
+    if (record.assignedStaffId && !record.assignedStaffId.startsWith('manual_')) {
+      return record.assignedStaffId;
+    }
+    return '';
+  });
+  const [assignmentMode, setAssignmentMode] = useState<'staff_list' | 'manual'>(() => {
+    if (record.assignedStaffId?.startsWith('manual_')) return 'manual';
+    const hasTechs = (staffList || []).some(s => {
+      if (s.isActive === false) return false;
+      if (s.role === 'super_admin' || s.role === 'dispatcher' || s.role === 'support') return false;
+      if (s.role === 'technician') return true;
+      const titleStr = String(s.roleTitleAr || '').trim().toLowerCase();
+      return titleStr.includes('فني') || titleStr.includes('technician');
+    });
+    return hasTechs ? 'staff_list' : 'manual';
+  });
   const [manualTechName, setManualTechName] = useState(record.assignedStaffName || '');
   const [manualTechPhone, setManualTechPhone] = useState(record.assignedStaffPhone || '');
   const [isAssigning, setIsAssigning] = useState(false);
@@ -196,8 +229,50 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
 
-  const steps: ServiceStepLog[] = record.serviceSteps || [];
-  const technicians = staffList.filter(s => s.isActive !== false);
+  // Real-time calculation of technician availability and active workloads
+  const techWorkloadMap = useMemo(() => {
+    const map = new Map<string, {
+      activeJobsCount: number;
+      activeRecords: MaintenanceRecord[];
+      isBusy: boolean;
+    }>();
+
+    technicians.forEach(tech => {
+      const techName = (tech.fullName || '').trim().toLowerCase();
+      const activeRecords = (allRecords || []).filter(r => {
+        if (r.id === record.id) return false; // Exclude current record being assigned
+        if (r.status === 'completed' || r.status === 'cancelled') return false;
+        const matchId = r.assignedStaffId === tech.id;
+        const matchName = Boolean(r.assignedStaffName && techName && r.assignedStaffName.trim().toLowerCase() === techName);
+        return matchId || matchName;
+      });
+
+      map.set(tech.id, {
+        activeJobsCount: activeRecords.length,
+        activeRecords,
+        isBusy: activeRecords.length > 0
+      });
+    });
+
+    return map;
+  }, [technicians, allRecords, record.id]);
+
+  const freeTechsCount = useMemo(() => {
+    return technicians.filter(t => !techWorkloadMap.get(t.id)?.isBusy).length;
+  }, [technicians, techWorkloadMap]);
+
+  const busyTechsCount = useMemo(() => {
+    return technicians.filter(t => techWorkloadMap.get(t.id)?.isBusy).length;
+  }, [technicians, techWorkloadMap]);
+
+  const filteredTechnicians = useMemo(() => {
+    return technicians.filter(tech => {
+      const isBusy = techWorkloadMap.get(tech.id)?.isBusy ?? false;
+      if (techAvailabilityFilter === 'free') return !isBusy;
+      if (techAvailabilityFilter === 'busy') return isBusy;
+      return true;
+    });
+  }, [technicians, techWorkloadMap, techAvailabilityFilter]);
 
   // Technician Name resolution
   const currentTechName = currentStaffUser?.fullName || record.assignedStaffName || 'فني الصيانة';
@@ -701,7 +776,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       case 'on_the_way':
         return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">2. الفني بالطريق 🚗</span>;
       case 'in-progress':
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">3. قيد العمل 🔧</span>;
+        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-red/15 text-red-200 border border-brand-red/30">3. قيد العمل 🔧</span>;
       case 'completed':
         return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">4. مكتمل 🏁</span>;
       default:
@@ -774,14 +849,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 )}
               </div>
             ) : isTechnician ? (
-              <div className="flex items-center gap-1.5 text-amber-400/80 font-medium">
+              <div className="flex items-center gap-1.5 text-white/80 font-medium">
                 <AlertCircle className="w-3.5 h-3.5" />
                 <span>لم يتم تحديد اسم الفني بالسند</span>
               </div>
             ) : (
               <button
                 onClick={() => setActiveTab('assign')}
-                className="text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+                className="text-brand-red hover:text-red-400 font-bold flex items-center gap-1 cursor-pointer"
               >
                 <AlertCircle className="w-3.5 h-3.5" />
                 <span>لم يتم إسناد فني بعد - انقر للتعيين</span>
@@ -874,7 +949,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(3); }}
               className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
                 record.status === 'in-progress'
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/50 animate-pulse'
+                  ? 'bg-brand-red/15 border-brand-red/40 text-red-200 ring-1 ring-brand-red/50 animate-pulse'
                   : record.status === 'completed'
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                     : workflowStage === 3 && activeTab === 'workflow'
@@ -1165,13 +1240,13 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 <div className="space-y-5 bg-white/5 p-5 rounded-3xl border border-white/10">
                   <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-3 gap-2">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-300 font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-white font-bold text-xs">
                         3
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-white flex items-center gap-2">
                           <span>المرحلة الثالثة: قيد العمل والصيانة الميدانية</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-brand-red/20 text-white border border-brand-red/30">
                             تحديثات متكررة ومستمرة 🔄
                           </span>
                         </h4>
@@ -1244,7 +1319,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   <div className="bg-black/40 p-3.5 rounded-2xl border border-white/10 space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
-                        {isCustomerVisible ? <Globe className="w-3.5 h-3.5 text-emerald-400" /> : <Lock className="w-3.5 h-3.5 text-amber-400" />}
+                        {isCustomerVisible ? <Globe className="w-3.5 h-3.5 text-emerald-400" /> : <Lock className="w-3.5 h-3.5 text-gray-400" />}
                         <span>ظهور هذا التحديث والصور للعميل:</span>
                       </label>
                       <span className="text-[10px] text-gray-400 font-mono">
@@ -1271,7 +1346,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         onClick={() => setIsCustomerVisible(false)}
                         className={`p-2.5 rounded-xl border text-center font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                           !isCustomerVisible
-                            ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                            ? 'bg-white/10 border-white/20 text-white'
                             : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
                         }`}
                       >
@@ -1591,7 +1666,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                 <div className="font-bold text-white text-sm flex items-center gap-2">
                                   <span>{step.title}</span>
                                   {step.isInternalOnly ? (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-brand-red/20 text-white border border-brand-red/30 flex items-center gap-1">
                                       <Lock className="w-2.5 h-2.5" />
                                       خاص بالإدارة
                                     </span>
@@ -1668,7 +1743,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                       </div>
                                       <div className="absolute top-1.5 right-1.5">
                                         {photo.isInternalOnly ? (
-                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/80 text-black backdrop-blur-sm shadow flex items-center gap-0.5" title="خاص بالإدارة فقط">
+                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/80 text-white border border-white/20 backdrop-blur-sm shadow flex items-center gap-0.5" title="خاص بالإدارة فقط">
                                             <Lock className="w-2.5 h-2.5" />
                                             خاص
                                           </span>
@@ -1757,7 +1832,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  فريق العمل المسجل ({technicians.length})
+                  الفنيون المسجلون ({technicians.length})
                 </button>
                 <button
                   type="button"
@@ -1774,45 +1849,135 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
               {/* Mode 1: Staff List Selection */}
               {assignmentMode === 'staff_list' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-300 block">
-                    اختر الفني المسؤول من القائمة:
-                  </label>
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="text-xs font-bold text-gray-300 block">
+                      اختر الفني المسؤول من القائمة (مع حالة التفرغ الميداني):
+                    </label>
+
+                    {/* Filter by Free vs Busy */}
+                    <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/10 self-start text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setTechAvailabilityFilter('all')}
+                        className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                          techAvailabilityFilter === 'all'
+                            ? 'bg-white/20 text-white shadow-sm'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        الكل ({technicians.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTechAvailabilityFilter('free')}
+                        className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          techAvailabilityFilter === 'free'
+                            ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                            : 'text-gray-400 hover:text-emerald-400'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        <span>فاضي ({freeTechsCount})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTechAvailabilityFilter('busy')}
+                        className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                          techAvailabilityFilter === 'busy'
+                            ? 'bg-brand-red/20 text-white border border-brand-red/40 shadow-sm'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-brand-red"></span>
+                        <span>شغال ({busyTechsCount})</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {technicians.length === 0 ? (
-                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl text-xs text-yellow-300 space-y-2">
-                      <p>لم يتم تسجيل حسابات فنيين بعد في تبويب "إدارة الموظفين".</p>
+                    <div className="p-4 bg-brand-red/10 border border-brand-red/20 rounded-2xl text-xs text-red-200 space-y-2">
+                      <p>لم يتم تسجيل حسابات بمسمى "فني" بعد في تبويب "إدارة الموظفين".</p>
                       <button
                         type="button"
                         onClick={() => setAssignmentMode('manual')}
-                        className="px-3 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 rounded-lg text-xs font-bold cursor-pointer transition-all inline-flex items-center gap-1"
+                        className="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 text-white rounded-lg text-xs font-bold cursor-pointer transition-all inline-flex items-center gap-1"
                       >
                         <span>التبديل إلى كتابة اسم الفني مباشرة دون تسجيل حساب ✍️</span>
                       </button>
                     </div>
+                  ) : filteredTechnicians.length === 0 ? (
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-center text-xs text-gray-400">
+                      لا يوجد فنيين متطابقين مع الفلتر المحدد حالياً.
+                    </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {technicians.map((tech) => (
-                        <button
-                          key={tech.id}
-                          type="button"
-                          onClick={() => setSelectedTechnicianId(tech.id)}
-                          className={`p-3 rounded-2xl border text-right transition-all flex items-center justify-between cursor-pointer ${
-                            selectedTechnicianId === tech.id
-                              ? 'bg-brand-red/15 border-brand-red text-white shadow-md'
-                              : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
-                          }`}
-                        >
-                          <div>
-                            <div className="font-bold text-xs text-white">{tech.fullName}</div>
-                            <div className="text-[10px] text-gray-400 mt-0.5">
-                              {tech.roleTitleAr || 'فني ميداني'} {tech.phone ? `• ${tech.phone}` : ''}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {filteredTechnicians.map((tech) => {
+                        const workload = techWorkloadMap.get(tech.id) || { activeJobsCount: 0, activeRecords: [], isBusy: false };
+                        const isSelected = selectedTechnicianId === tech.id;
+                        const isFree = !workload.isBusy;
+
+                        return (
+                          <button
+                            key={tech.id}
+                            type="button"
+                            onClick={() => setSelectedTechnicianId(tech.id)}
+                            className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2.5 cursor-pointer relative ${
+                              isSelected
+                                ? 'bg-brand-red/15 border-brand-red text-white shadow-md'
+                                : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between w-full gap-2">
+                              <div>
+                                <div className="font-bold text-xs text-white flex items-center gap-1.5 flex-wrap">
+                                  <span>{tech.fullName}</span>
+                                  {isFree ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                      🟢 فاضي (متفرغ)
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-red/20 text-white border border-brand-red/30">
+                                      🔴 شغال ({workload.activeJobsCount} مهمة)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-gray-400 mt-0.5">
+                                  {tech.roleTitleAr || 'فني ميداني'} {tech.phone ? `• ${tech.phone}` : ''}
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-brand-red shrink-0" />
+                              )}
                             </div>
-                          </div>
-                          {selectedTechnicianId === tech.id && (
-                            <Check className="w-4 h-4 text-brand-red shrink-0" />
-                          )}
-                        </button>
-                      ))}
+
+                            {/* Active Workload Summary */}
+                            {isFree ? (
+                              <div className="text-[10px] text-emerald-300/90 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 w-full flex items-center gap-1">
+                                <span>✨ جاهز ومتاح لتلقي هذه المهمة فوراً</span>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-red-200/90 bg-brand-red/10 px-2.5 py-1.5 rounded-lg border border-brand-red/20 w-full space-y-1">
+                                <div className="font-bold text-white flex items-center justify-between">
+                                  <span>الطلبات النشطة تحت تنفيذه:</span>
+                                  <span className="font-mono text-[9px]">{workload.activeJobsCount} قيد التنفيذ</span>
+                                </div>
+                                {workload.activeRecords.slice(0, 2).map((ar) => (
+                                  <div key={ar.id} className="text-gray-300 text-[10px] flex items-center justify-between bg-black/30 px-1.5 py-0.5 rounded">
+                                    <span className="truncate max-w-[120px]">#{ar.bookingId || ar.id.slice(-4)} {ar.carModel}</span>
+                                    <span className="text-red-300 font-mono text-[9px] shrink-0">
+                                      {ar.status === 'on_the_way' ? 'بالطريق 🚗' : 'قيد العمل 🔧'}
+                                    </span>
+                                  </div>
+                                ))}
+                                {workload.activeRecords.length > 2 && (
+                                  <div className="text-[9px] text-gray-400 font-bold text-center">+{workload.activeRecords.length - 2} طلبات نشطة أخرى</div>
+                                )}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -46,12 +46,12 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
           key={star}
           type="button"
           onClick={() => setVal(star)}
-          className="p-1 text-gray-500 hover:text-yellow-400 transition-colors cursor-pointer"
+          className="p-1 text-gray-500 hover:text-brand-red transition-colors cursor-pointer"
         >
-          <Star className={`w-5 h-5 ${star <= currentVal ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />
+          <Star className={`w-5 h-5 ${star <= currentVal ? 'text-brand-red fill-brand-red' : 'text-gray-600'}`} />
         </button>
       ))}
-      <span className="font-mono text-xs font-bold text-yellow-300 mr-2">{currentVal} / 5</span>
+      <span className="font-mono text-xs font-bold text-white mr-2">{currentVal} / 5</span>
     </div>
   );
 
@@ -99,10 +99,10 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-auto text-white flex flex-col">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-yellow-900/30 via-black/40 to-black/20">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-brand-red/25 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-yellow-500/20 border border-yellow-500/40 flex items-center justify-center text-yellow-400">
-              <Star className="w-5 h-5 fill-yellow-400" />
+            <div className="w-10 h-10 rounded-2xl bg-brand-red/20 border border-brand-red/40 flex items-center justify-center text-brand-red">
+              <Star className="w-5 h-5 fill-brand-red" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-bold">تقييم الفني التفصيلي</h3>
@@ -120,13 +120,13 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
         </div>
 
         {/* Overall Score Badge */}
-        <div className="p-4 bg-yellow-500/10 border-b border-yellow-500/20 flex items-center justify-between">
+        <div className="p-4 bg-brand-red/10 border-b border-brand-red/20 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            <span className="text-xs font-bold text-yellow-200">المتوسط الإجمالي للتقييم:</span>
+            <Sparkles className="w-5 h-5 text-brand-red" />
+            <span className="text-xs font-bold text-red-200">المتوسط الإجمالي للتقييم:</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xl font-black font-mono text-yellow-400">{overallAvg}</span>
+            <span className="text-xl font-black font-mono text-brand-red">{overallAvg}</span>
             <span className="text-xs text-gray-400">/ 5.0</span>
           </div>
         </div>
@@ -179,7 +179,7 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
               value={feedbackNotes}
               onChange={e => setFeedbackNotes(e.target.value)}
               rows={2}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-white text-xs focus:outline-none focus:border-yellow-500/60 resize-none"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2 text-white text-xs focus:outline-none focus:border-brand-red/60 resize-none"
               placeholder="مثال: الفني ممتاز جداً وحل المشكلة بسرعة ونظف مكان العمل بدقة."
             />
           </div>
@@ -206,7 +206,7 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-5 py-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
+                className="px-5 py-2 bg-brand-red hover:bg-red-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>حفظ التقييم</span>

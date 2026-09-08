@@ -38,6 +38,7 @@ import {
   Search,
   FileText,
   Calendar,
+  BookOpen,
   Settings,
   LogOut,
   LogIn,
@@ -112,6 +113,7 @@ import { StatusChangeModal } from './components/StatusChangeModal';
 import { TechnicianReviewModal } from './components/TechnicianReviewModal';
 import { PartnersPage } from './components/PartnersPage';
 import { AdminPartnersManager } from './components/AdminPartnersManager';
+import { SystemManual } from './components/SystemManual';
 import { 
   MaintenanceRecord,
   StaffUser, 
@@ -133,6 +135,7 @@ import {
 } from './types';
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
+import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from './lib/phoneUtils';
 import { 
   BarChart, 
   Bar, 
@@ -237,6 +240,55 @@ const useLanguage = () => {
   const context = useContext(LanguageContext);
   if (!context) throw new Error('useLanguage must be used within a LanguageProvider');
   return context;
+};
+
+const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
+  const [lang, setLangState] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem('drfix_lang') as Language;
+      return saved === 'en' || saved === 'ar' ? saved : 'ar';
+    } catch {
+      return 'ar';
+    }
+  });
+
+  const setLang = (newLang: Language) => {
+    setLangState(newLang);
+    try {
+      localStorage.setItem('drfix_lang', newLang);
+    } catch {}
+  };
+
+  const t = translations[lang] || translations.ar;
+
+  useEffect(() => {
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+  }, [lang]);
+
+  return (
+    <LanguageContext.Provider value={{ lang, setLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+};
+
+const LanguageToggle = ({ className }: { className?: string }) => {
+  const { lang, setLang } = useLanguage();
+  return (
+    <button
+      type="button"
+      onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
+      className={cn(
+        "px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-red/40 text-xs font-bold transition-all flex items-center gap-2 text-white cursor-pointer group shadow-sm shrink-0",
+        className
+      )}
+      title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى اللغة العربية'}
+    >
+      <Globe className="w-3.5 h-3.5 text-brand-red group-hover:rotate-12 transition-transform" />
+      <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+    </button>
+  );
 };
 
 // --- UI Components ---
@@ -923,7 +975,7 @@ const Ticker = ({ settings }: { settings: AppSettings }) => {
   return (
     <div 
       dir="ltr"
-      className="bg-brand-red py-2 fixed top-0 left-0 right-0 z-[60] shadow-md overflow-hidden flex items-center border-b border-red-600/40"
+      className="bg-brand-red py-2 fixed top-0 left-0 right-0 z-[60] shadow-md overflow-hidden flex items-center border-b border-red-600/40 pointer-events-none select-none touch-none"
     >
       {renderList('set1')}
       {renderList('set2')}
@@ -993,7 +1045,6 @@ const Navbar = ({
     ...(settings.showOffers !== false ? [{ name: t.nav.offers, path: '/#offers' }] : []),
     ...(settings.showPartners !== false ? [{ name: t.nav.partners || 'شركاء النجاح', path: '/partners' }] : []),
     ...(settings.showGallery !== false ? [{ name: t.nav.gallery, path: '/#gallery' }] : []),
-    { name: t.nav.history, path: '/history' },
   ];
 
   const handleNavClick = (path: string) => {
@@ -1046,18 +1097,15 @@ const Navbar = ({
             <span className="font-display font-black text-sm md:text-base tracking-tight group-hover:text-brand-red transition-colors whitespace-nowrap">
               {settings.siteName || 'Dr. Fix'}
             </span>
-            <span className="text-[10px] text-gray-400 hidden sm:inline-block whitespace-nowrap">صيانة سيارات احترافية</span>
+            <span className="text-[10px] text-gray-400 hidden sm:inline-block whitespace-nowrap">
+              {lang === 'ar' ? 'صيانة سيارات احترافية' : 'Mobile Auto Care'}
+            </span>
           </div>
         </Link>
         
         {/* Desktop Menu */}
         {isMaintenance && !isAdmin ? (
           <div className="hidden lg:flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-red/10 border border-brand-red/25 text-brand-red text-xs font-bold shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-brand-red animate-pulse" />
-              <span>وضع الصيانة مفعل</span>
-            </div>
-            <div className="h-4 w-px bg-white/15 mx-1" />
             <LanguageToggle />
           </div>
         ) : (
@@ -1115,10 +1163,6 @@ const Navbar = ({
         {/* Mobile / Tablet Menu Toggle */}
         {isMaintenance && !isAdmin ? (
           <div className="flex items-center gap-2 lg:hidden shrink-0">
-            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-red/10 text-brand-red border border-brand-red/20 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-red animate-pulse" />
-              <span>صيانة</span>
-            </span>
             <LanguageToggle />
           </div>
         ) : (
@@ -1257,19 +1301,18 @@ const MobileQuickBar = ({ settings }: { settings: AppSettings }) => {
           <span className="text-[10px] whitespace-nowrap font-bold">اتصال</span>
         </a>
 
-        {/* History / Status Button */}
-        <Link
-          to="/history"
-          className={cn(
-            "flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all active:scale-95",
-            location.pathname === '/history' 
-              ? "bg-brand-red/20 border border-brand-red/40 text-brand-red" 
-              : "bg-white/5 border border-white/10 text-gray-300 hover:text-white"
-          )}
+        {/* Customer Account Button */}
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('drfix_open_portal'));
+          }}
+          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white transition-all active:scale-95 cursor-pointer"
+          title="حسابي وكرت الصيانة"
         >
-          <History className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] whitespace-nowrap font-bold">سجلي</span>
-        </Link>
+          <User className="w-5 h-5 mb-0.5 text-brand-red" />
+          <span className="text-[10px] whitespace-nowrap font-bold">حسابي</span>
+        </button>
       </div>
     </div>
   );
@@ -2094,7 +2137,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
     };
 
     const serviceTitle = serviceLabels[data.serviceType] || data.serviceType || 'صيانة متنقلة';
-    const cleanPhone = normalizeCredentialsInput(data.phone);
+    const cleanPhone = unifySaudiPhone(normalizeCredentialsInput(data.phone)) || normalizeCredentialsInput(data.phone);
     const uniqueBookingId = `DRF-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
@@ -2613,7 +2656,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
                 {/* iPhone / Browser Location Guidance Banner */}
                 {locationError && (
-                  <div className="mt-1 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-2">
+                  <div className="mt-1 p-3 rounded-xl bg-brand-red/10 border border-brand-red/30 text-xs text-red-200 space-y-2">
                     <div className="flex items-start gap-2">
                       <span className="text-base shrink-0">⚠️</span>
                       <div className="space-y-1">
@@ -2629,7 +2672,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                       <button
                         type="button"
                         onClick={handleGetLocation}
-                        className="px-3 py-1.5 bg-amber-500 text-black font-bold rounded-lg text-xs hover:bg-amber-400 transition-all cursor-pointer"
+                        className="px-3 py-1.5 bg-brand-red hover:bg-red-700 text-white font-bold rounded-lg text-xs transition-all cursor-pointer"
                       >
                         🔄 {lang === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
                       </button>
@@ -2753,17 +2796,12 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                     type="button"
                     onClick={() => {
                       setIsSubmitted(false);
-                      const el = document.getElementById('history');
-                      if (el) {
-                        el.scrollIntoView({ behavior: 'smooth' });
-                      } else {
-                        window.location.hash = '#/history';
-                      }
+                      window.dispatchEvent(new CustomEvent('drfix_open_portal'));
                     }}
                     className="px-5 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/20 cursor-pointer transition-all active:scale-95"
                   >
                     <Clock className="w-4 h-4" />
-                    <span>متابعة حالة الحجز</span>
+                    <span>متابعة حالة الحجز في كرت الصيانة</span>
                   </button>
                   <button 
                     type="button"
@@ -2796,7 +2834,7 @@ const TestimonialCard = React.memo(({ name, comment, rating, reply }: { name?: s
       <div>
         <div className="flex gap-1 mb-3">
           {[...Array(5)].map((_, i) => (
-            <Star key={i} className={cn("w-4 h-4", i < safeRating ? "text-yellow-500 fill-yellow-500" : "text-gray-600")} />
+            <Star key={i} className={cn("w-4 h-4", i < safeRating ? "text-brand-red fill-brand-red" : "text-gray-600")} />
           ))}
         </div>
         <p className="text-gray-300 text-xs sm:text-sm italic mb-4 leading-relaxed whitespace-pre-line break-words">
@@ -3074,7 +3112,7 @@ const AddTestimonialForm = () => {
                 <Star 
                   className={cn(
                     "w-7 h-7 md:w-8 md:h-8", 
-                    star <= rating ? "text-yellow-500 fill-yellow-500" : "text-gray-600"
+                    star <= rating ? "text-brand-red fill-brand-red" : "text-gray-600"
                   )} 
                 />
               </button>
@@ -3150,6 +3188,7 @@ const AdminDashboard = ({
   settings: AppSettings;
   currentStaffUser?: StaffUser | null;
 }) => {
+  const { lang, setLang, t } = useLanguage();
   const isTechnician = currentStaffUser?.role === 'technician';
   const dashboardMountTime = useRef<number>(Date.now());
   const knownBookingIds = useRef<Set<string>>(new Set());
@@ -3173,7 +3212,7 @@ const AdminDashboard = ({
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners' | 'manual'>('dashboard');
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     type: 'batch_bookings' | 'batch_offers' | 'single';
@@ -3203,7 +3242,29 @@ const AdminDashboard = ({
   const [statusChangeModalData, setStatusChangeModalData] = useState<{ record: MaintenanceRecord; targetStatus: BookingStatus } | null>(null);
   const [techReviewRecord, setTechReviewRecord] = useState<MaintenanceRecord | null>(null);
 
+  const handleSelectBookingDetails = (record: MaintenanceRecord) => {
+    if (isTechnician && currentStaffUser) {
+      const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
+      const isAssigned = record.assignedStaffId === currentStaffUser.id || 
+        Boolean(record.assignedStaffName && staffName && record.assignedStaffName.trim().toLowerCase() === staffName);
+      if (!isAssigned) {
+        alert('هذا الطلب غير مسند إليك، الصلاحية تقتصر على طلباتك فقط.');
+        return;
+      }
+    }
+    setSelectedBookingDetails(record);
+  };
+
   const handleOpenTimeline = (record: MaintenanceRecord, tab: 'timeline' | 'add_step' | 'assign' = 'timeline') => {
+    if (isTechnician && currentStaffUser) {
+      const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
+      const isAssigned = record.assignedStaffId === currentStaffUser.id || 
+        Boolean(record.assignedStaffName && staffName && record.assignedStaffName.trim().toLowerCase() === staffName);
+      if (!isAssigned) {
+        alert('هذا الطلب غير مسند إليك، الصلاحية تقتصر على طلباتك فقط.');
+        return;
+      }
+    }
     setTimelineBookingRecord(record);
     const safeTab = (currentStaffUser?.role === 'technician' && tab === 'assign') ? 'timeline' : tab;
     setTimelineInitialTab(safeTab);
@@ -3363,6 +3424,7 @@ const AdminDashboard = ({
     serviceType: '',
     notes: '',
     cost: '',
+    serviceDate: '',
     status: 'pending' as MaintenanceRecord['status']
   });
 
@@ -3708,16 +3770,22 @@ const AdminDashboard = ({
     e.preventDefault();
     setLoading(true);
     try {
+      const unifiedCustomerPhone = unifySaudiPhone(formData.customerPhone) || formData.customerPhone.trim();
+      const recordDate = formData.serviceDate ? new Date(formData.serviceDate) : new Date();
+
       if (editingItem && editingItem.type === 'booking') {
         await updateDoc(doc(db, 'maintenance', editingItem.id), {
           ...formData,
+          customerPhone: unifiedCustomerPhone,
+          serviceDate: formData.serviceDate ? recordDate : (editingItem.serviceDate || serverTimestamp()),
           cost: 0
         });
       } else {
         await addDoc(collection(db, 'maintenance'), {
           ...formData,
+          customerPhone: unifiedCustomerPhone,
           cost: 0,
-          serviceDate: serverTimestamp(),
+          serviceDate: formData.serviceDate ? recordDate : serverTimestamp(),
           status: 'pending'
         });
       }
@@ -3725,7 +3793,7 @@ const AdminDashboard = ({
       // Automatically sync/open customer file
       if (formData.customerPhone) {
         try {
-          const cleanPhone = formData.customerPhone.trim();
+          const cleanPhone = unifiedCustomerPhone;
           const customersRef = collection(db, 'customers');
           const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
           const carInfo = {
@@ -4658,7 +4726,7 @@ const AdminDashboard = ({
   const getStatusStats = () => {
     const statusMap: Record<string, { label: string; count: number; color: string }> = {
       new: { label: 'جديد', count: 0, color: '#A855F7' },
-      pending: { label: 'قيد الانتظار', count: 0, color: '#EAB308' },
+      pending: { label: 'قيد الانتظار', count: 0, color: '#E5E7EB' },
       accepted: { label: 'تم القبول', count: 0, color: '#10B981' },
       on_the_way: { label: 'الفني بالطريق', count: 0, color: '#6366F1' },
       'in-progress': { label: 'قيد العمل', count: 0, color: '#3B82F6' },
@@ -4707,18 +4775,19 @@ const AdminDashboard = ({
   }, [records, isTechnician, currentStaffUser]);
 
   const allowedNavTabs = [
-    { id: 'dashboard', label: 'الإحصائيات ونظرة عامة', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
-    { id: 'bookings', label: 'الحجوزات والعمليات', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
-    { id: 'calendar', label: 'التقويم والمواعيد', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
-    { id: 'customers', label: 'العملاء وسجل السيارات', icon: User, allowed: userPermissions.canManageCustomers !== false },
-    { id: 'testimonials', label: 'التقييمات والآراء', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
-    { id: 'notifications', label: 'الإشعارات وتيليجرام', icon: Bell, allowed: userPermissions.canManageNotifications !== false },
-    { id: 'analytics', label: 'التحليلات ومؤشرات الأداء', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
-    { id: 'reports', label: 'التقارير وسندات الصيانة (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
-    { id: 'content', label: 'إدارة المحتوى والعروض', icon: FileText, allowed: userPermissions.canManageContent !== false },
-    { id: 'partners', label: 'شركاء النجاح', icon: Handshake, allowed: userPermissions.canManageContent !== false },
-    { id: 'settings', label: 'الإعدادات العامة والهوية', icon: Settings, allowed: userPermissions.canManageSettings !== false },
-    { id: 'staff', label: 'فريق العمل والصلاحيات', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
+    { id: 'dashboard', label: lang === 'ar' ? 'الإحصائيات ونظرة عامة' : 'Dashboard & Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
+    { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
+    { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
+    { id: 'customers', label: lang === 'ar' ? 'العملاء وسجل السيارات' : 'Customers & Vehicles', icon: User, allowed: userPermissions.canManageCustomers !== false },
+    { id: 'reports', label: lang === 'ar' ? 'التقارير وسندات الصيانة (Word & PDF)' : 'Reports & Work Orders (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
+    { id: 'analytics', label: lang === 'ar' ? 'التحليلات ومؤشرات الأداء' : 'Analytics & KPIs', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
+    { id: 'staff', label: lang === 'ar' ? 'فريق العمل والصلاحيات' : 'Staff & Permissions', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
+    { id: 'content', label: lang === 'ar' ? 'إدارة المحتوى والعروض' : 'Content & Offers', icon: FileText, allowed: userPermissions.canManageContent !== false },
+    { id: 'partners', label: lang === 'ar' ? 'شركاء النجاح' : 'Success Partners', icon: Handshake, allowed: userPermissions.canManageContent !== false },
+    { id: 'testimonials', label: lang === 'ar' ? 'التقييمات والآراء' : 'Reviews & Feedback', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
+    { id: 'notifications', label: lang === 'ar' ? 'الإشعارات وتيليجرام' : 'Notifications & Telegram', icon: Bell, allowed: userPermissions.canManageNotifications !== false },
+    { id: 'settings', label: lang === 'ar' ? 'الإعدادات العامة والهوية' : 'General Settings', icon: Settings, allowed: userPermissions.canManageSettings !== false },
+    { id: 'manual', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
   ].filter(tab => tab.allowed);
 
   useEffect(() => {
@@ -4736,12 +4805,20 @@ const AdminDashboard = ({
       <div className="w-full max-w-[1550px] mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-display font-black italic mb-1.5">لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></h2>
+            <h2 className="text-2xl sm:text-3xl font-display font-black italic mb-1.5">
+              {lang === 'ar' ? (
+                <>لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></>
+              ) : (
+                <>Center & <span className="text-brand-red">Operations Hub</span></>
+              )}
+            </h2>
             <div className="flex items-center gap-3 text-gray-400 text-xs sm:text-sm">
-              <span>إدارة الحجوزات والمواعيد والعملاء</span>
+              <span>{lang === 'ar' ? 'إدارة الحجوزات والمواعيد والعملاء' : 'Manage bookings, schedules & customers'}</span>
               <span className="w-1.5 h-1.5 bg-brand-red rounded-full" />
               <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold">
-                {isTechnician ? `${accessibleRecords.length} مهمة مسندة إليك` : `${records.length} حجز إجمالي`}
+                {isTechnician 
+                  ? (lang === 'ar' ? `${accessibleRecords.length} مهمة مسندة إليك` : `${accessibleRecords.length} assigned tasks`) 
+                  : (lang === 'ar' ? `${records.length} حجز إجمالي` : `${records.length} total bookings`)}
               </span>
             </div>
           </div>
@@ -4753,21 +4830,26 @@ const AdminDashboard = ({
               </div>
               <div className="text-right">
                 <div className="text-xs font-bold text-white line-clamp-1">
-                  {currentStaffUser?.fullName || 'المدير العام'}
+                  {currentStaffUser?.fullName || (lang === 'ar' ? 'المدير العام' : 'General Manager')}
                 </div>
                 <div className="text-[10px] text-brand-red font-semibold">
-                  {currentStaffUser?.roleTitleAr || (currentStaffUser?.role === 'super_admin' ? 'مدير عام' : 'موظف')}
+                  {lang === 'ar'
+                    ? (currentStaffUser?.roleTitleAr || (currentStaffUser?.role === 'super_admin' ? 'مدير عام' : 'موظف'))
+                    : (currentStaffUser?.roleTitleEn || (currentStaffUser?.role === 'super_admin' ? 'Super Admin' : 'Staff'))}
                 </div>
               </div>
             </div>
 
+            {/* Language Toggle in Admin Dashboard */}
+            <LanguageToggle />
+
             <button 
               onClick={() => window.location.href = '/'}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-white/5 border border-white/10 rounded-xl font-bold text-xs sm:text-sm hover:bg-white/10 transition-all text-gray-300 cursor-pointer"
-              title="العودة إلى واجهة الموقع الرئيسية"
+              title={lang === 'ar' ? 'العودة إلى واجهة الموقع الرئيسية' : 'Back to main website'}
             >
               <ArrowRight className="w-4 h-4" />
-              <span>الموقع</span>
+              <span>{lang === 'ar' ? 'الموقع' : 'Site'}</span>
             </button>
             
             {/* Sound alert toggle */}
@@ -4785,7 +4867,7 @@ const AdminDashboard = ({
                   ? "bg-brand-red/10 border-brand-red/30 text-brand-red" 
                   : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
               )}
-              title={settingsForm.enableSoundAlerts !== false ? "الصوت مفعل للحجوزات الجديدة (اضغط للتعطيل)" : "تفعيل الصوت التنبيهي"}
+              title={settingsForm.enableSoundAlerts !== false ? (lang === 'ar' ? "الصوت مفعل للحجوزات الجديدة (اضغط للتعطيل)" : "Sound alert enabled (Click to mute)") : (lang === 'ar' ? "تفعيل الصوت التنبيهي" : "Enable sound chime")}
             >
               {settingsForm.enableSoundAlerts !== false ? <Volume2 className="w-4.5 h-4.5" /> : <VolumeX className="w-4.5 h-4.5" />}
             </button>
@@ -4799,10 +4881,10 @@ const AdminDashboard = ({
                   ? "bg-green-500/10 border-green-500/20 text-green-400" 
                   : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
               )}
-              title="تثبيت لوحة التحكم كتطبيق مستقل على جوالك أو جهازك"
+              title={lang === 'ar' ? "تثبيت لوحة التحكم كتطبيق مستقل على جوالك أو جهازك" : "Install dashboard as standalone PWA application"}
             >
               <Download className="w-4 h-4 text-brand-red" />
-              <span>{isPWAInstalled ? "مثبت ✓" : "تثبيت تطبيق (PWA)"}</span>
+              <span>{isPWAInstalled ? (lang === 'ar' ? "مثبت ✓" : "Installed ✓") : (lang === 'ar' ? "تثبيت تطبيق (PWA)" : "Install App")}</span>
             </button>
 
             {typeof Notification !== 'undefined' && (
@@ -4812,20 +4894,20 @@ const AdminDashboard = ({
                     Notification.requestPermission().then(setNotificationPermission);
                   } else if (notificationPermission === 'granted') {
                     new Notification("تنبيه تجريبي 🚗", {
-                      body: "التنبيهات تعمل بنجاح في متصفحك!",
+                      body: lang === 'ar' ? "التنبيهات تعمل بنجاح في متصفحك!" : "Notifications active in your browser!",
                       icon: settings.logoUrl || "/favicon.ico"
                     });
                   } else {
-                    alert("التنبيهات محظورة في متصفحك. يرجى تفعيلها من إعدادات المتصفح.");
+                    alert(lang === 'ar' ? "التنبيهات محظورة في متصفحك. يرجى تفعيلها من إعدادات المتصفح." : "Notifications blocked in your browser.");
                   }
                 }}
                 className={cn(
                   "p-2 sm:p-2.5 border rounded-xl transition-all cursor-pointer",
                   notificationPermission === 'granted' ? "bg-green-500/10 border-green-500/20 text-green-500" : 
                   notificationPermission === 'denied' ? "bg-red-500/10 border-red-500/20 text-red-500" :
-                  "bg-white/5 border-white/10 text-yellow-500 hover:bg-white/10"
+                  "bg-white/5 border-white/10 text-white hover:bg-white/10"
                 )}
-                title={notificationPermission === 'granted' ? "التنبيهات مفعلة (اضغط للتجربة)" : "تفعيل التنبيهات"}
+                title={notificationPermission === 'granted' ? (lang === 'ar' ? "التنبيهات مفعلة (اضغط للتجربة)" : "Notifications active") : (lang === 'ar' ? "تفعيل التنبيهات" : "Enable browser notifications")}
               >
                 {notificationPermission === 'granted' ? <Bell className="w-4.5 h-4.5" /> : <AlertCircle className="w-4.5 h-4.5" />}
               </button>
@@ -4837,14 +4919,14 @@ const AdminDashboard = ({
                 className="flex items-center gap-1.5 px-4 py-2 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>إضافة حجز</span>
+                <span>{lang === 'ar' ? 'إضافة حجز' : 'Add Booking'}</span>
               </button>
             )}
 
             <button 
               onClick={onLogout}
-              className="p-2 sm:p-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 cursor-pointer"
-              title="تسجيل الخروج"
+              className="p-2 sm:p-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 hover:text-white cursor-pointer"
+              title={lang === 'ar' ? "تسجيل الخروج" : "Logout"}
             >
               <LogOut className="w-4.5 h-4.5" />
             </button>
@@ -5021,7 +5103,7 @@ const AdminDashboard = ({
                           "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1",
                           record.status === 'completed' ? "text-green-500 bg-green-500/10" :
                           record.status === 'in-progress' ? "text-blue-500 bg-blue-500/10" :
-                          "text-yellow-500 bg-yellow-500/10"
+                          "text-white bg-white/10 border border-white/20"
                         )}>
                           {record.status === 'completed' ? 'مكتمل' : 
                            record.status === 'in-progress' ? 'قيد العمل' : 'قيد الانتظار'}
@@ -5136,7 +5218,7 @@ const AdminDashboard = ({
                 {/* Mode Selector for Staff / Technicians */}
                 {isTechnician ? (
                   <div className="flex items-center gap-2.5 px-4 py-2 bg-brand-red/15 border border-brand-red/30 rounded-2xl w-fit">
-                    <Wrench className="w-4 h-4 text-yellow-300" />
+                    <Wrench className="w-4 h-4 text-brand-red" />
                     <span className="text-xs font-bold text-white">المهام الميدانية المسندة إليك فقط</span>
                     <span className="bg-brand-red text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
                       {accessibleRecords.length} مهمة
@@ -5167,11 +5249,11 @@ const AdminDashboard = ({
                           : "text-gray-400 hover:text-white"
                       )}
                     >
-                      <Wrench className="w-3.5 h-3.5 text-yellow-300" />
+                      <Wrench className="w-3.5 h-3.5 text-white" />
                       <span>مهامي الميدانية المسندة إلي</span>
                       <span className={cn(
                         "text-[10px] px-1.5 py-0.5 rounded-full font-bold",
-                        techTaskFilter === 'my_tasks' ? "bg-black/40 text-yellow-300" : "bg-white/10 text-gray-300"
+                        techTaskFilter === 'my_tasks' ? "bg-black/40 text-white" : "bg-white/10 text-gray-300"
                       )}>
                         {accessibleRecords.length}
                       </span>
@@ -5287,7 +5369,8 @@ const AdminDashboard = ({
                     const q = bookingSearch.toLowerCase().trim();
                     return (
                       (r.bookingId || '').toLowerCase().includes(q) ||
-                      (r.customerPhone || '').toLowerCase().includes(q) ||
+                      phoneMatchesSearch(r.customerPhone, bookingSearch) ||
+                      (r.customerName || '').toLowerCase().includes(q) ||
                       (r.carModel || '').toLowerCase().includes(q) ||
                       (r.serviceType || '').toLowerCase().includes(q) ||
                       (r.location || '').toLowerCase().includes(q) ||
@@ -5480,7 +5563,7 @@ const AdminDashboard = ({
                                         <button
                                           type="button"
                                           onClick={() => handleOpenTimeline(record, 'assign')}
-                                          className="text-[10px] font-bold text-yellow-400/90 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                          className="text-[10px] font-bold text-white hover:text-gray-200 bg-white/10 hover:bg-white/20 border border-white/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
                                           title="إسناد الطلب لفني صيانة ميداني"
                                         >
                                           <Plus className="w-2.5 h-2.5" />
@@ -5502,11 +5585,11 @@ const AdminDashboard = ({
                                           record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
                                           record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
                                           record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
-                                          "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                                          "text-white border-white/20 bg-white/10"
                                         )}
                                       >
                                         <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
-                                        <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                        <option value="pending" className="bg-brand-dark text-white">قيد الانتظار</option>
                                         <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
                                         <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
                                         <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
@@ -5588,7 +5671,7 @@ const AdminDashboard = ({
                                         )}
                                       </button>
                                       <button 
-                                        onClick={() => setSelectedBookingDetails(record)}
+                                        onClick={() => handleSelectBookingDetails(record)}
                                         className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
                                         title="عرض التفاصيل الكاملة"
                                       >
@@ -5665,11 +5748,11 @@ const AdminDashboard = ({
                                     record.status === 'in-progress' ? "text-blue-400 border-blue-500/30 bg-blue-500/10" :
                                     record.status === 'cancelled' ? "text-red-400 border-red-500/30 bg-red-500/10" :
                                     record.status === 'new' ? "text-purple-400 border-purple-500/30 bg-purple-500/10" :
-                                    "text-yellow-400 border-yellow-500/30 bg-yellow-500/10"
+                                    "text-white border-white/20 bg-white/10"
                                   )}
                                 >
                                   <option value="new" className="bg-brand-dark text-purple-400">جديد</option>
-                                  <option value="pending" className="bg-brand-dark text-yellow-400">قيد الانتظار</option>
+                                  <option value="pending" className="bg-brand-dark text-white">قيد الانتظار</option>
                                   <option value="accepted" className="bg-brand-dark text-emerald-400">تم القبول</option>
                                   <option value="on_the_way" className="bg-brand-dark text-indigo-400">الفني بالطريق</option>
                                   <option value="in-progress" className="bg-brand-dark text-blue-400">قيد العمل</option>
@@ -5699,7 +5782,7 @@ const AdminDashboard = ({
                                     <button
                                       type="button"
                                       onClick={() => handleOpenTimeline(record, 'assign')}
-                                      className="text-yellow-400 hover:text-yellow-300 font-bold text-[11px] flex items-center gap-1 bg-yellow-500/10 px-2 py-0.5 rounded-lg border border-yellow-500/20 cursor-pointer"
+                                      className="text-white hover:text-gray-200 font-bold text-[11px] flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-lg border border-white/20 cursor-pointer"
                                     >
                                       <Plus className="w-3 h-3" />
                                       <span>+ إسناد لفني</span>
@@ -5799,7 +5882,7 @@ const AdminDashboard = ({
                                     <MessageSquare className="w-4 h-4" />
                                   </a>
                                   <button 
-                                    onClick={() => setSelectedBookingDetails(record)}
+                                    onClick={() => handleSelectBookingDetails(record)}
                                     className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
                                     title="عرض التفاصيل"
                                   >
@@ -5958,10 +6041,9 @@ const AdminDashboard = ({
                       // Current month days
                       for (let day = 1; day <= totalDays; day++) {
                         const currentDate = new Date(year, month, day);
-                        const dateStr = currentDate.toISOString().split('T')[0];
                         const dayBookings = (isTechnician ? accessibleRecords : records).filter(r => {
                           const d = getRecordDate(r.serviceDate);
-                          return d.toISOString().split('T')[0] === dateStr;
+                          return d.toDateString() === currentDate.toDateString();
                         });
 
                         const isSelected = selectedCalendarDate.toDateString() === currentDate.toDateString();
@@ -6029,12 +6111,16 @@ const AdminDashboard = ({
                     {!isTechnician && (
                       <button
                         onClick={() => {
+                          const dateObj = new Date(selectedCalendarDate);
+                          dateObj.setHours(10, 0, 0, 0);
+                          const localIso = new Date(dateObj.getTime() - dateObj.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
                           setFormData({
                             customerPhone: '',
                             carModel: '',
                             serviceType: '',
                             notes: '',
                             cost: '',
+                            serviceDate: localIso,
                             status: 'pending'
                           });
                           setIsAdding(true);
@@ -6050,9 +6136,9 @@ const AdminDashboard = ({
                   <div className="space-y-3 max-h-[480px] overflow-y-auto no-scrollbar pr-1">
                     {(isTechnician ? accessibleRecords : records)
                       .filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString())
+                      .sort((a, b) => getRecordDate(a.serviceDate).getTime() - getRecordDate(b.serviceDate).getTime())
                       .map((record) => {
-                        const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
-                        const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
+                        const waPhone = formatSaudiPhoneForWhatsApp(record.customerPhone);
                         const rDate = getRecordDate(record.serviceDate);
 
                         return (
@@ -6069,7 +6155,7 @@ const AdminDashboard = ({
                                 record.status === 'on_the_way' ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30" :
                                 record.status === 'in-progress' ? "bg-blue-500/10 text-blue-400 border-blue-500/30" :
                                 record.status === 'cancelled' ? "bg-red-500/10 text-red-400 border-red-500/30" :
-                                "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                                "bg-white/10 text-white border-white/20"
                               )}>
                                 {record.status === 'completed' ? 'مكتمل' :
                                  record.status === 'accepted' ? 'تم القبول' :
@@ -6129,7 +6215,7 @@ const AdminDashboard = ({
                               </div>
 
                               <button
-                                onClick={() => setSelectedBookingDetails(record)}
+                                onClick={() => handleSelectBookingDetails(record)}
                                 className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-white/5 rounded-lg"
                               >
                                 عرض التفاصيل
@@ -6139,7 +6225,7 @@ const AdminDashboard = ({
                         );
                       })}
 
-                    {records.filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length === 0 && (
+                    {(isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length === 0 && (
                       <div className="py-12 text-center text-gray-500 space-y-2">
                         <CalendarCheck className="w-10 h-10 mx-auto text-gray-600" />
                         <p className="text-xs font-bold">لا توجد مواعيد مسجلة في هذا اليوم</p>
@@ -6192,7 +6278,7 @@ const AdminDashboard = ({
 
                       <div className="glass-card p-6 border-white/5 relative overflow-hidden">
                         <div className="text-xs text-gray-400 mb-1">قيد العمل والانتظار</div>
-                        <div className="text-3xl font-black font-display text-amber-400">{inProgressBookings + newOrPendingBookings} <span className="text-sm font-normal text-gray-400">طلب</span></div>
+                        <div className="text-3xl font-black font-display text-white">{inProgressBookings + newOrPendingBookings} <span className="text-sm font-normal text-gray-400">طلب</span></div>
                         <div className="mt-3 text-xs text-blue-400">بحاجة للمتابعة والتنفيذ</div>
                       </div>
                     </>
@@ -6674,7 +6760,7 @@ const AdminDashboard = ({
                         )}
                       >
                         <span>{r}</span>
-                        <Star className="w-3 h-3 fill-current text-yellow-400 inline" />
+                        <Star className="w-3 h-3 fill-current text-brand-red inline" />
                       </button>
                     ))}
                   </div>
@@ -6903,7 +6989,7 @@ const AdminDashboard = ({
                       "px-3 py-1 rounded-full text-xs font-bold border",
                       settingsForm.telegramBotToken && settingsForm.telegramChatId
                         ? "bg-green-500/10 border-green-500/20 text-green-400"
-                        : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                        : "bg-white/10 border-white/20 text-white"
                     )}>
                       {settingsForm.telegramBotToken && settingsForm.telegramChatId ? "تم الربط ✓" : "بحاجة للإعداد"}
                     </span>
@@ -7309,7 +7395,7 @@ const AdminDashboard = ({
                               "px-3 py-1 rounded-full text-xs font-bold border",
                               settingsForm.telegramBotToken && settingsForm.telegramChatId
                                 ? "bg-green-500/10 border-green-500/20 text-green-400"
-                                : "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+                                : "bg-white/10 border-white/20 text-white"
                             )}>
                               {settingsForm.telegramBotToken && settingsForm.telegramChatId ? "مفعل ومربوط ✓" : "غير مكتمل"}
                             </span>
@@ -8353,6 +8439,17 @@ const AdminDashboard = ({
               />
             </motion.div>
           )}
+
+          {activeTab === 'manual' && (
+            <motion.div
+              key="manual"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <SystemManual lang={lang} />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Add New Modal */}
@@ -8389,7 +8486,7 @@ const AdminDashboard = ({
 
                 <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1">
 
-                {(activeTab === 'dashboard' || activeTab === 'bookings') && (
+                {(activeTab === 'dashboard' || activeTab === 'bookings' || activeTab === 'calendar') && (
                   <form onSubmit={handleAddRecord} className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">رقم الجوال</label>
@@ -8397,6 +8494,7 @@ const AdminDashboard = ({
                         required
                         value={formData.customerPhone}
                         onChange={e => setFormData({...formData, customerPhone: e.target.value})}
+                        placeholder="05XXXXXXXX أو +9665..."
                         className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
                       />
                     </div>
@@ -8419,12 +8517,12 @@ const AdminDashboard = ({
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">حالة الضمان والاعتماد</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">تاريخ ووقت الموعد</label>
                       <input 
-                        type="text"
-                        readOnly
-                        value="معتمد بضمان المركز الرسمي"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none text-emerald-400 font-bold text-sm cursor-default"
+                        type="datetime-local"
+                        value={formData.serviceDate || ''}
+                        onChange={e => setFormData({...formData, serviceDate: e.target.value})}
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-white"
                       />
                     </div>
                     <div className="md:col-span-2 space-y-2">
@@ -8672,7 +8770,7 @@ const AdminDashboard = ({
                         selectedBookingDetails.status === 'in-progress' ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
                         selectedBookingDetails.status === 'cancelled' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
                         selectedBookingDetails.status === 'new' ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" :
-                        "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                        "bg-white/10 text-white border border-white/20"
                       )}>
                         {selectedBookingDetails.status === 'completed' ? 'مكتمل 🏁' :
                          selectedBookingDetails.status === 'accepted' ? 'تم القبول ✅' :
@@ -8737,7 +8835,7 @@ const AdminDashboard = ({
                     onClick={() => setTimelineBookingRecord(selectedBookingDetails)}
                     className="w-full py-3.5 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all border border-red-500/40"
                   >
-                    <Camera className="w-4 h-4 text-yellow-300" />
+                    <Camera className="w-4 h-4 text-white" />
                     <span>مراحل العمل وتوثيق الصور الميدانية ({selectedBookingDetails.serviceSteps?.length || 0} مرحلة) 📸</span>
                   </button>
                 </div>
@@ -8804,6 +8902,7 @@ const AdminDashboard = ({
           <ServiceTimelineModal
             record={timelineBookingRecord}
             staffList={staffList}
+            allRecords={records}
             currentStaffUser={currentStaffUser}
             initialTab={timelineInitialTab}
             telegramConfig={{
@@ -8918,224 +9017,6 @@ const AdminDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </section>
-  );
-};
-
-const MaintenanceHistory = () => {
-  const [phone, setPhone] = useState('');
-  const [records, setRecords] = useState<MaintenanceRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const { t, lang } = useLanguage();
-
-  useEffect(() => {
-    const savedPhone = localStorage.getItem('drfix_customer_phone');
-    if (savedPhone) {
-      setPhone(savedPhone);
-      performSearch(savedPhone);
-    }
-  }, []);
-
-  const performSearch = async (searchTerm: string) => {
-    const term = searchTerm.trim();
-    if (!term) return;
-
-    setLoading(true);
-    setHasSearched(true);
-    try {
-      let results: MaintenanceRecord[] = [];
-      
-      // 1. Search by customerPhone
-      try {
-        const qPhone = query(
-          collection(db, 'maintenance'),
-          where('customerPhone', '==', term)
-        );
-        const snapPhone = await getDocs(qPhone);
-        snapPhone.forEach((doc) => {
-          results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
-        });
-      } catch (err) {
-        console.warn("Error querying by phone:", err);
-      }
-
-      // 2. Also search by bookingId if results are empty or term looks like booking id
-      if (results.length === 0 || term.toUpperCase().startsWith('DRF-')) {
-        try {
-          const qId = query(
-            collection(db, 'maintenance'),
-            where('bookingId', '==', term.toUpperCase())
-          );
-          const snapId = await getDocs(qId);
-          snapId.forEach((doc) => {
-            if (!results.some(r => r.id === doc.id)) {
-              results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
-            }
-          });
-        } catch (err) {
-          console.warn("Error querying by bookingId:", err);
-        }
-      }
-
-      // Sort results by date descending
-      results.sort((a, b) => {
-        const timeA = (a.createdAt as any)?.toMillis?.() || (a.serviceDate as any)?.toMillis?.() || (a.serviceDate ? new Date(a.serviceDate as any).getTime() : 0);
-        const timeB = (b.createdAt as any)?.toMillis?.() || (b.serviceDate as any)?.toMillis?.() || (b.serviceDate ? new Date(b.serviceDate as any).getTime() : 0);
-        return timeB - timeA;
-      });
-
-      setRecords(results);
-    } catch (error) {
-      console.error("Error fetching maintenance records:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    performSearch(phone);
-  };
-
-  return (
-    <section id="history" className="py-24 bg-black relative overflow-hidden">
-      <div className="max-w-4xl mx-auto px-6 relative z-10">
-        <div className="text-center mb-16">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.5 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-red/10 border border-brand-red/20 text-brand-red text-xs font-bold uppercase tracking-widest mb-6"
-          >
-            <History className="w-3 h-3" />
-            {t.history.badge}
-          </motion.div>
-          <h2 className="text-4xl md:text-6xl font-display font-black mb-6 italic tracking-tighter">
-            {t.history.title} <span className="text-brand-red">{t.history.titleAccent}</span> {t.history.titleSuffix}
-          </h2>
-          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-            {t.history.description}
-          </p>
-        </div>
-
-        <div className="glass-card p-8 md:p-12 border-white/5 shadow-2xl relative overflow-hidden">
-          <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 mb-12">
-            <div className="flex-1 relative">
-              <Search className={cn("absolute top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500", lang === 'ar' ? "right-4" : "left-4")} />
-              <input 
-                type="tel" 
-                placeholder={t.history.placeholder}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={cn(
-                  "w-full bg-black/50 border border-white/10 rounded-xl py-4 text-white focus:border-brand-red outline-none transition-all font-mono",
-                  lang === 'ar' ? "pr-12 pl-4" : "pl-12 pr-4"
-                )}
-                required
-              />
-            </div>
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="bg-brand-red hover:bg-red-700 text-white font-display font-black italic px-8 py-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-brand-red/20"
-            >
-              {loading ? t.history.searching : t.history.search}
-            </button>
-          </form>
-
-          {loading ? (
-            <div className="flex flex-col items-center py-12">
-              <div className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-4" />
-              <p className="text-gray-500">{t.history.loading}</p>
-            </div>
-          ) : hasSearched ? (
-            records.length > 0 ? (
-              <div className="space-y-6">
-                {records.map((record) => (
-                  <motion.div 
-                    key={record.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-brand-red/30 transition-all"
-                  >
-                    <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
-                      <div>
-                        <div className="flex items-center gap-2 text-brand-red font-display font-black italic text-xl mb-1">
-                          <Wrench className="w-5 h-5" />
-                          {record.serviceType}
-                        </div>
-                        <div className="text-gray-400 flex items-center gap-3 text-sm">
-                          <span className="flex items-center gap-1.5">
-                            <Calendar className="w-4 h-4" />
-                            {safeFormatDate(record.serviceDate || record.createdAt, lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                          </span>
-                          {record.bookingId && (
-                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-white/10 text-gray-300 font-bold">
-                              #{record.bookingId}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {/* Status Badge */}
-                        <div className={cn(
-                          "px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border",
-                          record.status === 'on_the_way' ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/40 shadow-lg shadow-indigo-500/10 animate-pulse" :
-                          record.status === 'accepted' ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-lg shadow-emerald-500/10" :
-                          record.status === 'in-progress' || record.status === 'in_progress' ? "bg-blue-500/20 text-blue-400 border-blue-500/40" :
-                          record.status === 'completed' ? "bg-green-500/20 text-green-400 border-green-500/40" :
-                          record.status === 'cancelled' ? "bg-red-500/20 text-red-400 border-red-500/40" :
-                          "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
-                        )}>
-                          {record.status === 'on_the_way' ? '🚗 الفني بالطريق إليك' :
-                           record.status === 'accepted' ? '✅ تم تأكيد الحجز' :
-                           record.status === 'in-progress' || record.status === 'in_progress' ? '🔧 قيد العمل' :
-                           record.status === 'completed' ? '🏁 تم الإنجاز' :
-                           record.status === 'cancelled' ? '❌ تم الإلغاء' :
-                           '⏳ قيد المراجعة'}
-                        </div>
-
-                        {record.cost ? (
-                          <div className="px-3 py-1.5 bg-white/5 rounded-lg border border-white/10 text-white text-xs font-bold font-mono">
-                            {record.cost} {t.common.currency}
-                          </div>
-                        ) : null}
-                        <div className="px-3 py-1.5 bg-brand-red/10 rounded-lg border border-brand-red/20 text-brand-red font-bold text-xs">
-                          {record.carModel}
-                        </div>
-                        <button
-                          onClick={() => exportSingleBookingWord(record as any)}
-                          className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
-                          title="تحميل سند الصيانة والفاتورة ملف Word"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>سند الصيانة (.doc)</span>
-                        </button>
-                      </div>
-                    </div>
-                    {record.notes && (
-                      <div className="text-gray-500 text-sm leading-relaxed bg-black/30 p-4 rounded-xl border border-white/5">
-                        <FileText className="w-4 h-4 inline-block ml-2 text-gray-600" />
-                        {record.notes}
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 bg-white/5 rounded-2xl border border-dashed border-white/10">
-                <p className="text-gray-500 mb-2">{t.history.noRecords}</p>
-                <p className="text-xs text-gray-600">{t.history.checkPhone}</p>
-              </div>
-            )
-          ) : (
-            <div className="text-center py-12">
-              <History className="w-16 h-16 text-white/5 mx-auto mb-4" />
-              <p className="text-gray-600">{t.history.enterPhone}</p>
-            </div>
-          )}
-        </div>
       </div>
     </section>
   );
@@ -9280,9 +9161,18 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
           <h4 className="font-display font-black mb-6 uppercase tracking-widest text-sm text-brand-red">{t.footer.quickLinks}</h4>
           <ul className="space-y-4 text-gray-500 font-bold">
             <li><Link to="/" className="hover:text-brand-red transition-colors">{t.nav.home}</Link></li>
-            <li><Link to="/services" className="hover:text-brand-red transition-colors">{t.nav.services}</Link></li>
-            <li><Link to="/offers" className="hover:text-brand-red transition-colors">{t.nav.offers}</Link></li>
-            <li><Link to="/partners" className="hover:text-brand-red transition-colors">{t.nav.partners || 'شركاء النجاح'}</Link></li>
+            {settings.showServices !== false && (
+              <li><Link to="/services" className="hover:text-brand-red transition-colors">{t.nav.services}</Link></li>
+            )}
+            {settings.showOffers !== false && (
+              <li><Link to="/offers" className="hover:text-brand-red transition-colors">{t.nav.offers}</Link></li>
+            )}
+            {settings.showPartners !== false && (
+              <li><Link to="/partners" className="hover:text-brand-red transition-colors">{t.nav.partners || (lang === 'ar' ? 'شركاء النجاح' : 'Success Partners')}</Link></li>
+            )}
+            {settings.showGallery !== false && (
+              <li><Link to="/#gallery" className="hover:text-brand-red transition-colors">{t.nav.gallery}</Link></li>
+            )}
             <li><Link to="/booking" className="hover:text-brand-red transition-colors">{t.nav.bookNow}</Link></li>
           </ul>
         </div>
@@ -9792,30 +9682,6 @@ const ScrollToTopButton = () => {
   );
 };
 
-const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
-  const [lang, setLang] = useState<Language>('ar');
-  const t = translations[lang];
-
-  return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      {children}
-    </LanguageContext.Provider>
-  );
-};
-
-const LanguageToggle = () => {
-  const { lang, setLang } = useLanguage();
-  return (
-    <button
-      onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-      className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-bold hover:bg-white/10 transition-all flex items-center gap-2"
-    >
-      <Globe className="w-3.5 h-3.5" />
-      {lang === 'ar' ? 'English' : 'العربية'}
-    </button>
-  );
-};
-
 function MainContent() {
   const [selectedService, setSelectedService] = useState<string>('');
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
@@ -10098,20 +9964,24 @@ function MainContent() {
               <FAQ />
             </>
           } />
-          <Route path="/services" element={<Services onServiceSelect={handleServiceSelect} />} />
-          <Route path="/offers" element={<Offers onOfferSelect={handleOfferSelect} />} />
+          <Route path="/services" element={settings.showServices !== false ? <Services onServiceSelect={handleServiceSelect} /> : <Navigate to="/" replace />} />
+          <Route path="/offers" element={settings.showOffers !== false ? <Offers onOfferSelect={handleOfferSelect} /> : <Navigate to="/" replace />} />
           <Route path="/partners" element={
-            <PartnersPage 
-              partners={partners} 
-              settings={settings} 
-              onSelectPartnerForBooking={(partner) => {
-                setSelectedService(`صيانة بالتنسيق مع الشريك: ${partner.name}`);
-                navigate('/booking');
-              }} 
-            />
+            settings.showPartners !== false ? (
+              <PartnersPage 
+                partners={partners} 
+                settings={settings} 
+                onSelectPartnerForBooking={(partner) => {
+                  setSelectedService(`صيانة بالتنسيق مع الشريك: ${partner.name}`);
+                  navigate('/booking');
+                }} 
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
           } />
           <Route path="/booking" element={<BookingForm selectedService={selectedService} settings={settings} />} />
-          <Route path="/history" element={<MaintenanceHistory />} />
+          <Route path="/history" element={<Navigate to="/" replace />} />
           <Route path="/admin" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />
           <Route path="/admin/*" element={<AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} />} />
           <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />

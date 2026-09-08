@@ -210,7 +210,7 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
                   </span>
                 )}
                 {existing?.status === 'sent_to_customer' && (
-                  <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="bg-white/10 text-white border border-white/20 text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     بانتظار موافقة العميل
                   </span>
@@ -236,8 +236,8 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
         </div>
 
         {/* Notice Banner */}
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-5 py-2.5 flex items-start gap-2.5 text-xs text-amber-300">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+        <div className="bg-brand-red/10 border-b border-brand-red/20 px-5 py-2.5 flex items-start gap-2.5 text-xs text-red-200">
+          <AlertTriangle className="w-4 h-4 text-brand-red shrink-0 mt-0.5" />
           <span>
             <strong>سياسة الحماية والشفافية:</strong> لا يُسمح للفني ببدء فك أو تركيب قطع إضافية إلا بعد إرسال هذا العرض وتوثيق موافقة العميل لحماية المركز وتوثيق التكلفة مسبقاً.
           </span>
@@ -316,7 +316,7 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
                     </div>
                     <div className="w-24">
                       <span className={`text-[10px] px-2 py-0.5 rounded-full block text-center font-bold ${
-                        item.isPart ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'
+                        item.isPart ? 'bg-blue-500/20 text-blue-400' : 'bg-white/10 text-white'
                       }`}>
                         {item.isPart ? 'قطعة غيار' : 'أجور فحص/يد'}
                       </span>
@@ -371,7 +371,7 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
                   <span className="font-mono font-bold text-gray-300">{taxAmount} ر.س</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-white/10">
-                  <span className="text-yellow-400">الإجمالي النهائي المطلوب اعتماده:</span>
+                  <span className="text-white">الإجمالي النهائي المطلوب اعتماده:</span>
                   <span className="font-mono text-base font-black text-brand-red">{grandTotal} ر.س</span>
                 </div>
               </div>

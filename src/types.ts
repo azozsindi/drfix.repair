@@ -194,6 +194,8 @@ export interface MaintenanceRecord {
   carModel: string;
   carMake?: string;
   carYear?: string;
+  plateNumber?: string;
+  carPlate?: string;
   serviceDate: any;
   serviceType: string;
   notes?: string;
@@ -206,6 +208,8 @@ export interface MaintenanceRecord {
   status: BookingStatus;
   assignedStaffId?: string;
   assignedStaffName?: string;
+  assignedTechnicianName?: string;
+  technicianName?: string;
   assignedStaffPhone?: string;
   assignedAt?: any;
   estimatedArrival?: string;
@@ -312,6 +316,7 @@ export interface StaffUser {
   phone?: string;
   role: StaffRole;
   roleTitleAr: string;
+  roleTitleEn?: string;
   permissions: StaffPermissions;
   isActive: boolean;
   createdAt?: any;

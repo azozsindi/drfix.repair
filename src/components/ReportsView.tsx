@@ -5,25 +5,20 @@ import {
   Download, 
   Search, 
   Calendar, 
-  DollarSign, 
   CheckCircle2, 
   Clock, 
   Car, 
-  TrendingUp,
   X,
-  UserCheck,
   Star,
   Award,
   ShieldCheck,
   Wrench,
-  Percent,
-  Receipt,
-  PieChart,
   BarChart3,
-  ArrowUpRight
+  TrendingUp
 } from 'lucide-react';
 import { MaintenanceRecord, sortBookingsNewestFirst } from '../types';
 import { exportBookingsToWord, exportSingleBookingWord, ReportSummary } from '../lib/reportUtils';
+import { phoneMatchesSearch } from '../lib/phoneUtils';
 
 function formatDisplayDate(val: any, fallback = 'اليوم'): string {
   if (!val) return fallback;
@@ -109,7 +104,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
         const tech = (item.assignedStaffName || '').toLowerCase();
         const notes = (item.notes || '').toLowerCase();
 
-        return bId.includes(q) || name.includes(q) || phone.includes(q) || car.includes(q) || service.includes(q) || tech.includes(q) || notes.includes(q);
+        return bId.includes(q) || name.includes(q) || phoneMatchesSearch(item.customerPhone, searchQuery) || car.includes(q) || service.includes(q) || tech.includes(q) || notes.includes(q);
       }
 
       return true;
@@ -164,7 +159,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
       const stat = map.get(techName)!;
       stat.totalJobs++;
       if (r.status === 'completed') stat.completedJobs++;
-      if (r.status === 'in-progress' || r.status === 'on_the_way') stat.inProgressJobs++;
+      if (r.status === 'in-progress' || r.status === 'in_progress' || r.status === 'on_the_way' || r.status === 'accepted') stat.inProgressJobs++;
 
       // Ratings
       if (r.techDetailedReview?.overallRating) {
@@ -193,7 +188,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
   const handleExportWord = () => {
     const periodLabel = period === 'today' ? 'اليوم' : period === 'week' ? 'آخر 7 أيام' : period === 'month' ? 'آخر 30 يوم' : 'جميع الفترات';
     const summary: ReportSummary = {
-      title: activeReportTab === 'financial' ? 'التقرير المالي وإيرادات DR.FIX' : 'تقرير حجوزات وعمليات DR.FIX المتنقلة - جدة',
+      title: 'تقرير حجوزات وعمليات DR.FIX المتنقلة - جدة',
       periodLabel,
       generatedAt: new Date().toLocaleString('ar-SA'),
       totalBookings: operationalMetrics.totalBookings,
@@ -218,10 +213,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
           <div>
             <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
               <FileText className="w-6 h-6 text-brand-red" />
-              <span>التقارير وسندات الصيانة والمالية</span>
+              <span>التقارير وسندات الصيانة والتشغيل</span>
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              استخراج التقارير التشغيلية والمالية الشاملة، أداء الفنيين، وسندات الفحص بصيغة Word DOCX والطباعة المباشرة A4 / PDF
+              استخراج التقارير التشغيلية الشاملة، أداء وجودة الفنيين، وسندات الفحص والضمان بصيغة Word DOCX والطباعة المباشرة A4 / PDF
             </p>
           </div>
 
@@ -243,7 +238,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
           </div>
         </div>
 
-        {/* Sub-Tabs: Operations vs Financial vs Technicians */}
+        {/* Sub-Tabs: Operations vs Technicians */}
         <div className="flex items-center gap-2 p-1 bg-black/40 border border-white/10 rounded-2xl w-fit flex-wrap">
           <button
             type="button"
@@ -261,19 +256,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
 
           <button
             type="button"
-            onClick={() => setActiveReportTab('financial')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeReportTab === 'financial'
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <DollarSign className="w-4 h-4 text-emerald-300" />
-            <span>التقرير المالي والأرباح (VAT)</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveReportTab('technicians')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
               activeReportTab === 'technicians'
@@ -281,8 +263,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                 : 'text-gray-400 hover:text-white'
             }`}
           >
-            <UserCheck className="w-4 h-4 text-purple-300" />
-            <span>مؤشرات أداء الفنيين</span>
+            <Award className="w-4 h-4 text-purple-300" />
+            <span>مؤشرات أداء وجودة الفنيين</span>
+            <span className="bg-black/30 text-[10px] px-1.5 py-0.5 rounded-full">{technicianMetrics.length}</span>
           </button>
         </div>
 
@@ -385,9 +368,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
             <div className="glass-card p-5 border-white/5 relative overflow-hidden">
               <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
                 <span>العمليات الجارية والميدانية</span>
-                <Clock className="w-4 h-4 text-amber-400" />
+                <Clock className="w-4 h-4 text-brand-red" />
               </div>
-              <div className="text-2xl sm:text-3xl font-black font-display text-amber-400">
+              <div className="text-2xl sm:text-3xl font-black font-display text-white">
                 {operationalMetrics.activeBookings} <span className="text-xs font-normal text-gray-400">طلب</span>
               </div>
               <div className="text-[11px] text-gray-500 mt-2">
@@ -493,167 +476,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
         </div>
       )}
 
-      {/* TAB 2: FINANCIAL REPORTS (REVENUE, PARTS, VAT, PROFITS) */}
-      {activeReportTab === 'financial' && (
-        <div className="space-y-6">
-          {/* Financial KPI Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 no-print">
-            <div className="glass-card p-5 border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden">
-              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                <span>إجمالي الإيرادات الشاملة</span>
-                <DollarSign className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-display text-emerald-400">
-                {financialMetrics.grossRevenue.toLocaleString('ar-SA')} <span className="text-xs font-normal text-gray-400">ر.س</span>
-              </div>
-              <div className="text-[11px] text-emerald-300 mt-2 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>إجمالي عمليات الفترة المحددة</span>
-              </div>
-            </div>
-
-            <div className="glass-card p-5 border-blue-500/20 bg-blue-500/5 relative overflow-hidden">
-              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                <span>أجور اليد والفحص الميداني</span>
-                <Wrench className="w-5 h-5 text-blue-400" />
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-display text-blue-300">
-                {financialMetrics.totalLabor.toLocaleString('ar-SA')} <span className="text-xs font-normal text-gray-400">ر.س</span>
-              </div>
-              <div className="text-[11px] text-gray-400 mt-2">
-                دخل خدمات الفحص والصيانة الميدانية
-              </div>
-            </div>
-
-            <div className="glass-card p-5 border-amber-500/20 bg-amber-500/5 relative overflow-hidden">
-              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                <span>مبيعات وتكلفة قطع الغيار</span>
-                <Receipt className="w-5 h-5 text-amber-400" />
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-display text-amber-400">
-                {financialMetrics.totalParts.toLocaleString('ar-SA')} <span className="text-xs font-normal text-gray-400">ر.س</span>
-              </div>
-              <div className="text-[11px] text-gray-400 mt-2">
-                تكلفة الشراء التقديرية: ~{financialMetrics.estimatedPartsCost.toLocaleString('ar-SA')} ر.س
-              </div>
-            </div>
-
-            <div className="glass-card p-5 border-purple-500/20 bg-purple-500/5 relative overflow-hidden">
-              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
-                <span>صافي الربح التقديري</span>
-                <TrendingUp className="w-5 h-5 text-purple-400" />
-              </div>
-              <div className="text-2xl sm:text-3xl font-black font-display text-white">
-                +{financialMetrics.estimatedNetProfit.toLocaleString('ar-SA')} <span className="text-xs font-normal text-purple-400">ر.س</span>
-              </div>
-              <div className="text-[11px] text-purple-300 mt-2 font-bold">
-                هامش ربح تقديري: {financialMetrics.profitMargin}%
-              </div>
-            </div>
-          </div>
-
-          {/* Detailed Financial Breakdown Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="glass-card p-4 border-white/5 space-y-2">
-              <div className="text-xs text-gray-400 font-bold flex items-center gap-1.5">
-                <Car className="w-4 h-4 text-indigo-400" />
-                <span>رسوم الانتقال والتوصيل الميداني:</span>
-              </div>
-              <div className="text-xl font-bold text-white">
-                {financialMetrics.totalTravelFees.toLocaleString('ar-SA')} ر.س
-              </div>
-              <p className="text-[11px] text-gray-400">محصلة من طلبات النطاق الممتد وخارج وسط جدة</p>
-            </div>
-
-            <div className="glass-card p-4 border-white/5 space-y-2">
-              <div className="text-xs text-gray-400 font-bold flex items-center gap-1.5">
-                <Percent className="w-4 h-4 text-red-400" />
-                <span>إجمالي الخصومات الممنوحة:</span>
-              </div>
-              <div className="text-xl font-bold text-red-400">
-                -{financialMetrics.totalDiscounts.toLocaleString('ar-SA')} ر.س
-              </div>
-              <p className="text-[11px] text-gray-400">عروض ترويجية وكوبونات الخصم المقدمة للعملاء</p>
-            </div>
-
-            <div className="glass-card p-4 border-white/5 space-y-2">
-              <div className="text-xs text-gray-400 font-bold flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>ضريبة القيمة المضافة (15% VAT):</span>
-              </div>
-              <div className="text-xl font-bold text-white">
-                {financialMetrics.totalVat.toLocaleString('ar-SA')} ر.س
-              </div>
-              <p className="text-[11px] text-gray-400">مخصصة للإقرار الضريبي لهيئة الزكاة والضريبة والجمارك</p>
-            </div>
-          </div>
-
-          {/* Financial Breakdown Table */}
-          <div className="glass-card overflow-hidden border-white/5 bg-brand-black/60 p-5 sm:p-6 rounded-2xl">
-            <div className="border-b border-white/10 pb-4 mb-4 flex items-center justify-between">
-              <h3 className="font-bold text-white text-base flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-400" />
-                <span>جدول القيود المالية وتفاصيل فواتير العمليات</span>
-              </h3>
-              <span className="text-xs text-gray-400">الضريبة محسوبة وفق النظام السعودي 15%</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="bg-white/5 border-b border-white/10 text-gray-400">
-                    <th className="px-4 py-3 font-bold">رقم الحجز</th>
-                    <th className="px-4 py-3 font-bold">العميل والسيارة</th>
-                    <th className="px-4 py-3 font-bold">أجور اليد</th>
-                    <th className="px-4 py-3 font-bold">قطع الغيار</th>
-                    <th className="px-4 py-3 font-bold">رسوم الانتقال</th>
-                    <th className="px-4 py-3 font-bold">الخصم</th>
-                    <th className="px-4 py-3 font-bold">الضريبة (15%)</th>
-                    <th className="px-4 py-3 font-bold text-emerald-400">الإجمالي النهائي</th>
-                    <th className="px-4 py-3 font-bold">الحالة</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredRecords.map(item => {
-                    const p = item.pricing;
-                    const labor = p ? p.laborCost : Math.round((Number(item.cost) || 0) * 0.7);
-                    const parts = p ? p.partsCost : 0;
-                    const travel = p ? p.travelFee : (item.travelFee || 0);
-                    const discount = p ? p.discount : 0;
-                    const vat = p ? p.taxAmount : Math.round((Number(item.cost) || 0) * 0.15);
-                    const grand = p ? p.grandTotal : (Number(item.cost) || 0);
-
-                    return (
-                      <tr key={item.id} className="hover:bg-white/[0.02]">
-                        <td className="px-4 py-3 font-mono font-bold text-white">#{item.bookingId || item.id}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-white">{item.customerName || 'عميل'}</div>
-                          <div className="text-[10px] text-gray-400">{item.carModel}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-300 font-mono">{labor} ر.س</td>
-                        <td className="px-4 py-3 text-gray-300 font-mono">{parts} ر.س</td>
-                        <td className="px-4 py-3 text-gray-300 font-mono">{travel} ر.س</td>
-                        <td className="px-4 py-3 text-red-400 font-mono">{discount > 0 ? `-${discount} ر.س` : '0'}</td>
-                        <td className="px-4 py-3 text-gray-400 font-mono">{vat} ر.س</td>
-                        <td className="px-4 py-3 font-black text-emerald-400 text-sm font-mono">{grand} ر.س</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            item.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-gray-400'
-                          }`}>
-                            {item.status === 'completed' ? 'تم السداد 🏁' : item.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: TECHNICIAN PERFORMANCE & METRICS */}
+      {/* TAB 2: TECHNICIAN PERFORMANCE & METRICS */}
       {activeReportTab === 'technicians' && (
         <div className="space-y-6">
           <div className="glass-card p-5 border-white/5 rounded-2xl">
@@ -664,7 +487,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">لوحة تقييم وأداء الفنيين الميدانيين</h3>
-                  <p className="text-xs text-gray-400">متابعة إنجاز المهام، الإيرادات المحققة، تقييم العملاء، ومؤشرات الالتزام بالوقت</p>
+                  <p className="text-xs text-gray-400">متابعة إنجاز المهام، المهام النشطة، تقييم العملاء، ومؤشرات الالتزام بالوقت</p>
                 </div>
               </div>
               <span className="text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full">
@@ -682,8 +505,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                       </div>
                       <div>
                         <h4 className="font-bold text-white text-sm">{tech.staffName}</h4>
-                        <div className="flex items-center gap-1 text-[11px] text-yellow-400">
-                          <Star className="w-3 h-3 fill-yellow-400" />
+                        <div className="flex items-center gap-1 text-[11px] text-brand-red">
+                          <Star className="w-3 h-3 fill-brand-red text-brand-red" />
                           <span>{tech.avgRating} / 5</span>
                           <span className="text-gray-500">({tech.ratingCount} تقييم)</span>
                         </div>
@@ -706,9 +529,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                     </div>
 
                     <div className="bg-black/30 p-2 rounded-xl">
-                      <div className="text-[10px] text-gray-400">الإيراد المحقق:</div>
-                      <div className="font-bold text-emerald-400 text-sm mt-0.5">
-                        {tech.totalRevenue.toLocaleString('ar-SA')} ر.س
+                      <div className="text-[10px] text-gray-400">المهام قيد العمل:</div>
+                      <div className="font-bold text-white text-sm mt-0.5">
+                        {tech.inProgressJobs} <span className="text-[10px] text-gray-500">نشطة</span>
                       </div>
                     </div>
                   </div>
@@ -775,31 +598,27 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
                 </div>
               </div>
 
-              {selectedBookingForPrint.pricing && (
-                <div className="bg-white/5 p-4 rounded-xl space-y-2">
-                  <h4 className="font-bold text-white text-xs border-b border-white/10 pb-2">تفاصيل الفاتورة الرسمية:</h4>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">أجور اليد والفحص:</span>
-                    <span className="text-white font-mono">{selectedBookingForPrint.pricing.laborCost} ر.س</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">قطع الغيار:</span>
-                    <span className="text-white font-mono">{selectedBookingForPrint.pricing.partsCost} ر.س</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">رسوم الانتقال:</span>
-                    <span className="text-white font-mono">{selectedBookingForPrint.pricing.travelFee} ر.س</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">ضريبة 15%:</span>
-                    <span className="text-white font-mono">{selectedBookingForPrint.pricing.taxAmount} ر.س</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-sm pt-2 border-t border-white/10 text-emerald-400">
-                    <span>الإجمالي النهائي:</span>
-                    <span>{selectedBookingForPrint.pricing.grandTotal} ر.س</span>
-                  </div>
+              <div className="bg-white/5 p-4 rounded-xl space-y-2">
+                <h4 className="font-bold text-white text-xs border-b border-white/10 pb-2">بيانات السند الفني والاعتماد:</h4>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">حالة الصيانة:</span>
+                  <span className="text-white font-bold">{selectedBookingForPrint.status === 'completed' ? 'منجز ومعتمد' : selectedBookingForPrint.status}</span>
                 </div>
-              )}
+                <div className="flex justify-between">
+                  <span className="text-gray-400">الفني المسؤول:</span>
+                  <span className="text-white">{selectedBookingForPrint.assignedStaffName || 'فريق الخدمة المتنقلة'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">الضمان المعتمد:</span>
+                  <span className="text-emerald-400 font-bold">شامل ضمان DR.FIX الذهبي (30 يوماً)</span>
+                </div>
+                {selectedBookingForPrint.notes && (
+                  <div className="pt-2 border-t border-white/10 text-gray-400 text-[11px]">
+                    <span className="text-gray-300 font-bold block mb-1">ملاحظات الفحص:</span>
+                    {selectedBookingForPrint.notes}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">

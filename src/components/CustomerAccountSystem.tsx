@@ -579,7 +579,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => unsub();
   }, [customer?.id]);
 
-  // Listen to new bookings created anywhere in app to auto-sync cars
+  // Listen to new bookings created anywhere in app to auto-sync cars, and portal open requests
   useEffect(() => {
     const handleCarsUpdateEvent = () => {
       if (customer?.id) {
@@ -588,8 +588,26 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }).catch(() => {});
       }
     };
+    const handleOpenPortal = () => {
+      if (customer) {
+        setIsPortalOpen(true);
+      } else {
+        setIsAuthOpen(true);
+      }
+    };
+    const handleOpenAuth = () => {
+      setIsAuthOpen(true);
+    };
+
     window.addEventListener('drfix_customer_cars_updated', handleCarsUpdateEvent);
-    return () => window.removeEventListener('drfix_customer_cars_updated', handleCarsUpdateEvent);
+    window.addEventListener('drfix_open_portal', handleOpenPortal);
+    window.addEventListener('drfix_open_auth', handleOpenAuth);
+
+    return () => {
+      window.removeEventListener('drfix_customer_cars_updated', handleCarsUpdateEvent);
+      window.removeEventListener('drfix_open_portal', handleOpenPortal);
+      window.removeEventListener('drfix_open_auth', handleOpenAuth);
+    };
   }, [customer]);
 
   const login = async (rawPhone: string, pass?: string): Promise<{ success: boolean; error?: string }> => {
@@ -1583,9 +1601,9 @@ export const CustomerPortalModal: React.FC = () => {
           step: 1,
           label: 'تم استلام الطلب',
           badgeText: 'قيد المراجعة ⏳',
-          badgeClass: 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400',
+          badgeClass: 'bg-white/10 border-white/20 text-white',
           desc: 'تم تسجيل طلبك بنجاح في النظام وجاري مراجعته من قبل إدارة العمليات للتأكيد والتوجيه.',
-          pulseColor: 'bg-yellow-400',
+          pulseColor: 'bg-brand-red',
           isLive: true
         };
       case 'accepted':
@@ -1703,9 +1721,9 @@ export const CustomerPortalModal: React.FC = () => {
 
         {/* Notice for Google users who haven't saved a phone number yet */}
         {(!customer.phone || customer.phone.length < 9) && (
-          <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 animate-fadeIn">
+          <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-brand-red/10 border border-brand-red/30 animate-fadeIn">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-brand-red shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h4 className="text-xs font-bold text-white mb-1">خطوة مهمة: يرجى إضافة رقم جوالك</h4>
                 <p className="text-[11px] text-gray-300 mb-2.5">
@@ -1718,7 +1736,7 @@ export const CustomerPortalModal: React.FC = () => {
                     onChange={e => setEditPhone(e.target.value)}
                     placeholder="05XXXXXXXX"
                     dir="ltr"
-                    className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-400 text-right font-mono"
+                    className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red text-right font-mono"
                   />
                   <button
                     type="button"
@@ -1734,7 +1752,7 @@ export const CustomerPortalModal: React.FC = () => {
                       setSavingPhone(false);
                       alert('تم حفظ رقم الجوال بنجاح وتحديث ملفك!');
                     }}
-                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                    className="px-3.5 py-2 bg-brand-red hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
                   >
                     {savingPhone ? 'جاري الحفظ...' : 'حفظ الرقم'}
                   </button>
@@ -2308,6 +2326,7 @@ export const CustomerPortalModal: React.FC = () => {
 // =========================================================================
 export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => void }> = ({ isMobile, onAction }) => {
   const { customer, setIsAuthOpen, setIsPortalOpen } = useCustomer();
+  const isEn = typeof document !== 'undefined' && document.documentElement.lang === 'en';
 
   const handleOpen = () => {
     if (onAction) onAction();
@@ -2327,7 +2346,7 @@ export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => 
             ? "w-full py-2.5 px-4 rounded-xl bg-brand-red/10 border border-brand-red/30 text-white font-bold text-xs flex items-center justify-between cursor-pointer"
             : "flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/90 hover:bg-neutral-800 border border-brand-red/40 hover:border-brand-red text-white text-xs font-bold transition-all cursor-pointer group shadow-sm shadow-brand-red/10 whitespace-nowrap shrink-0"
         }
-        title="ملفي الشخصي وسياراتي وكرت الصيانة"
+        title={isEn ? "My Profile & Maintenance Card" : "ملفي الشخصي وسياراتي وكرت الصيانة"}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="relative shrink-0">
@@ -2354,7 +2373,7 @@ export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => 
         </div>
         <span className="text-[10px] text-brand-red font-bold flex items-center gap-0.5 group-hover:underline shrink-0">
           <FileText className="w-3 h-3" />
-          <span>كرت الصيانة</span>
+          <span>{isEn ? "Card" : "كرت الصيانة"}</span>
         </span>
       </button>
     );
@@ -2370,7 +2389,7 @@ export const CustomerNavButton: React.FC<{ isMobile?: boolean; onAction?: () => 
       }
     >
       <User className="w-3.5 h-3.5 text-brand-red shrink-0" />
-      <span>تسجيل دخول</span>
+      <span>{isEn ? "Sign In" : "تسجيل دخول"}</span>
     </button>
   );
 };

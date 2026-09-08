@@ -38,9 +38,15 @@ import {
   ExternalLink,
   Edit3,
   Clock,
-  ChevronLeft
+  ChevronLeft,
+  Wrench,
+  CheckCircle2,
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
+import { exportSingleBookingWord } from '../lib/reportUtils';
 
 export interface CustomerVehicle {
   make?: string;
@@ -111,6 +117,39 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       const list: CustomerProfile[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        const parsedVehicles: CustomerVehicle[] = [];
+        if (Array.isArray(data.vehicles)) {
+          data.vehicles.forEach((v: any) => {
+            if (v && (v.model || v.year || v.plateNumber)) {
+              parsedVehicles.push({
+                model: v.model || '',
+                year: v.year || '',
+                plateNumber: v.plateNumber || '',
+                notes: v.notes || ''
+              });
+            }
+          });
+        }
+        if (Array.isArray(data.cars)) {
+          data.cars.forEach((c: any) => {
+            if (c) {
+              const fullModel = [c.make, c.model].filter(Boolean).join(' ').trim() || c.model || '';
+              const exists = parsedVehicles.some(v => 
+                (v.model.toLowerCase() === fullModel.toLowerCase() && v.plateNumber === (c.plateNumber || '')) ||
+                (c.plateNumber && v.plateNumber === c.plateNumber)
+              );
+              if (!exists && (fullModel || c.plateNumber)) {
+                parsedVehicles.push({
+                  model: fullModel,
+                  year: c.year || '',
+                  plateNumber: c.plateNumber || '',
+                  notes: c.notes || ''
+                });
+              }
+            }
+          });
+        }
+
         list.push({
           id: docSnap.id,
           name: data.name || 'عميل كريم',
@@ -118,7 +157,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           email: data.email || '',
           city: data.city || 'جدة',
           address: data.address || '',
-          vehicles: Array.isArray(data.vehicles) ? data.vehicles : [],
+          vehicles: parsedVehicles,
           totalVisits: Number(data.totalVisits || 0),
           totalSpent: Number(data.totalSpent || 0),
           lastVisitDate: data.lastVisitDate || null,
@@ -157,11 +196,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         notes: string[];
       }>();
 
-      // Normalize phone number (Saudi standard)
-      const normalize = (p: string) => p.replace(/\D/g, '').replace(/^966/, '0');
-
       records.forEach((rec) => {
-        const cleanPhone = normalize(rec.customerPhone || '');
+        const cleanPhone = unifySaudiPhone(rec.customerPhone || '');
         if (!cleanPhone) return;
 
         const rawCost = typeof rec.cost === 'string' ? parseFloat(rec.cost) || 0 : (rec.cost || 0);
@@ -176,7 +212,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         if (!groupedByPhone.has(cleanPhone)) {
           groupedByPhone.set(cleanPhone, {
             name: name !== 'عميل' ? name : '',
-            phone: rec.customerPhone,
+            phone: cleanPhone,
             vehicles: new Set(car ? [car] : []),
             totalSpent: rawCost,
             visitDates: [d],
@@ -202,7 +238,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         const firstDate = sortedDates[sortedDates.length - 1] ? sortedDates[sortedDates.length - 1].toISOString() : lastDate;
 
         // Check if customer doc already exists
-        const existing = customers.find(c => normalize(c.phone) === phoneKey);
+        const existing = customers.find(c => unifySaudiPhone(c.phone) === phoneKey);
         const docRef = existing ? doc(db, 'customers', existing.id) : doc(collection(db, 'customers'));
 
         const vehicleObjs: CustomerVehicle[] = Array.from(entry.vehicles).map(vStr => ({
@@ -211,7 +247,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
         batch.set(docRef, {
           name: existing?.name || entry.name || `عميل (${phoneKey.slice(-4)})`,
-          phone: existing?.phone || entry.phone,
+          phone: existing?.phone ? (unifySaudiPhone(existing.phone) || existing.phone) : phoneKey,
           vehicles: existing?.vehicles && existing.vehicles.length > 0 ? existing.vehicles : vehicleObjs,
           totalVisits: Math.max(existing?.totalVisits || 0, entry.visitDates.length),
           totalSpent: Math.max(existing?.totalSpent || 0, entry.totalSpent),
@@ -242,7 +278,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       const matchSearch = 
         !searchQuery.trim() ||
         cust.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        cust.phone.includes(searchQuery) ||
+        phoneMatchesSearch(cust.phone, searchQuery) ||
         cust.vehicles.some(v => v.model.toLowerCase().includes(searchQuery.toLowerCase()) || (v.plateNumber && v.plateNumber.includes(searchQuery))) ||
         (cust.notes && cust.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -382,9 +418,11 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
     try {
       const validVehicles = formVehicles.filter(v => v.model.trim().length > 0);
 
+      const unifiedPhone = unifySaudiPhone(formPhone) || formPhone.trim();
+
       const payload = {
         name: formName.trim(),
-        phone: formPhone.trim(),
+        phone: unifiedPhone,
         email: formEmail.trim(),
         city: formCity.trim() || 'جدة',
         status: formStatus,
@@ -446,16 +484,100 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
   // Helper to format WhatsApp phone link
   const getWhatsAppLink = (phone: string, customerName: string) => {
-    const clean = phone.replace(/\D/g, '');
-    const intl = clean.startsWith('0') ? '966' + clean.slice(1) : (clean.startsWith('5') ? '966' + clean : clean);
+    const intl = formatSaudiPhoneForWhatsApp(phone);
     const msg = encodeURIComponent(`مرحباً بك أستاذ ${customerName} 👋\nمعك مركز DR.FIX للصيانة المتنقلة بجدة. نتشرف بخدمتك دائماً.`);
     return `https://api.whatsapp.com/send?phone=${intl}&text=${msg}`;
   };
 
   // Find all service records belonging to a customer
   const getCustomerRecords = (phone: string) => {
-    const clean = phone.replace(/\D/g, '').slice(-9);
-    return records.filter(r => r.customerPhone && r.customerPhone.replace(/\D/g, '').includes(clean));
+    return records.filter(r => phoneMatchesSearch(r.customerPhone, phone));
+  };
+
+  // Helper to determine live maintenance stage and details for a specific car
+  const getCarStageInfo = (car: CustomerVehicle, customerRecords: MaintenanceRecord[]) => {
+    const carModelClean = (car.model || '').toLowerCase().trim();
+    const carPlateClean = (car.plateNumber || '').toLowerCase().trim();
+
+    // Match records for this car
+    const matchedRecords = customerRecords.filter(rec => {
+      const recCar = [rec.carMake, rec.carModel].filter(Boolean).join(' ').toLowerCase();
+      const recModel = (rec.carModel || '').toLowerCase();
+      const recPlate = (rec.plateNumber || '').toLowerCase().trim();
+      
+      if (carPlateClean && recPlate && carPlateClean === recPlate) return true;
+      if (carModelClean && (recCar.includes(carModelClean) || carModelClean.includes(recModel))) return true;
+      return false;
+    });
+
+    // Sort by date descending
+    matchedRecords.sort((a, b) => {
+      const timeA = (a.createdAt as any)?.toMillis?.() || (a.serviceDate as any)?.toMillis?.() || (a.serviceDate ? new Date(a.serviceDate as any).getTime() : 0);
+      const timeB = (b.createdAt as any)?.toMillis?.() || (b.serviceDate as any)?.toMillis?.() || (b.serviceDate ? new Date(b.serviceDate as any).getTime() : 0);
+      return timeB - timeA;
+    });
+
+    // If no direct car match, but customer has only 1 car or records exist, link the most recent
+    let latestRecord = matchedRecords[0] || null;
+    if (!latestRecord && customerRecords.length === 1) {
+      latestRecord = customerRecords[0];
+    }
+
+    let stageStep = 1;
+    let stageTitle = 'سيارة مسجلة - جاهزة للخدمة';
+    let stageBadgeClass = 'bg-gray-500/15 text-gray-300 border-gray-500/30';
+    let isLive = false;
+    let stageDescription = 'لا توجد أعمال صيانة جارية حالياً. المركبة جاهزة لأي موعد صيانة جديد.';
+
+    if (latestRecord) {
+      switch (latestRecord.status as string) {
+        case 'on_the_way':
+          stageStep = 3;
+          stageTitle = 'المرحلة 3: الفني بالطريق للعميل';
+          stageBadgeClass = 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-sm shadow-purple-500/20';
+          stageDescription = 'تم انطلاق مهندس الصيانة الميداني، وهو في طريقه لموقع العميل الآن.';
+          isLive = true;
+          break;
+        case 'in-progress':
+        case 'in_progress':
+          stageStep = 4;
+          stageTitle = 'المرحلة 4: قيد الفحص والعمل الميداني';
+          stageBadgeClass = 'bg-blue-500/20 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20';
+          stageDescription = 'جاري تنفيذ أعمال الفحص والصيانة الميدانية الشاملة على المركبة.';
+          isLive = true;
+          break;
+        case 'accepted':
+          stageStep = 2;
+          stageTitle = 'المرحلة 2: تم تأكيد الحجز وتعيين الفني';
+          stageBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20';
+          stageDescription = 'تم تأكيد طلب الحجز وتعيين الفني المختص، وسيتحرك بالموعد المحدد.';
+          isLive = true;
+          break;
+        case 'completed':
+          stageStep = 5;
+          stageTitle = 'المرحلة 5: صيانة مكتملة ومعتمدة بضمان المركز';
+          stageBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+          stageDescription = 'تم إنجاز كافة أعمال الصيانة بنجاح وإصدار أمر السند المعتمد.';
+          isLive = false;
+          break;
+        case 'cancelled':
+          stageStep = 0;
+          stageTitle = 'تم إلغاء الحجز';
+          stageBadgeClass = 'bg-red-500/20 text-red-300 border-red-500/40';
+          stageDescription = 'تم إلغاء هذا الطلب بناءً على رغبة العميل أو إدارة المركز.';
+          isLive = false;
+          break;
+        default:
+          stageStep = 1;
+          stageTitle = 'المرحلة 1: حجز جديد قيد المراجعة والجدولة';
+          stageBadgeClass = 'bg-brand-red/20 text-red-200 border-brand-red/40 shadow-sm shadow-brand-red/20';
+          stageDescription = 'طلب الحجز مستلم لدى الإدارة، وجاري تعيين الفني المناسب وتحديد الوقت.';
+          isLive = true;
+          break;
+      }
+    }
+
+    return { latestRecord, stageStep, stageTitle, stageBadgeClass, stageDescription, isLive, totalRecords: matchedRecords.length };
   };
 
   return (
@@ -481,12 +603,12 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         </div>
 
         <div className="glass-card p-5 border-white/5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-black">
+          <div className="w-12 h-12 rounded-2xl bg-brand-red/20 text-brand-red flex items-center justify-center font-black">
             <Star className="w-6 h-6" />
           </div>
           <div>
             <div className="text-gray-400 text-xs font-mono">العملاء المميزون (VIP)</div>
-            <div className="text-2xl font-display font-black text-amber-400">
+            <div className="text-2xl font-display font-black text-brand-red">
               {customers.filter(c => c.status === 'vip').length}
             </div>
           </div>
@@ -747,7 +869,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
                         <h4 className="font-bold text-white text-base truncate flex items-center gap-2">
                           <span>{customer.name}</span>
                           {customer.status === 'vip' && (
-                            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                            <Star className="w-3.5 h-3.5 text-brand-red fill-brand-red shrink-0" />
                           )}
                         </h4>
                         <div className="text-xs text-gray-400 font-mono flex items-center gap-1.5" dir="ltr">
@@ -759,7 +881,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
                     <span className={cn(
                       "text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0",
-                      customer.status === 'vip' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
+                      customer.status === 'vip' ? "bg-brand-red/20 text-white border border-brand-red/30" :
                       customer.status === 'new' ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" :
                       "bg-white/10 text-gray-300 border border-white/10"
                     )}>
@@ -776,7 +898,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
                             <Car className="w-3 h-3 text-brand-red" />
                             <span>{v.model}</span>
                             {v.year && <span className="text-gray-500">{v.year}</span>}
-                            {v.plateNumber && <span className="font-mono bg-black/40 px-1 rounded text-[10px] text-amber-400">{v.plateNumber}</span>}
+                            {v.plateNumber && <span className="font-mono bg-black/40 px-1 rounded text-[10px] text-white">{v.plateNumber}</span>}
                           </span>
                         ))}
                       </div>
@@ -856,27 +978,31 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       {/* 📂 COMPREHENSIVE CUSTOMER FILE MODAL (الملف الخاص المتكامل للعميل) */}
       {/* ========================================================================= */}
       {selectedCustomerForDetail && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-brand-card border border-white/10 rounded-3xl max-w-2xl w-full p-6 md:p-8 space-y-6 max-h-[90vh] overflow-y-auto shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-brand-card border border-white/10 rounded-3xl max-w-4xl w-full p-6 sm:p-8 md:p-10 space-y-8 max-h-[92vh] overflow-y-auto shadow-2xl relative my-auto">
+            
             {/* Modal Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-5">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-display font-black text-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-6">
+              <div className="flex items-center gap-4 sm:gap-5">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-brand-red/30 to-brand-red/10 border-2 border-brand-red/40 flex items-center justify-center text-brand-red font-display font-black text-2xl sm:text-3xl shadow-lg shrink-0">
                   {selectedCustomerForDetail.name.charAt(0)}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xl md:text-2xl font-display font-black text-white">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h3 className="text-xl sm:text-2xl md:text-3xl font-display font-black text-white">
                       {selectedCustomerForDetail.name}
                     </h3>
                     {selectedCustomerForDetail.status === 'vip' && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
-                        <Star className="w-3 h-3 fill-amber-400" />
-                        VIP
+                      <span className="px-3 py-1 rounded-full bg-brand-red/20 text-white border border-brand-red/40 text-xs font-black flex items-center gap-1.5 shadow-sm">
+                        <Star className="w-3.5 h-3.5 fill-brand-red" />
+                        عميل مميز VIP
                       </span>
                     )}
+                    <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300 text-xs font-bold">
+                      {selectedCustomerForDetail.city || 'جدة'}
+                    </span>
                   </div>
-                  <div className="text-sm text-gray-400 font-mono mt-0.5" dir="ltr">
+                  <div className="text-sm sm:text-base text-gray-400 font-mono font-bold mt-1.5" dir="ltr">
                     {selectedCustomerForDetail.phone}
                   </div>
                 </div>
@@ -884,30 +1010,31 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
               <button 
                 onClick={() => setSelectedCustomerForDetail(null)}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer"
+                className="p-3 rounded-2xl bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white cursor-pointer transition-all border border-white/5"
+                title="إغلاق النافذة"
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             {/* Quick Contact & Action Buttons */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <a 
                 href={getWhatsAppLink(selectedCustomerForDetail.phone, selectedCustomerForDetail.name)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-2.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 min-h-[46px] rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-sm"
               >
-                <MessageCircle className="w-4 h-4" />
-                <span>واتساب</span>
+                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="whitespace-nowrap">مراسلة واتساب</span>
               </a>
 
               <a 
                 href={`tel:${selectedCustomerForDetail.phone}`}
-                className="py-2.5 px-3 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 min-h-[46px] rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-400 text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-sm"
               >
-                <Phone className="w-4 h-4" />
-                <span>اتصال هاتف</span>
+                <Phone className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="whitespace-nowrap">اتصال هاتفي</span>
               </a>
 
               <button 
@@ -915,122 +1042,356 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
                   openEditModal(selectedCustomerForDetail);
                   setSelectedCustomerForDetail(null);
                 }}
-                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 min-h-[46px] rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-gray-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-sm"
               >
-                <Edit3 className="w-4 h-4" />
-                <span>تعديل الملف</span>
+                <Edit3 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="whitespace-nowrap">تعديل الملف</span>
               </button>
 
               <button 
                 onClick={() => {
                   setCustomerToDelete(selectedCustomerForDetail);
                 }}
-                className="py-2.5 px-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                className="py-3 px-4 min-h-[46px] rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 cursor-pointer transition-all shadow-sm"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>حذف</span>
+                <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                <span className="whitespace-nowrap">حذف العميل</span>
               </button>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-black/40 p-4 rounded-2xl border border-white/5 text-center">
-              <div>
-                <div className="text-gray-500 text-xs mb-1">الزيارات المكتملة</div>
-                <div className="text-xl font-bold text-white">{selectedCustomerForDetail.totalVisits || 0}</div>
+            {/* Customer Stats Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 sm:gap-4.5 bg-black/60 p-5 sm:p-6 rounded-2xl border border-white/10 text-center">
+              <div className="space-y-1">
+                <div className="text-gray-400 text-xs font-bold">الزيارات المكتملة</div>
+                <div className="text-2xl sm:text-3xl font-black text-white">{selectedCustomerForDetail.totalVisits || 0}</div>
               </div>
-              <div>
-                <div className="text-gray-500 text-xs mb-1">عدد المركبات</div>
-                <div className="text-xl font-bold text-brand-red">{selectedCustomerForDetail.vehicles?.length || 1} <span className="text-xs">سيارات</span></div>
-              </div>
-              <div>
-                <div className="text-gray-500 text-xs mb-1">تاريخ أول تعامل</div>
-                <div className="text-xs font-bold text-gray-300 mt-1">
-                  {selectedCustomerForDetail.firstVisitDate ? new Date(selectedCustomerForDetail.firstVisitDate).toLocaleDateString('ar-SA') : 'غير مسجل'}
+              <div className="space-y-1">
+                <div className="text-gray-400 text-xs font-bold">عدد المركبات</div>
+                <div className="text-2xl sm:text-3xl font-black text-brand-red">
+                  {selectedCustomerForDetail.vehicles?.length || 1} <span className="text-xs sm:text-sm font-bold text-gray-300">سيارات</span>
                 </div>
               </div>
-              <div>
-                <div className="text-gray-500 text-xs mb-1">آخر موعد صيانة</div>
-                <div className="text-xs font-bold text-brand-red mt-1">
-                  {selectedCustomerForDetail.lastVisitDate ? new Date(selectedCustomerForDetail.lastVisitDate).toLocaleDateString('ar-SA') : 'لا يوجد'}
+              <div className="space-y-1">
+                <div className="text-gray-400 text-xs font-bold">تاريخ أول تعامل</div>
+                <div className="text-xs sm:text-sm font-bold text-gray-300 mt-1">
+                  {selectedCustomerForDetail.firstVisitDate ? new Date(selectedCustomerForDetail.firstVisitDate).toLocaleDateString('ar-SA') : 'عميل جديد'}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-gray-400 text-xs font-bold">آخر موعد صيانة</div>
+                <div className="text-xs sm:text-sm font-bold text-brand-red mt-1">
+                  {selectedCustomerForDetail.lastVisitDate ? new Date(selectedCustomerForDetail.lastVisitDate).toLocaleDateString('ar-SA') : 'لا يوجد موعد'}
                 </div>
               </div>
             </div>
 
-            {/* Registered Vehicles */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-                <Car className="w-4 h-4 text-brand-red" />
-                <span>المركبات والسيارات المسجلة</span>
-              </h4>
-              {selectedCustomerForDetail.vehicles && selectedCustomerForDetail.vehicles.length > 0 ? (
-                <div className="space-y-2">
-                  {selectedCustomerForDetail.vehicles.map((veh, idx) => (
-                    <div key={idx} className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-brand-red/20 text-brand-red flex items-center justify-center font-bold text-xs">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="font-bold text-white text-sm">{veh.model} {veh.year}</div>
-                          {veh.notes && <div className="text-xs text-gray-400">{veh.notes}</div>}
-                        </div>
-                      </div>
-                      {veh.plateNumber && (
-                        <span className="font-mono bg-black/60 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-400 border border-white/10">
-                          {veh.plateNumber}
-                        </span>
-                      )}
+            {/* ================================================================= */}
+            {/* 🚗 REGISTERED VEHICLES & DIRECT LIVE STAGES (عرض مباشر وشامل) */}
+            {/* ================================================================= */}
+            {(() => {
+              const history = getCustomerRecords(selectedCustomerForDetail.phone);
+              
+              // Assemble list of vehicles to show
+              let vehiclesToShow: CustomerVehicle[] = [...(selectedCustomerForDetail.vehicles || [])];
+              
+              // Also add any vehicles that exist in records if not in customer.vehicles list
+              history.forEach(rec => {
+                const recModel = [rec.carMake, rec.carModel].filter(Boolean).join(' ').trim() || rec.carModel;
+                const recPlate = rec.plateNumber || '';
+                const alreadyExists = vehiclesToShow.some(v => 
+                  (recModel && v.model.toLowerCase() === recModel.toLowerCase()) || 
+                  (recPlate && v.plateNumber === recPlate)
+                );
+                if (!alreadyExists && (recModel || recPlate)) {
+                  vehiclesToShow.push({
+                    model: recModel || 'سيارة مسجلة',
+                    year: rec.carYear || '',
+                    plateNumber: recPlate,
+                    notes: ''
+                  });
+                }
+              });
+
+              // Fallback if empty
+              if (vehiclesToShow.length === 0) {
+                vehiclesToShow = [{ model: 'سيارة مسجلة', year: '', plateNumber: '' }];
+              }
+
+              return (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-base sm:text-lg font-bold text-white flex items-center gap-2.5">
+                        <Car className="w-5 h-5 text-brand-red" />
+                        <span>المركبات والسيارات المسجلة ومراحل الصيانة المباشرة</span>
+                      </h4>
+                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                        عرض فوري ومباشر لكل سيارة والمرحلة الحالية التي وصلت إليها دون الحاجة للضغط أو التنقل
+                      </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-white/5 border border-dashed border-white/10 text-center text-xs text-gray-500">
-                  لم يتم إضافة مركبات لهذا العميل بعد
-                </div>
-              )}
-            </div>
 
-            {/* Service & Maintenance Timeline */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-gray-300 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-brand-red" />
-                <span>سجل الصيانات والعمليات السابقة</span>
+                    <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/30">
+                      {vehiclesToShow.length} {vehiclesToShow.length === 1 ? 'مركبة' : 'مركبات'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {vehiclesToShow.map((veh, idx) => {
+                      const stageInfo = getCarStageInfo(veh, history);
+                      const rec = stageInfo.latestRecord;
+
+                      return (
+                        <div 
+                          key={idx}
+                          className={`p-5 sm:p-6 rounded-2xl bg-neutral-900/90 border ${
+                            stageInfo.isLive ? 'border-brand-red/50 shadow-xl shadow-brand-red/10' : 'border-white/10'
+                          } space-y-5 transition-all`}
+                        >
+                          {/* Card Header: Car Title + Plate + Stage Badge */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-white/10 pb-4">
+                            <div className="flex items-center gap-3.5">
+                              <div className="w-11 h-11 rounded-xl bg-brand-red/20 border border-brand-red/30 text-brand-red flex items-center justify-center font-bold text-sm shrink-0">
+                                <Car className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                  <h5 className="font-bold text-white text-base sm:text-lg">
+                                    {veh.model} {veh.year ? `(${veh.year})` : ''}
+                                  </h5>
+                                  {veh.plateNumber && (
+                                    <span className="font-mono bg-white text-black px-3 py-1 rounded-md text-xs sm:text-sm font-black border border-neutral-300 shadow-sm tracking-widest" dir="ltr">
+                                      {veh.plateNumber}
+                                    </span>
+                                  )}
+                                </div>
+                                {veh.notes && (
+                                  <div className="text-xs text-gray-400 mt-1">{veh.notes}</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Stage Badge with Animated Pulse */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className={`px-3.5 py-1.5 rounded-full border text-xs sm:text-sm font-bold inline-flex items-center gap-2 whitespace-nowrap ${stageInfo.stageBadgeClass}`}>
+                                {stageInfo.isLive && (
+                                  <span className="relative flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-red opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-red"></span>
+                                  </span>
+                                )}
+                                <span>{stageInfo.stageTitle}</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 5-Step Visual Stepper (مراحل إنجاز الصيانة الخمس) */}
+                          <div className="bg-black/60 p-4 sm:p-5 rounded-xl border border-white/5 space-y-4">
+                            <div className="flex flex-wrap items-center justify-between text-xs font-bold gap-2">
+                              <span className="text-gray-400">مراحل إنجاز الخدمة والصيانة:</span>
+                              <span className="text-white font-medium">{stageInfo.stageDescription}</span>
+                            </div>
+
+                            {/* Stepper Bar */}
+                            <div className="relative flex items-center justify-between pt-2 pb-2 px-2 sm:px-4">
+                              {/* Background Line */}
+                              <div className="absolute top-1/2 left-6 right-6 -translate-y-1/2 h-1.5 bg-white/10 -z-0 rounded-full" />
+                              
+                              {/* Filled Gradient Line */}
+                              <div 
+                                className="absolute top-1/2 right-6 -translate-y-1/2 h-1.5 bg-gradient-to-l from-brand-red to-emerald-500 transition-all duration-700 -z-0 rounded-full"
+                                style={{
+                                  width: stageInfo.stageStep === 0 ? '0%' :
+                                         stageInfo.stageStep === 5 ? 'calc(100% - 48px)' :
+                                         stageInfo.stageStep === 4 ? '75%' :
+                                         stageInfo.stageStep === 3 ? '50%' :
+                                         stageInfo.stageStep === 2 ? '25%' : '8%'
+                                }}
+                              />
+
+                              {[
+                                { step: 1, title: 'الاستلام', icon: FileText },
+                                { step: 2, title: 'تم القبول', icon: CheckCircle2 },
+                                { step: 3, title: 'بالطريق', icon: Car },
+                                { step: 4, title: 'فحص وصيانة', icon: Wrench },
+                                { step: 5, title: 'جاهزة ومعتمدة', icon: Sparkles }
+                              ].map(st => {
+                                const isDone = (stageInfo.stageStep > st.step) || (stageInfo.stageStep === 5);
+                                const isCurrent = (stageInfo.stageStep === st.step) && (stageInfo.stageStep !== 5);
+                                const Icon = st.icon;
+
+                                return (
+                                  <div key={st.step} className="relative z-10 flex flex-col items-center gap-1.5">
+                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all ${
+                                      isDone 
+                                        ? 'bg-emerald-500 text-black font-black shadow-md shadow-emerald-500/30' 
+                                        : isCurrent
+                                        ? 'bg-brand-red text-white ring-4 ring-brand-red/30 shadow-lg shadow-brand-red/40 animate-pulse font-bold'
+                                        : 'bg-neutral-800 text-gray-400 border border-white/10'
+                                    }`}>
+                                      {isDone ? <Check className="w-5 h-5 stroke-[2.5]" /> : <Icon className="w-4 h-4 sm:w-5 sm:h-5" />}
+                                    </div>
+                                    <span className={`text-[11px] sm:text-xs font-bold whitespace-nowrap ${
+                                      isCurrent ? 'text-brand-red font-black' : isDone ? 'text-emerald-400' : 'text-gray-400'
+                                    }`}>
+                                      {st.title}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Direct Service Details Box (تفاصيل عملية الصيانة الحالية) */}
+                          {rec ? (
+                            <div className="bg-white/5 p-4 sm:p-5 rounded-xl border border-white/10 space-y-4">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-xs">
+                                <div>
+                                  <div className="text-gray-400 font-bold mb-1">نوع الصيانة المطلوبة:</div>
+                                  <div className="font-bold text-white text-sm">{rec.serviceType || 'صيانة عامة'}</div>
+                                </div>
+
+                                <div>
+                                  <div className="text-gray-400 font-bold mb-1">الفني الميداني المكلف:</div>
+                                  <div className="font-bold text-white text-sm">
+                                    {rec.assignedTechnicianName || rec.technicianName || 'الفريق الميداني المعتمد'}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <div className="text-gray-400 font-bold mb-1">رقم كرت الحجز:</div>
+                                  <div className="font-mono font-bold text-blue-400 text-sm">
+                                    #{rec.bookingId || rec.id.slice(0, 7).toUpperCase()}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <div className="text-gray-400 font-bold mb-1">التكلفة والضمان:</div>
+                                  <div className="font-bold text-emerald-400 text-sm">
+                                    {rec.cost ? `${rec.cost} ريال` : 'قيد التسعير والاعتماد'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons for this specific car */}
+                              <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+                                <div className="text-xs text-gray-400">
+                                  {rec.serviceDate ? (
+                                    <span>الموعد المحدد: {new Date(rec.serviceDate as any).toLocaleDateString('ar-SA')}</span>
+                                  ) : (
+                                    <span>تاريخ التسجيل: {rec.createdAt ? new Date(rec.createdAt as any).toLocaleDateString('ar-SA') : 'مسجل حالياً'}</span>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                  <button
+                                    onClick={() => exportSingleBookingWord(rec as any)}
+                                    className="py-2 px-3.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+                                  >
+                                    <Download className="w-4 h-4 shrink-0" />
+                                    <span>تحميل سند الصيانة (.doc)</span>
+                                  </button>
+
+                                  <a
+                                    href={getWhatsAppLink(selectedCustomerForDetail.phone, `${selectedCustomerForDetail.name} بخصوص سيارتك (${veh.model})`)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="py-2 px-3.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+                                  >
+                                    <MessageCircle className="w-4 h-4 shrink-0" />
+                                    <span>تحديث العميل عبر واتساب</span>
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-4 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between text-xs text-gray-400">
+                              <span className="flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                <span>السيارة جاهزة وبحالة ممتازة - لا توجد صيانة قيد التنفيذ حالياً.</span>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ================================================================= */}
+            {/* 📋 COMPLETE SERVICE HISTORY (سجل الصيانات والعمليات السابقة الشامل) */}
+            {/* ================================================================= */}
+            <div className="space-y-4">
+              <h4 className="text-base sm:text-lg font-bold text-white flex items-center gap-2.5">
+                <Calendar className="w-5 h-5 text-brand-red" />
+                <span>سجل كافة الصيانات والعمليات السابقة</span>
               </h4>
               
               {(() => {
                 const history = getCustomerRecords(selectedCustomerForDetail.phone);
                 if (history.length === 0) {
                   return (
-                    <div className="p-4 rounded-xl bg-white/5 border border-dashed border-white/10 text-center text-xs text-gray-500">
+                    <div className="p-6 rounded-2xl bg-white/5 border border-dashed border-white/10 text-center text-xs sm:text-sm text-gray-400">
                       لا توجد عمليات مسجلة برقم هذا العميل حتى الآن
                     </div>
                   );
                 }
 
                 return (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     {history.map((rec) => {
                       let dateStr = 'تاريخ سابق';
                       if (rec.serviceDate?.toDate) dateStr = rec.serviceDate.toDate().toLocaleDateString('ar-SA');
                       else if (rec.serviceDate) dateStr = new Date(rec.serviceDate).toLocaleDateString('ar-SA');
 
                       return (
-                        <div key={rec.id} className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between gap-3 text-xs">
-                          <div>
-                            <div className="font-bold text-white">{rec.serviceType}</div>
-                            <div className="text-gray-400 text-[11px]">{rec.carModel} • {dateStr}</div>
-                            {rec.notes && <div className="text-gray-500 italic mt-0.5">{rec.notes}</div>}
-                          </div>
-                          <div className="text-left shrink-0">
-                            <div className="text-emerald-400 font-bold text-xs">
-                              معتمد بضمان المركز
+                        <div 
+                          key={rec.id} 
+                          className="p-4 sm:p-5 rounded-2xl bg-black/50 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
+                        >
+                          <div className="space-y-1">
+                            <div className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                              <span>{rec.serviceType}</span>
+                              <span className="font-mono text-xs text-gray-400 font-normal">
+                                #{rec.bookingId || rec.id.slice(0, 6)}
+                              </span>
                             </div>
+                            <div className="text-gray-400 text-xs flex flex-wrap items-center gap-2">
+                              <span className="text-brand-red font-bold">{rec.carModel}</span>
+                              <span>•</span>
+                              <span>{dateStr}</span>
+                              {rec.assignedTechnicianName && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-white">الفني: {rec.assignedTechnicianName}</span>
+                                </>
+                              )}
+                            </div>
+                            {rec.notes && <div className="text-gray-400 text-xs italic mt-1">{rec.notes}</div>}
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
                             <span className={cn(
-                              "text-[10px] px-2 py-0.5 rounded-full font-bold",
-                              rec.status === 'completed' ? "text-emerald-400 bg-emerald-500/10" : "text-amber-400 bg-amber-500/10"
+                              "text-xs px-3 py-1.5 rounded-full font-bold whitespace-nowrap",
+                              rec.status === 'completed' ? "text-emerald-400 bg-emerald-500/15 border border-emerald-500/30" :
+                              rec.status === 'on_the_way' ? "text-purple-400 bg-purple-500/15 border border-purple-500/30" :
+                              rec.status === 'in-progress' ? "text-blue-400 bg-blue-500/15 border border-blue-500/30" :
+                              "text-white bg-white/10 border border-white/20"
                             )}>
-                              {rec.status === 'completed' ? 'مكتمل' : 'قيد المعالجة'}
+                              {rec.status === 'completed' ? 'صيانة مكتملة' :
+                               rec.status === 'on_the_way' ? 'الفني بالطريق' :
+                               rec.status === 'in-progress' ? 'قيد العمل' : 'قيد المعالجة'}
                             </span>
+
+                            <button
+                              onClick={() => exportSingleBookingWord(rec as any)}
+                              className="py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                              title="تصدير سند الصيانة Word"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>سند Word</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -1044,17 +1405,17 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
             {selectedCustomerForDetail.notes && (
               <div className="space-y-2">
                 <h4 className="text-sm font-bold text-gray-300">ملاحظات الفني والمركز:</h4>
-                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-300 whitespace-pre-wrap">
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-xs sm:text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
                   {selectedCustomerForDetail.notes}
                 </div>
               </div>
             )}
 
             {/* Close Button */}
-            <div className="pt-2 border-t border-white/10 flex justify-end">
+            <div className="pt-4 border-t border-white/10 flex justify-end">
               <button 
                 onClick={() => setSelectedCustomerForDetail(null)}
-                className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
+                className="px-8 py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-bold cursor-pointer transition-all min-h-[46px]"
               >
                 إغلاق الملف
               </button>

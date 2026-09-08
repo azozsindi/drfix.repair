@@ -166,7 +166,7 @@ export const PricingBreakdownModal: React.FC<PricingBreakdownModalProps> = ({
             {/* Travel Fee */}
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1.5 flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-yellow-400" />
+                <Truck className="w-3.5 h-3.5 text-brand-red" />
                 <span>رسوم الانتقال والميدان (Travel Fee)</span>
               </label>
               <div className="relative">

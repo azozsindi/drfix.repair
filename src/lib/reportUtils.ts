@@ -258,7 +258,6 @@ export function exportBookingsToWord(summary: ReportSummary, filename?: string) 
 export function exportSingleBookingWord(booking: BookingReportItem) {
   const bId = booking.bookingId || booking.id || 'DRF-ORDER';
   const outName = `DRFIX_Order_${bId}.doc`;
-  const costNum = Number(booking.cost) || 0;
   const statusAr = getStatusArabic(booking.status);
   const dateStr = booking.serviceDate ? formatReportDate(booking.serviceDate) : formatReportDate(booking.createdAt);
 

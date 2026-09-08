@@ -75,7 +75,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
         return { label: 'إسناد فني', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' };
       case 'complaint_logged':
       case 'complaint_updated':
-        return { label: 'شكاوى وضمان', color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+        return { label: 'شكاوى وضمان', color: 'bg-brand-red/20 text-white border-brand-red/30' };
       case 'warranty_issued':
         return { label: 'إصدار ضمان', color: 'bg-teal-500/20 text-teal-400 border-teal-500/30' };
       case 'rescheduled':

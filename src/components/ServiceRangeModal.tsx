@@ -61,7 +61,7 @@ export const DEFAULT_SERVICE_RANGE_CONFIG: ServiceRangeConfig = {
       type: 'remote',
       maxRadiusKm: 50,
       travelFee: 65, // رسوم انتقال إضافية 65 ر.س
-      color: '#f59e0b', // Amber
+      color: '#DC2626', // Red
       descriptionAr: 'تغطية للمناطق والأطراف البعيدة مع رسوم انتقال (+65 ر.س). وصول الفني خلال 60 - 90 دقيقة.',
       districtsAr: [
         'ذهبان', 'الخمرة', 'عسفان', 'طيبة', 'جوهرة العروس', 'القرينية', 'خليص الجنوبية'
@@ -305,7 +305,7 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
               </div>
               <p className="text-xs text-gray-400">
                 أقصى دائرة تغطية: {config.maxServiceRadiusKm} كم • الرفض التلقائي خارج النطاق: 
-                <span className={config.autoRejectOutOfRange ? "text-emerald-400 font-bold mx-1" : "text-amber-400 font-bold mx-1"}>
+                <span className={config.autoRejectOutOfRange ? "text-emerald-400 font-bold mx-1" : "text-brand-red font-bold mx-1"}>
                   {config.autoRejectOutOfRange ? 'مفعل ومحمي 🔒' : 'معطل'}
                 </span>
               </p>
@@ -339,8 +339,8 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
                   ممتد (+{config.zones[1]?.travelFee} ر.س)
                 </span>
-                <span className="flex items-center gap-1 text-amber-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+                <span className="flex items-center gap-1 text-white">
+                  <span className="w-2.5 h-2.5 rounded-full bg-brand-red inline-block" />
                   بعيد (+{config.zones[2]?.travelFee} ر.س)
                 </span>
                 <span className="flex items-center gap-1 text-red-400">
@@ -372,8 +372,8 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
                 <text x="390" y="45" fill="#ef4444" fontSize="10" fontWeight="bold">حدود الرفض الأقصى (50 كم)</text>
 
                 {/* Remote Zone (35 - 50 km) */}
-                <circle cx="270" cy="160" r="115" fill="rgba(245, 158, 11, 0.08)" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 3" />
-                <text x="375" y="100" fill="#f59e0b" fontSize="9" fontWeight="bold">النطاق البعيد (+65 ر.س)</text>
+                <circle cx="270" cy="160" r="115" fill="rgba(220, 38, 38, 0.08)" stroke="#DC2626" strokeWidth="1.5" strokeDasharray="3 3" />
+                <text x="375" y="100" fill="#DC2626" fontSize="9" fontWeight="bold">النطاق البعيد (+65 ر.س)</text>
 
                 {/* Extended Zone (20 - 35 km) */}
                 <circle cx="270" cy="160" r="80" fill="rgba(59, 130, 246, 0.12)" stroke="#3b82f6" strokeWidth="1.5" />
@@ -396,7 +396,7 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
                 <circle cx="230" cy="60" r="3.5" fill="#3b82f6" />
                 <text x="230" y="52" fill="#93c5fd" fontSize="9" textAnchor="middle">أبحر الشمالية</text>
 
-                <circle cx="280" cy="30" r="3.5" fill="#f59e0b" />
+                <circle cx="280" cy="30" r="3.5" fill="#DC2626" />
                 <text x="280" y="22" fill="#fcd34d" fontSize="9" textAnchor="middle">ذهبان</text>
 
                 {/* Northeast: Hamdaniyah */}
@@ -414,7 +414,7 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
                 <circle cx="250" cy="225" r="3.5" fill="#3b82f6" />
                 <text x="250" y="240" fill="#93c5fd" fontSize="9" textAnchor="middle">البلد / الجامعة</text>
 
-                <circle cx="270" cy="275" r="3.5" fill="#f59e0b" />
+                <circle cx="270" cy="275" r="3.5" fill="#DC2626" />
                 <text x="270" y="290" fill="#fcd34d" fontSize="9" textAnchor="middle">الخمرة</text>
 
                 {/* Out of bounds marker */}

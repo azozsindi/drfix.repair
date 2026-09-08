@@ -18,7 +18,7 @@ import {
   Store,
   ChevronRight
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate } from 'react-router-dom';
 import { Partner } from '../types';
 
 interface PartnersPageProps {
@@ -33,6 +33,12 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
   onSelectPartnerForBooking 
 }) => {
   const navigate = useNavigate();
+
+  // If partners section is hidden by admin, redirect to home
+  if (settings && settings.showPartners === false) {
+    return <Navigate to="/" replace />;
+  }
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -224,8 +230,8 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                     </div>
 
                     {/* Rating / Verified Badge */}
-                    <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 backdrop-blur-md border border-amber-500/30 text-[11px] font-black text-amber-400">
-                      <Star className="w-3 h-3 fill-amber-400" />
+                    <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-red/20 backdrop-blur-md border border-brand-red/30 text-[11px] font-black text-white">
+                      <Star className="w-3 h-3 fill-brand-red text-brand-red" />
                       <span>{partner.rating ? partner.rating.toFixed(1) : '4.9'}</span>
                     </div>
 

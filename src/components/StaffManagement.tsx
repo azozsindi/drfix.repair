@@ -260,7 +260,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
       case 'dispatcher':
         return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
       case 'technician':
-        return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+        return 'bg-brand-red/20 text-white border-brand-red/30';
       case 'support':
         return 'bg-teal-500/20 text-teal-400 border-teal-500/30';
       default:
