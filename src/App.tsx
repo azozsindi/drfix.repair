@@ -1908,15 +1908,17 @@ const Gallery = () => {
   return (
     <section id="gallery" className="py-10 sm:py-16 md:py-24 bg-brand-dark">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
-        <div className={cn("text-center mb-16", lang === 'en' && "md:text-left")}>
-          <h2 className="text-2xl md:text-4xl font-display font-black mb-4 italic uppercase">
+        <div className={cn("text-center mb-12 sm:mb-16", lang === 'en' && "md:text-left")}>
+          <h2 className="text-2xl md:text-4xl font-display font-black mb-3 italic uppercase">
             {t.gallery.title} <span className="text-brand-red">{t.gallery.titleAccent}</span>
           </h2>
           <div className={cn("w-20 md:w-24 h-1.5 bg-brand-red mx-auto rounded-full", lang === 'en' && "md:mr-0 md:ml-auto")} />
-          <p className="mt-6 text-gray-400">{t.gallery.description}</p>
+          <p className="mt-3 text-xs sm:text-sm text-gray-400/80 font-normal max-w-xl mx-auto tracking-wide leading-relaxed">
+            {t.gallery.description}
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
           {allItems.map((item, idx) => (
             <motion.div
               key={item.id}
@@ -1924,7 +1926,7 @@ const Gallery = () => {
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ delay: idx * 0.05 }}
               viewport={{ once: true, margin: "-50px" }}
-              className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10"
+              className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10 shadow-lg"
             >
               <img 
                 src={item.imageUrl} 
@@ -1933,11 +1935,12 @@ const Gallery = () => {
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-6">
-                <span className="text-brand-red text-xs font-bold uppercase tracking-widest mb-1">
+              {/* Permanent elegant gradient with visible title & category */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent flex flex-col justify-end p-3.5 sm:p-4 transition-all">
+                <span className="text-brand-red text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5">
                   {lang === 'ar' ? item.category : (item.categoryEn || item.category)}
                 </span>
-                <h4 className="text-white font-bold">
+                <h4 className="text-white text-xs sm:text-sm font-bold line-clamp-2 leading-snug drop-shadow-md">
                   {lang === 'ar' ? item.title : (item.titleEn || item.title)}
                 </h4>
               </div>

@@ -356,6 +356,7 @@ export interface Contract {
   type: ContractType; // 'workshop_outbound' | 'company_inbound'
   title: string; // مسمى الاتفاقية
   partyName: string; // اسم الورشة الشريكة أو اسم الشركة / المؤسسة
+  partyLogoUrl?: string; // شعار الورشة الشريكة أو شركة العميل (صورة)
   crNumber?: string; // السجل التجاري
   taxNumber?: string; // الرقم الضريبي
   contactPerson: string; // اسم المسؤول أو مدير الأسطول/الورشة
