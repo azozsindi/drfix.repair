@@ -8,7 +8,13 @@ import {
 import { 
   doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
 } from 'firebase/firestore';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  setPersistence, 
+  browserLocalPersistence, 
+  indexedDBLocalPersistence 
+} from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../firebase';
 import { CustomerProfile, CustomerCar, MaintenanceRecord, sortBookingsNewestFirst } from '../types';
 import { CustomerVisualReport } from './CustomerVisualReport';
@@ -766,19 +772,38 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(true);
 
     try {
+      // Ensure local persistence so state is not lost across Android WebView / mobile contexts
+      try {
+        await setPersistence(auth, indexedDBLocalPersistence);
+      } catch {
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+        } catch {}
+      }
+
       const provider = new GoogleAuthProvider();
       provider.addScope('openid');
       provider.addScope('https://www.googleapis.com/auth/userinfo.email');
       provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
       provider.setCustomParameters({ prompt: 'select_account' });
+      
+      // Explicitly using signInWithPopup to preserve session and avoid missing initial state errors in WebView
       const result = await signInWithPopup(auth, provider);
       if (result?.user) {
         return await handleGoogleUserSuccess(result.user);
       }
     } catch (err: any) {
+      console.warn("Google Auth error in WebView/Browser:", err);
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
         setLoading(false);
         return { success: false, error: 'تم إغلاق نافذة تسجيل الدخول.' };
+      }
+      if (err?.code === 'auth/missing-initial-state' || (err?.message && /missing initial state/i.test(err.message))) {
+        setLoading(false);
+        return { 
+          success: false, 
+          error: 'لتسجيل الدخول السلس داخل التطبيق، يرجى استخدام رقم الجوال أدناه للدخول الفوري دون كلمة مرور.' 
+        };
       }
       if (err?.code === 'auth/popup-blocked' || (err?.message && /popup/i.test(err.message))) {
         setLoading(false);

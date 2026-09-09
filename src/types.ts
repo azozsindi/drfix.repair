@@ -641,3 +641,63 @@ export interface InventoryTransaction {
   timestamp: string;
 }
 
+export interface AppSettings {
+  logoUrl?: string;
+  siteName?: string;
+  tickerText?: string;
+  // Branding
+  primaryColor?: string;
+  accentColor?: string;
+  borderRadius?: string;
+  fontFamily?: string;
+  secondaryFont?: string;
+  buttonStyle?: 'solid' | 'outline' | 'ghost' | 'brutal' | 'soft';
+  // Social & Contact
+  phone?: string;
+  whatsapp?: string;
+  instagram?: string;
+  twitter?: string;
+  facebook?: string;
+  snapchat?: string;
+  tiktok?: string;
+  location?: string;
+  email?: string;
+  // Hero Section
+  heroTitle?: string;
+  heroSubtitle?: string;
+  heroBadge?: string;
+  heroButtonText?: string;
+  heroImageUrl?: string;
+  heroImageBadgeTitle?: string;
+  heroImageBadgeSubtitle?: string;
+  showHeroImageBadge?: boolean;
+  // Visibility Toggles
+  showStats?: boolean;
+  showOffers?: boolean;
+  showGallery?: boolean;
+  showTestimonials?: boolean;
+  showServices?: boolean;
+  showContact?: boolean;
+  showPartners?: boolean;
+  enableCustomerAccounts?: boolean;
+  // SEO
+  metaDescription?: string;
+  metaKeywords?: string;
+  googleAnalyticsId?: string;
+  facebookPixelId?: string;
+  // Footer
+  footerDescription?: string;
+  copyrightText?: string;
+  // Maintenance
+  maintenanceMode?: boolean;
+  maintenanceMessage?: string;
+  // Telegram & Notifications
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  enableSoundAlerts?: boolean;
+  appDownloadUrl?: string;
+  // Privacy Policy & Terms of Service (PDPL Compliant)
+  privacyPolicyText?: string;
+  termsOfServiceText?: string;
+}
+
