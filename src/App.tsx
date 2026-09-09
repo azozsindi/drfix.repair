@@ -1361,7 +1361,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
   };
 
   return (
-    <section className="relative min-h-[85vh] lg:min-h-screen flex items-center pt-24 sm:pt-28 md:pt-32 pb-12 sm:pb-16 overflow-hidden">
+    <section className="relative min-h-[auto] sm:min-h-[85vh] lg:min-h-screen flex items-center pt-4 sm:pt-10 md:pt-20 pb-8 sm:pb-12 md:pb-16 overflow-hidden">
       {/* Background Pattern */}
       <div className="absolute inset-0 z-0 opacity-10 md:opacity-20 pointer-events-none overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-brand-red/25 via-transparent to-transparent" />
@@ -1676,7 +1676,7 @@ const Services = ({ onServiceSelect }: { onServiceSelect: (type: string) => void
   if (loading) return null;
 
   return (
-    <section id="services" className="py-16 md:py-24 bg-brand-dark relative overflow-hidden">
+    <section id="services" className="py-10 sm:py-16 md:py-24 bg-brand-dark relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 md:mb-16 gap-4">
           <div className={cn("text-center md:text-right", lang === 'en' && "md:text-left")}>
@@ -1787,7 +1787,7 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
   };
 
   return (
-    <section id="offers" className="py-24 bg-brand-black relative overflow-hidden">
+    <section id="offers" className="py-10 sm:py-16 md:py-24 bg-brand-black relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
         <div className={cn("text-center mb-16", lang === 'en' && "md:text-left")}>
           <h2 className="text-2xl md:text-4xl font-display font-black mb-4 italic uppercase">
@@ -1897,7 +1897,7 @@ const Gallery = () => {
   if (loading) return null;
 
   return (
-    <section id="gallery" className="py-24 bg-brand-dark">
+    <section id="gallery" className="py-10 sm:py-16 md:py-24 bg-brand-dark">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className={cn("text-center mb-16", lang === 'en' && "md:text-left")}>
           <h2 className="text-2xl md:text-4xl font-display font-black mb-4 italic uppercase">
@@ -2504,7 +2504,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   };
 
   return (
-    <section id="booking" className="py-16 md:py-24 relative overflow-hidden">
+    <section id="booking" className="py-8 sm:py-14 md:py-24 relative overflow-hidden">
       <div className="max-w-4xl mx-auto px-4 md:px-6 relative z-10">
         <motion.div 
           whileHover={{ rotateX: 1, rotateY: -1 }}
@@ -3204,7 +3204,7 @@ const Testimonials = () => {
   if (loading) return null;
 
   return (
-    <section id="testimonials" className="py-16 md:py-24 bg-brand-dark relative overflow-hidden">
+    <section id="testimonials" className="py-10 sm:py-16 md:py-24 bg-brand-dark relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
         <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-10 md:mb-14 gap-6">
           <div className={cn("text-center md:text-right", lang === 'en' && "md:text-left")}>
@@ -9562,7 +9562,7 @@ const FAQItem = ({ question, answer }: { question: string, answer: string }) => 
 const FAQ = () => {
   const { t, lang } = useLanguage();
   return (
-    <section id="faq" className="py-24 bg-brand-black">
+    <section id="faq" className="py-10 sm:py-16 md:py-24 bg-brand-black">
       <div className="max-w-3xl mx-auto px-4 md:px-6">
         <div className={cn("text-center mb-16", lang === 'en' && "md:text-left")}>
           <h2 className="text-2xl md:text-4xl font-display font-black mb-4 italic uppercase">
@@ -9643,7 +9643,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
   }, []);
 
   return (
-    <footer className="bg-brand-black border-t border-white/5 pt-12 pb-32 md:pb-12">
+    <footer className="bg-brand-black border-t border-white/5 pt-10 sm:pt-12 pb-36 sm:pb-40 md:pb-14">
       <div className={cn("max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12", lang === 'ar' ? "text-right" : "text-left")}>
         <div className="col-span-2">
           <div className="flex items-center gap-2 mb-6">
@@ -9898,7 +9898,7 @@ const ProcessStep = React.memo(({ number, title, description }: { number: string
 const Process = () => {
   const { t, lang } = useLanguage();
   return (
-    <section id="process" className="py-24 bg-brand-black relative overflow-hidden">
+    <section id="process" className="py-10 sm:py-16 md:py-24 bg-brand-black relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
         <div className={cn("text-center mb-16", lang === 'en' && "md:text-left")}>
           <h2 className="text-2xl md:text-4xl font-display font-black mb-4 italic uppercase">
@@ -9937,7 +9937,7 @@ const Process = () => {
 const Stats = React.memo(() => {
   const { t } = useLanguage();
   return (
-    <section className="py-12 bg-brand-black border-y border-white/5">
+    <section className="py-8 sm:py-12 bg-brand-black border-y border-white/5">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
           <motion.div 
@@ -10121,7 +10121,7 @@ const ContactSection = ({ settings }: { settings: AppSettings }) => {
   };
   
   return (
-    <section id="contact" className="py-24 relative overflow-hidden">
+    <section id="contact" className="py-10 sm:py-16 md:py-24 relative overflow-hidden">
       <div className="container mx-auto px-6">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
@@ -10492,7 +10492,7 @@ function MainContent() {
 
   if (isMaintenanceActive && !isAuthOrAdminRoute) {
     return (
-      <div className="min-h-screen bg-brand-black text-white flex flex-col" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen min-h-[100dvh] bg-brand-black text-white flex flex-col" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
         <DynamicStyles settings={settings} />
         <Ticker settings={{
           ...settings,
@@ -10500,7 +10500,7 @@ function MainContent() {
         }} />
         <Navbar settings={settings} isAdmin={isAdminLoggedIn} isMaintenance={true} />
         
-        <main className="flex-1 pt-24 sm:pt-28 md:pt-32 pb-16 flex items-center justify-center">
+        <main className="flex-1 pt-24 sm:pt-28 md:pt-32 pb-24 sm:pb-28 flex items-center justify-center">
           <MaintenancePage 
             message={settings.maintenanceMessage} 
             onSecretTrigger={() => navigate('/login')} 
@@ -10511,12 +10511,12 @@ function MainContent() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-black text-white" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen min-h-[100dvh] bg-brand-black text-white flex flex-col" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <DynamicStyles settings={settings} />
       <Ticker settings={settings} />
       <Navbar settings={settings} isAdmin={isAdminLoggedIn} isMaintenance={isMaintenanceActive} />
       
-      <main className="pt-20 sm:pt-24 md:pt-28 pb-24 md:pb-0">
+      <main className="flex-1 pt-24 sm:pt-28 md:pt-32 pb-32 sm:pb-36 md:pb-0">
         <Routes>
           <Route path="/" element={
             <>

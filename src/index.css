@@ -48,6 +48,7 @@
     touch-action: manipulation;
     overflow-x: hidden;
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   /* Prevent auto-zoom on iOS inputs */
@@ -65,12 +66,23 @@
   }
 }
 
-/* Safe area padding utilities for mobile phones & tablets */
+/* Safe area padding & margin utilities for mobile phones & tablets */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 .pb-safe {
-  padding-bottom: max(env(safe-area-inset-bottom, 0px), 12px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 14px);
 }
 .pt-safe {
-  padding-top: max(env(safe-area-inset-top, 0px), 12px);
+  padding-top: max(env(safe-area-inset-top, 0px), 14px);
+}
+.mb-safe {
+  margin-bottom: max(env(safe-area-inset-bottom, 0px), 14px);
+}
+.mt-safe {
+  margin-top: max(env(safe-area-inset-top, 0px), 14px);
 }
 
 /* Fluid responsive utilities */

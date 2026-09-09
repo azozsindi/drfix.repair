@@ -80,7 +80,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
   const whatsappSupportNumber = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
 
   return (
-    <div className="min-h-screen bg-brand-black text-white pt-24 pb-20 px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white">
+    <div className="min-h-[auto] sm:min-h-screen bg-brand-black text-white pt-4 sm:pt-10 md:pt-12 pb-16 sm:pb-24 px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white">
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-brand-red/5 rounded-full blur-[120px]" />
