@@ -88,7 +88,8 @@ import {
   UserCheck,
   KeyRound,
   ZoomIn,
-  Handshake
+  Handshake,
+  FileCheck
 } from 'lucide-react';
 import { ReportsView } from './components/ReportsView';
 import { StaffManagement } from './components/StaffManagement';
@@ -114,6 +115,7 @@ import { StatusChangeModal } from './components/StatusChangeModal';
 import { TechnicianReviewModal } from './components/TechnicianReviewModal';
 import { PartnersPage } from './components/PartnersPage';
 import { AdminPartnersManager } from './components/AdminPartnersManager';
+import { AdminContractsManager } from './components/AdminContractsManager';
 import { SystemManual } from './components/SystemManual';
 import { LegalModal, DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { 
@@ -125,6 +127,9 @@ import {
   ROLE_PRESETS,
   Partner,
   DEFAULT_PARTNERS,
+  Contract,
+  ContractVehicle,
+  DEFAULT_SAMPLE_CONTRACTS,
   getBookingTimestamp,
   sortBookingsNewestFirst,
   BookingStatus,
@@ -611,6 +616,8 @@ interface AppSettings {
   // Privacy Policy & Terms of Service (PDPL Compliant)
   privacyPolicyText?: string;
   termsOfServiceText?: string;
+  showPrivacyPolicy?: boolean;
+  showTermsOfService?: boolean;
 }
 
 // Built-in Instant Brand Defaults to completely eliminate any reload/refresh flicker
@@ -648,6 +655,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showStats: true,
   showPartners: true,
   enableCustomerAccounts: true,
+  showPrivacyPolicy: true,
+  showTermsOfService: true,
   copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX",
   privacyPolicyText: "",
   termsOfServiceText: ""
@@ -920,15 +929,15 @@ const ImageUploadSizeBadge = ({
               <span className="font-bold text-white font-mono text-xs">{meta.origSize}</span>
               <span className="text-gray-400 text-[9px] block font-mono">({meta.origDim})</span>
             </div>
-            <div className="bg-black/50 p-2 rounded-lg border border-emerald-500/20">
-              <span className="text-emerald-400 block text-[10px] font-bold">الحجم الفعلي المحفوظ:</span>
-              <span className="font-bold text-emerald-400 font-mono text-xs">{meta.compSize}</span>
-              <span className="text-emerald-400/80 text-[9px] block font-mono">({meta.compDim})</span>
+            <div className="bg-black/50 p-2 rounded-lg border border-brand-red/20">
+              <span className="text-brand-red block text-[10px] font-bold">الحجم الفعلي المحفوظ:</span>
+              <span className="font-bold text-white font-mono text-xs">{meta.compSize}</span>
+              <span className="text-gray-400 text-[9px] block font-mono">({meta.compDim})</span>
             </div>
             <div className="bg-black/50 p-2 rounded-lg border border-white/5 col-span-2 sm:col-span-1 flex flex-col justify-center">
               <span className="text-gray-400 block text-[10px]">سرعة العرض والتصفح:</span>
-              <span className="font-bold text-emerald-400 text-xs flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="font-bold text-white text-xs flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-brand-red animate-pulse"></span>
                 فائقة السرعة ومثالية ✓
               </span>
             </div>
@@ -937,12 +946,12 @@ const ImageUploadSizeBadge = ({
       ) : liveInfo ? (
         <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 text-gray-300">
           <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-brand-red" />
             <span className="text-[11px] text-gray-400">بيانات الصورة الحالية:</span>
             {liveInfo.dim && <span className="font-mono text-white text-[11px] bg-black/40 px-1.5 py-0.5 rounded border border-white/5">{liveInfo.dim}</span>}
           </div>
           {liveInfo.size ? (
-            <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-[11px] border border-emerald-500/20">
+            <span className="font-mono font-bold text-white bg-brand-red/15 px-2 py-0.5 rounded text-[11px] border border-brand-red/30">
               حجم الملف: {liveInfo.size} (محسّنة للويب)
             </span>
           ) : (
@@ -1153,10 +1162,10 @@ const Navbar = ({
                 href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="p-2 rounded-full bg-[#25D366]/20 border border-[#25D366]/30 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-all shadow-sm shadow-green-500/20 shrink-0"
+                className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all shadow-sm shrink-0 group"
                 title="واتساب"
               >
-                <MessageCircle className="w-3.5 h-3.5" />
+                <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
               </a>
             </div>
 
@@ -1234,9 +1243,9 @@ const Navbar = ({
                     target="_blank" 
                     rel="noopener noreferrer" 
                     onClick={() => setIsOpen(false)}
-                    className="py-3 px-4 rounded-xl bg-[#25D366]/20 border border-[#25D366]/30 flex items-center justify-center gap-2 text-sm text-green-400 hover:bg-[#25D366]/30 transition-colors"
+                    className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 hover:border-brand-red transition-colors group"
                   >
-                    <MessageCircle className="w-4 h-4" />
+                    <MessageCircle className="w-4 h-4 text-brand-red" />
                     <span>واتساب</span>
                   </a>
                 </div>
@@ -1296,9 +1305,9 @@ const MobileQuickBar = ({ settings }: { settings: AppSettings }) => {
           href={`https://wa.me/${whatsappNumber}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-green-400 hover:text-white hover:bg-[#25D366] transition-all active:scale-95"
+          className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-brand-red transition-all active:scale-95 group"
         >
-          <MessageCircle className="w-5 h-5 mb-0.5" />
+          <MessageCircle className="w-5 h-5 mb-0.5 text-brand-red" />
           <span className="text-[10px] whitespace-nowrap font-bold">واتساب</span>
         </a>
 
@@ -1427,10 +1436,10 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
                 href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-[#25D366] text-white rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-[#128C7E] transition-all active:scale-95 cursor-pointer shadow-lg shadow-green-500/20" 
+                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-white/10 hover:border-brand-red transition-all active:scale-95 cursor-pointer group text-white" 
                 title="واتساب"
               >
-                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red group-hover:scale-110 transition-transform" />
                 <span>واتساب</span>
               </a>
             </div>
@@ -2213,10 +2222,8 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
       await addDoc(collection(db, 'maintenance'), bookingDocData);
       
-      // 1b. Automatically open/update customer file in Firestore (طلب العميل: مجرد ما يحجز العميل ينفتح له ملف)
+      // 1b. Automatically open/update customer file in Firestore (توحيد كرت وملف العميل بدون أي تكرار)
       try {
-        const customersRef = collection(db, 'customers');
-        const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
         const carInfo = {
           make: normalizedMake,
           model: normalizedModel,
@@ -2235,111 +2242,157 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
         const carSignature = getCarSignature(normalizedMake, normalizedModel, normalizedPlate, normalizedYear);
 
-        if (!custSnap.empty) {
-          const existingDoc = custSnap.docs[0];
-          const existingData = existingDoc.data();
-          const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
-          const existingCars: any[] = Array.isArray(existingData.cars) ? existingData.cars : [];
-          const existingRemoved: string[] = Array.isArray(existingData.removedCars) ? existingData.removedCars : [];
-          
-          const hasCarInVehicles = existingVehicles.some(v => 
-            areCarsEqual(
-              { make: v.make || '', model: v.model || '', year: v.year || '' }, 
-              carItem
-            )
-          );
-          const updatedVehicles = hasCarInVehicles ? existingVehicles : [...existingVehicles, carInfo];
+        // 1. Identify canonical master document ID
+        // If customer is logged in, their Google UID / customer.id is the master ID; otherwise cleanPhone
+        const masterDocId = customer?.id || customer?.googleUid || cleanPhone;
+        const masterRef = doc(db, 'customers', masterDocId);
 
-          // Check if car already exists using robust deduplication
-          const alreadyInCars = existingCars.some(c => areCarsEqual(c, carItem));
-          // Check if customer explicitly deleted this car
-          const wasExplicitlyRemoved = existingRemoved.includes(carSignature);
+        // 2. Gather all related candidate documents to prevent and clean duplicates
+        const candidateDocs: { id: string; ref: any; data: any }[] = [];
+        const seenCandidateIds = new Set<string>();
 
-          let updatedCars = deduplicateCarsList(existingCars, existingRemoved);
-          if (!alreadyInCars && !wasExplicitlyRemoved) {
-            updatedCars = deduplicateCarsList([...updatedCars, carItem], existingRemoved);
+        // Check master doc
+        try {
+          const masterSnap = await getDoc(masterRef);
+          if (masterSnap.exists()) {
+            seenCandidateIds.add(masterSnap.id);
+            candidateDocs.push({ id: masterSnap.id, ref: masterRef, data: masterSnap.data() });
           }
+        } catch (e) {}
 
-          const newVisits = (Number(existingData.totalVisits) || 1) + 1;
-
-          await updateDoc(doc(db, 'customers', existingDoc.id), {
-            name: (resolvedCustomerName && resolvedCustomerName !== 'عميل' && (!existingData.name || existingData.name.includes('عميل'))) ? resolvedCustomerName : existingData.name,
-            vehicles: updatedVehicles,
-            cars: updatedCars,
-            totalVisits: newVisits,
-            lastVisitDate: new Date().toISOString(),
-            status: newVisits >= 3 ? 'vip' : (existingData.status || 'regular'),
-            notes: existingData.notes ? `${existingData.notes}\n• حجز جديد: ${serviceTitle}` : `حجز خدمة: ${serviceTitle}`,
-            updatedAt: serverTimestamp()
-          });
-
-          // Also ensure direct doc by phone ID is updated if it exists
-          if (existingDoc.id !== cleanPhone) {
-            try {
-              const directPhoneRef = doc(db, 'customers', cleanPhone);
-              const dSnap = await getDoc(directPhoneRef);
-              if (dSnap.exists()) {
-                const dData = dSnap.data();
-                const dCars: any[] = Array.isArray(dData?.cars) ? dData.cars : [];
-                const dRemoved: string[] = Array.isArray(dData?.removedCars) ? dData.removedCars : [];
-                const cleanDCars = deduplicateCarsList(dCars, dRemoved);
-                if (!cleanDCars.some(c => areCarsEqual(c, carItem)) && !dRemoved.includes(carSignature)) {
-                  await updateDoc(directPhoneRef, { cars: deduplicateCarsList([...cleanDCars, carItem], dRemoved), updatedAt: serverTimestamp() });
-                } else if (cleanDCars.length !== dCars.length) {
-                  await updateDoc(directPhoneRef, { cars: cleanDCars, updatedAt: serverTimestamp() });
-                }
-              }
-            } catch {}
-          }
-
-          // Sync localStorage session if active customer matches
-          try {
-            const savedSession = localStorage.getItem('drfix_customer_session');
-            if (savedSession) {
-              const sObj = JSON.parse(savedSession);
-              if (sObj.id === existingDoc.id || sObj.phone === cleanPhone) {
-                sObj.cars = updatedCars;
-                localStorage.setItem('drfix_customer_session', JSON.stringify(sObj));
-              }
+        // Query by phone
+        try {
+          const phoneSnap = await getDocs(query(collection(db, 'customers'), where('phone', '==', cleanPhone)));
+          phoneSnap.forEach(d => {
+            if (!seenCandidateIds.has(d.id)) {
+              seenCandidateIds.add(d.id);
+              candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() });
             }
-          } catch {}
-        } else {
-          // Open a brand new customer file
-          await addDoc(customersRef, {
-            name: resolvedCustomerName || 'عميل كريم',
-            phone: cleanPhone,
-            city: 'جدة',
-            address: locationName || 'جدة',
-            vehicles: [carInfo],
-            cars: [carItem],
-            totalVisits: 1,
-            firstVisitDate: new Date().toISOString(),
-            lastVisitDate: new Date().toISOString(),
-            status: 'new',
-            notes: `حجز خدمة: ${serviceTitle}${data.description ? ` - ${data.description.trim()}` : ''}`,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
           });
+        } catch (e) {}
 
-          // Also create doc under customers/{cleanPhone} for instant customer portal access
+        // Query by googleUid if known
+        if (customer?.googleUid) {
           try {
-            await setDoc(doc(db, 'customers', cleanPhone), {
-              id: cleanPhone,
-              name: resolvedCustomerName || 'عميل كريم',
-              phone: cleanPhone,
-              cars: [carItem],
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            }, { merge: true });
-          } catch {}
+            const gSnap = await getDocs(query(collection(db, 'customers'), where('googleUid', '==', customer.googleUid)));
+            gSnap.forEach(d => {
+              if (!seenCandidateIds.has(d.id)) {
+                seenCandidateIds.add(d.id);
+                candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() });
+              }
+            });
+          } catch (e) {}
         }
+
+        // Query by email if known
+        if (customer?.email) {
+          try {
+            const eSnap = await getDocs(query(collection(db, 'customers'), where('email', '==', customer.email)));
+            eSnap.forEach(d => {
+              if (!seenCandidateIds.has(d.id)) {
+                seenCandidateIds.add(d.id);
+                candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() });
+              }
+            });
+          } catch (e) {}
+        }
+
+        // 3. Merge all vehicles, cars, and visits from all candidates
+        let allCars: any[] = [];
+        let allVehicles: any[] = [];
+        let allRemoved: string[] = [];
+        let totalVisits = 0;
+        let totalSpent = 0;
+        let bestName = resolvedCustomerName || customer?.name || '';
+        let bestEmail = customer?.email || '';
+        let bestGoogleUid = customer?.googleUid || (customer?.id !== cleanPhone ? customer?.id : '');
+        let existingNotes = '';
+
+        candidateDocs.forEach(c => {
+          const d = c.data;
+          if (Array.isArray(d.cars)) allCars.push(...d.cars);
+          if (Array.isArray(d.vehicles)) allVehicles.push(...d.vehicles);
+          if (Array.isArray(d.removedCars)) allRemoved.push(...d.removedCars);
+          totalVisits = Math.max(totalVisits, Number(d.totalVisits || 0));
+          totalSpent = Math.max(totalSpent, Number(d.totalSpent || 0));
+          if (d.name && !bestName && d.name !== 'عميل كريم' && d.name !== 'عميل') bestName = d.name;
+          if (d.email && !bestEmail) bestEmail = d.email;
+          if (d.googleUid && !bestGoogleUid) bestGoogleUid = d.googleUid;
+          if (d.notes && !existingNotes.includes(d.notes)) {
+            existingNotes = existingNotes ? `${existingNotes}\n${d.notes}` : d.notes;
+          }
+        });
+
+        // Deduplicate vehicles
+        const hasCarInVehicles = allVehicles.some(v => 
+          areCarsEqual(
+            { make: v.make || '', model: v.model || '', year: v.year || '' }, 
+            carItem
+          )
+        );
+        const updatedVehicles = hasCarInVehicles ? allVehicles : [...allVehicles, carInfo];
+
+        // Deduplicate cars
+        const alreadyInCars = allCars.some(c => areCarsEqual(c, carItem));
+        const wasExplicitlyRemoved = allRemoved.includes(carSignature);
+        let updatedCars = deduplicateCarsList(allCars, allRemoved);
+        if (!alreadyInCars && !wasExplicitlyRemoved) {
+          updatedCars = deduplicateCarsList([...updatedCars, carItem], allRemoved);
+        }
+
+        const newVisits = totalVisits + 1;
+        const finalName = bestName || resolvedCustomerName || 'عميل كريم';
+
+        // 4. Save to the single canonical master document
+        await setDoc(masterRef, {
+          id: masterDocId,
+          name: finalName,
+          phone: cleanPhone,
+          email: bestEmail || '',
+          googleUid: bestGoogleUid || '',
+          city: 'جدة',
+          address: locationName || 'جدة',
+          vehicles: updatedVehicles,
+          cars: updatedCars,
+          totalVisits: newVisits,
+          totalSpent: totalSpent,
+          lastVisitDate: new Date().toISOString(),
+          status: newVisits >= 3 ? 'vip' : 'regular',
+          notes: existingNotes ? `${existingNotes}\n• حجز جديد: ${serviceTitle}` : `حجز خدمة: ${serviceTitle}`,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Clean up any redundant duplicate docs from old bookings so customer list has NO duplicates
+        for (const candidate of candidateDocs) {
+          if (candidate.id !== masterDocId) {
+            try {
+              await deleteDoc(candidate.ref);
+              console.log(`Cleaned redundant customer document: ${candidate.id}`);
+            } catch (err) {
+              console.warn('Could not remove duplicate doc:', err);
+            }
+          }
+        }
+
+        // Sync localStorage session if active customer matches
+        try {
+          const savedSession = localStorage.getItem('drfix_customer_session');
+          if (savedSession) {
+            const sObj = JSON.parse(savedSession);
+            if (sObj.id === masterDocId || sObj.phone === cleanPhone) {
+              sObj.cars = updatedCars;
+              sObj.phone = cleanPhone;
+              localStorage.setItem('drfix_customer_session', JSON.stringify(sObj));
+            }
+          }
+        } catch {}
 
         // Dispatch browser event to instantly update "My Cars" for logged-in customer
         window.dispatchEvent(new CustomEvent('drfix_customer_cars_updated', {
           detail: { phone: cleanPhone, car: carItem }
         }));
       } catch (custFileErr) {
-        console.warn('Error opening customer file on booking:', custFileErr);
+        console.warn('Error opening/updating customer file on booking:', custFileErr);
       }
 
       // Save phone to localStorage for auto-tracking
@@ -2650,20 +2703,20 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 animate-fadeIn">
             {/* Logged in Customer Header Card */}
-            <div className="p-4 rounded-2xl bg-black/60 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+            <div className="p-4 rounded-2xl bg-black/60 border border-brand-red/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 {customer?.photoURL ? (
-                  <img src={customer.photoURL} alt={customer.name} className="w-11 h-11 rounded-full border-2 border-emerald-500/50 object-cover shadow-sm shrink-0" referrerPolicy="no-referrer" />
+                  <img src={customer.photoURL} alt={customer.name} className="w-11 h-11 rounded-full border-2 border-brand-red/40 object-cover shadow-sm shrink-0" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="w-11 h-11 rounded-full bg-emerald-500/20 border-2 border-emerald-500/50 flex items-center justify-center text-emerald-400 font-black text-base shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-brand-red/20 border-2 border-brand-red/40 flex items-center justify-center text-brand-red font-black text-base shrink-0">
                     {customer?.name?.charAt(0) || 'G'}
                   </div>
                 )}
                 <div className="text-right flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-white truncate">{customer?.name}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
+                    <span className="px-2 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/30 text-[10px] font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-brand-red" />
                       {lang === 'ar' ? 'مسجل وموثق بحساب Google' : 'Verified Google Account'}
                     </span>
                   </div>
@@ -2983,7 +3036,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                     href={`https://api.whatsapp.com/send?phone=${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}&text=${encodeURIComponent(`السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-3 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-green-500/20 cursor-pointer transition-all active:scale-95"
+                    className="px-5 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all active:scale-95"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>تأكيد عبر واتساب</span>
@@ -3018,96 +3071,71 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
 
 const TestimonialCard = React.memo(({ name, comment, rating, reply }: { name?: string, comment?: string, rating?: number, reply?: string }) => {
   const { t, lang } = useLanguage();
-  const [isExpanded, setIsExpanded] = useState(false);
   const safeName = name && name.trim() ? name.trim() : (lang === 'ar' ? 'عميل معتمد' : 'Customer');
   const initial = safeName.charAt(0).toUpperCase();
   const safeRating = typeof rating === 'number' && rating >= 1 && rating <= 5 ? rating : 5;
-
   const rawComment = comment?.trim() || '';
-  const isLong = rawComment.length > 95 || (Boolean(reply) && reply!.trim().length > 70);
 
   return (
-    <motion.div 
-      layout
-      whileHover={{ y: -4 }}
-      className="glass-card relative p-4 sm:p-5 rounded-2xl border-white/10 hover:border-brand-red/40 transition-all duration-300 shadow-xl flex flex-col justify-between overflow-hidden whitespace-normal break-words w-full box-border h-full min-h-[220px] bg-gradient-to-b from-white/[0.04] to-transparent group"
+    <div 
+      className="glass-card relative p-4 rounded-2xl border border-white/10 hover:border-brand-red/40 transition-all duration-300 shadow-md flex flex-col justify-between overflow-hidden whitespace-normal break-words w-full box-border h-[195px] sm:h-[205px] bg-gradient-to-b from-white/[0.04] to-black/40 group select-none"
     >
-      <Quote className="w-8 h-8 text-white/[0.03] group-hover:text-brand-red/[0.08] transition-colors absolute top-3.5 left-4 pointer-events-none rotate-180" />
+      <Quote className="w-6 h-6 text-white/[0.03] group-hover:text-brand-red/[0.08] transition-colors absolute top-3 left-3 pointer-events-none rotate-180" />
 
-      <div className="relative z-10 flex-1">
+      <div className="relative z-10 flex-1 min-h-0 flex flex-col">
         {/* Author Header */}
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-brand-red/30 to-brand-red/10 border border-brand-red/30 flex items-center justify-center font-bold text-brand-red text-xs sm:text-sm shrink-0 shadow-inner">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-brand-red/30 to-brand-red/10 border border-brand-red/30 flex items-center justify-center font-bold text-brand-red text-xs shrink-0 shadow-inner">
               {initial}
             </div>
             <div className="min-w-0">
-              <span className="font-bold text-xs sm:text-sm text-white truncate block max-w-[130px] sm:max-w-[160px]">{safeName}</span>
-              <div className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
-                <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
-                <span>{lang === 'ar' ? 'عميل موثق' : 'Verified Client'}</span>
+              <span className="font-bold text-xs text-white truncate block max-w-[120px] sm:max-w-[150px]">{safeName}</span>
+              <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium">
+                <CheckCircle2 className="w-2.5 h-2.5 text-brand-red shrink-0" />
+                <span>{lang === 'ar' ? 'عميل موثق' : 'Verified'}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex gap-0.5 shrink-0 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/5">
+          <div className="flex gap-0.5 shrink-0 bg-white/[0.03] px-1.5 py-0.5 rounded-md border border-white/5">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} className={cn("w-3 h-3 sm:w-3.5 sm:h-3.5", i < safeRating ? "text-amber-400 fill-amber-400" : "text-gray-700")} />
+              <Star key={i} className={cn("w-2.5 h-2.5 sm:w-3 sm:h-3", i < safeRating ? "text-brand-red fill-brand-red" : "text-gray-700")} />
             ))}
           </div>
         </div>
 
         {/* Comment Text */}
-        <p className={cn(
-          "text-gray-200 text-xs sm:text-[13px] leading-relaxed break-words font-sans transition-all",
-          !isExpanded && isLong ? "line-clamp-3" : ""
-        )}>
+        <p className="text-gray-200 text-xs leading-relaxed break-words font-sans line-clamp-3 flex-1 overflow-hidden mt-0.5">
           "{rawComment || (lang === 'ar' ? 'خدمة صيانة وفحص ممتازة، شكراً لفريق دكتور فيكس.' : 'Great service, highly recommended.')}"
         </p>
-
-        {isLong && (
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand-red hover:text-red-400 transition-colors cursor-pointer select-none"
-          >
-            <span>{isExpanded ? (lang === 'ar' ? 'عرض أقل' : 'Show less') : (lang === 'ar' ? 'عرض المزيد' : 'Read more')}</span>
-            <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", isExpanded && "rotate-180")} />
-          </button>
-        )}
       </div>
 
       {/* Reply or Footer */}
-      <div className="relative z-10 mt-3 pt-2.5 border-t border-white/5">
+      <div className="relative z-10 mt-2 pt-2 border-t border-white/5 shrink-0">
         {reply ? (
           <div className={cn(
-            "bg-gradient-to-r from-brand-red/15 to-white/[0.02] p-2.5 rounded-xl border-brand-red text-xs shadow-inner transition-all",
+            "bg-brand-red/10 px-2.5 py-1.5 rounded-lg border-brand-red text-xs transition-all",
             lang === 'ar' ? "border-r-2" : "border-l-2"
           )}>
-            <div className="text-[10px] font-bold text-brand-red uppercase tracking-wider mb-1 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3 h-3 shrink-0" />
-                <span>{lang === 'ar' ? 'رد إدارة دكتور فيكس' : t.testimonials.adminReply}</span>
-              </div>
-              <span className="text-[9px] text-gray-400 font-mono">{lang === 'ar' ? 'معتمد' : 'Official'}</span>
+            <div className="text-[9px] font-bold text-brand-red uppercase tracking-wider flex items-center gap-1 mb-0.5">
+              <ShieldCheck className="w-2.5 h-2.5 shrink-0" />
+              <span>{lang === 'ar' ? 'رد الإدارة' : t.testimonials.adminReply}</span>
             </div>
-            <p className={cn(
-              "text-gray-300 text-[11px] sm:text-xs leading-relaxed break-words font-sans",
-              !isExpanded && reply.length > 85 ? "line-clamp-2" : ""
-            )}>
+            <p className="text-gray-300 text-[11px] leading-snug break-words font-sans line-clamp-1">
               {reply}
             </p>
           </div>
         ) : (
-          <div className="flex items-center justify-between text-[11px] text-gray-500">
-            <span className="text-gray-400 text-[11px]">
+          <div className="flex items-center justify-between text-[10px] text-gray-400">
+            <span className="text-gray-400 truncate">
               {lang === 'ar' ? 'صيانة وفحص متنقل بجدة' : 'Mobile Car Repair'}
             </span>
-            <span className="font-mono text-amber-400/90 font-bold text-xs">{safeRating}.0 / 5.0 ★</span>
+            <span className="font-mono text-brand-red font-bold shrink-0">{safeRating}.0 / 5.0 ★</span>
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 });
 
@@ -3204,35 +3232,27 @@ const Testimonials = () => {
   if (loading) return null;
 
   return (
-    <section id="testimonials" className="py-10 sm:py-16 md:py-24 bg-brand-dark relative overflow-hidden">
+    <section id="testimonials" className="py-8 sm:py-12 md:py-16 bg-brand-dark relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
-        <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-10 md:mb-14 gap-6">
+        <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-6 sm:mb-8 gap-4">
           <div className={cn("text-center md:text-right", lang === 'en' && "md:text-left")}>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 text-xs font-bold mb-3">
-              <div className="flex gap-0.5">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
-                ))}
-              </div>
-              <span>{lang === 'ar' ? 'تقييم 4.9 من 5 (أكثر من 500+ عميل موثق)' : '4.9/5 Rating (500+ Verified Clients)'}</span>
-            </div>
             <h2 className="text-2xl md:text-4xl font-display font-black mb-3 italic uppercase tracking-tight">
               {t.testimonials.title} <span className="text-brand-red">{t.testimonials.titleAccent}</span>
             </h2>
             <div className={cn("w-20 md:w-24 h-1.5 bg-brand-red mx-auto md:mx-0 rounded-full", lang === 'en' && "md:mr-0 md:ml-auto")} />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => scroll(lang === 'ar' ? 'right' : 'left')}
-              className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer shadow-md"
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer shadow-md"
               aria-label="Previous testimonials"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
             <button
               onClick={() => scroll(lang === 'ar' ? 'left' : 'right')}
-              className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer shadow-md"
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer shadow-md"
               aria-label="Next testimonials"
             >
               <ChevronLeft className="w-5 h-5" />
@@ -3247,12 +3267,12 @@ const Testimonials = () => {
           onMouseUp={handleMouseLeaveOrUp}
           onMouseMove={handleMouseMove}
           className={cn(
-            "flex items-stretch overflow-x-auto gap-4 sm:gap-5 md:gap-6 pb-6 no-scrollbar touch-pan-x select-none",
+            "flex items-stretch overflow-x-auto gap-3.5 sm:gap-4 md:gap-5 pb-4 no-scrollbar touch-pan-x select-none",
             isMouseDown ? "cursor-grabbing" : "cursor-grab"
           )}
         >
           {displayData.map((review, idx) => (
-            <div key={review.id || idx} className="w-[82vw] sm:w-[320px] md:w-[350px] shrink-0 flex flex-col">
+            <div key={review.id || idx} className="w-[260px] sm:w-[280px] md:w-[300px] shrink-0 flex flex-col">
               <TestimonialCard 
                 name={review.name} 
                 comment={review.comment} 
@@ -3263,7 +3283,7 @@ const Testimonials = () => {
           ))}
         </div>
 
-        <div className="mt-12 md:mt-16 max-w-2xl mx-auto w-full px-2 sm:px-0 box-border">
+        <div className="mt-8 sm:mt-10 max-w-xl mx-auto w-full px-2 sm:px-0 box-border">
           <AddTestimonialForm />
         </div>
       </div>
@@ -3272,6 +3292,7 @@ const Testimonials = () => {
 };
 
 const AddTestimonialForm = () => {
+  const [isOpen, setIsOpen] = useState(false);
   const [rating, setRating] = useState(5);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -3337,7 +3358,10 @@ const AddTestimonialForm = () => {
       if (customer?.name) {
         setValue('name', customer.name);
       }
-      setTimeout(() => setIsSuccess(false), 4000);
+      setTimeout(() => {
+        setIsSuccess(false);
+        setIsOpen(false);
+      }, 3500);
     } catch (error) {
       console.error("Error adding testimonial:", error);
       handleFirestoreError(error, OperationType.CREATE, 'testimonials');
@@ -3347,71 +3371,104 @@ const AddTestimonialForm = () => {
     }
   };
 
+  if (!isOpen) {
+    return (
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-brand-red/40 hover:bg-white/[0.08] text-white font-bold text-xs sm:text-sm transition-all shadow-md group cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4 text-brand-red group-hover:scale-110 transition-transform" />
+          <span>{lang === 'ar' ? 'شاركنا رأيك وتجربتك مع DR.FIX' : 'Share Your DR.FIX Experience'}</span>
+        </button>
+      </div>
+    );
+  }
+
   // If customer is not logged in, prompt them gracefully to sign in
   if (!customer) {
     return (
-      <div className="w-full max-w-full glass-card p-6 sm:p-8 border-brand-red/20 text-center rounded-3xl shadow-xl overflow-hidden box-border">
-        <div className="w-14 h-14 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-brand-red shadow-lg shadow-brand-red/10">
-          <Sparkles className="w-7 h-7" />
+      <div className="w-full max-w-full glass-card p-5 sm:p-6 border-brand-red/20 text-center rounded-2xl shadow-xl overflow-hidden box-border relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className="absolute top-3 left-3 w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          title={lang === 'ar' ? 'إغلاق' : 'Close'}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+        <div className="w-10 h-10 bg-brand-red/10 border border-brand-red/30 rounded-xl flex items-center justify-center mx-auto mb-3 text-brand-red shadow-lg shadow-brand-red/10">
+          <Sparkles className="w-5 h-5" />
         </div>
-        <h3 className="text-xl sm:text-2xl font-display font-black mb-3 italic text-white">
-          {t.testimonials.loginPromptTitle || (lang === 'ar' ? 'أضف طابعك الخاص وتجربتك في DR.FIX' : 'Share Your DR.FIX Experience')}
+        <h3 className="text-base sm:text-lg font-display font-black mb-1.5 italic text-white">
+          {t.testimonials.loginPromptTitle || (lang === 'ar' ? 'أضف رأيك وتجربتك في DR.FIX' : 'Share Your DR.FIX Experience')}
         </h3>
-        <p className="text-gray-300 text-xs sm:text-sm max-w-md mx-auto mb-6 leading-relaxed">
+        <p className="text-gray-300 text-xs max-w-md mx-auto mb-4 leading-relaxed">
           {t.testimonials.loginPromptDesc || (lang === 'ar' 
-            ? 'نعتز بآراء وتجارب عملائنا الكرام. لإضافة تعليقك وتقييمك وتوثيقه باسمك في المنصة، يُرجى تسجيل الدخول أولاً.'
+            ? 'نعتز بآراء وتجارب عملائنا الكرام. لإضافة تعليقك وتوثيقه باسمك في المنصة، يُرجى تسجيل الدخول أولاً.'
             : 'We cherish our customers authentic feedback. To leave your review and verify your identity, please sign in first.')}
         </p>
         <button
           type="button"
           onClick={() => openAuthModal('login')}
-          className="w-full sm:w-auto px-6 py-3.5 bg-brand-red text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-red-700 transition-all shadow-lg shadow-brand-red/25 cursor-pointer mx-auto text-sm"
+          className="w-full sm:w-auto px-5 py-2.5 bg-brand-red text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-700 transition-all shadow-lg shadow-brand-red/25 cursor-pointer mx-auto text-xs sm:text-sm"
         >
           <UserCheck className="w-4 h-4" />
-          <span>{t.testimonials.loginButton || (lang === 'ar' ? 'تسجيل الدخول لإضافة رأيك وتجربتك' : 'Sign in to Leave a Review')}</span>
+          <span>{t.testimonials.loginButton || (lang === 'ar' ? 'تسجيل الدخول لإضافة رأيك' : 'Sign in to Leave a Review')}</span>
         </button>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-full glass-card p-5 sm:p-7 md:p-8 border-brand-red/20 rounded-3xl shadow-2xl box-border overflow-hidden">
-      <div className="text-center mb-6">
-        <h3 className="text-lg sm:text-xl md:text-2xl font-display font-black italic mb-2 text-white">
-          {t.testimonials.addTitle} <span className="text-brand-red">{t.testimonials.addTitleAccent}</span>
-        </h3>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>{customer.name} ({t.testimonials.verifiedCustomer || (lang === 'ar' ? 'عميل موثق' : 'Verified Customer')})</span>
+    <div className="w-full max-w-full glass-card p-4 sm:p-6 border-brand-red/20 rounded-2xl shadow-2xl box-border overflow-hidden relative">
+      <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/5">
+        <div className="text-start">
+          <h3 className="text-base sm:text-lg font-display font-black italic text-white">
+            {t.testimonials.addTitle} <span className="text-brand-red">{t.testimonials.addTitleAccent}</span>
+          </h3>
+          <div className="inline-flex items-center gap-1.5 text-xs text-gray-400 font-medium mt-0.5">
+            <CheckCircle2 className="w-3 h-3 text-brand-red" />
+            <span>{customer.name} ({t.testimonials.verifiedCustomer || (lang === 'ar' ? 'عميل موثق' : 'Verified')})</span>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          title={lang === 'ar' ? 'إغلاق' : 'Close'}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
       </div>
       
       {isSuccess ? (
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center py-8"
+          className="text-center py-6"
         >
-          <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 className="w-8 h-8 text-green-500" />
+          <div className="w-12 h-12 bg-brand-red/15 border border-brand-red/30 rounded-full flex items-center justify-center mx-auto mb-3">
+            <CheckCircle2 className="w-6 h-6 text-brand-red" />
           </div>
-          <p className="text-lg md:text-xl font-bold text-white">{t.testimonials.thankYou}</p>
-          <p className="text-gray-400 text-sm mt-1">{t.testimonials.successMessage}</p>
+          <p className="text-base font-bold text-white">{t.testimonials.thankYou}</p>
+          <p className="text-gray-400 text-xs mt-1">{t.testimonials.successMessage}</p>
         </motion.div>
       ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 w-full max-w-full box-border">
-          <div className="flex justify-center gap-2 mb-2">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 w-full max-w-full box-border">
+          <div className="flex justify-center gap-1.5 mb-1">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
                 type="button"
                 onClick={() => setRating(star)}
-                className="focus:outline-none transition-transform hover:scale-110 p-1"
+                className="focus:outline-none transition-transform hover:scale-110 p-0.5 cursor-pointer"
                 aria-label={`Rating ${star} stars`}
               >
                 <Star 
                   className={cn(
-                    "w-7 h-7 sm:w-8 sm:h-8", 
+                    "w-6 h-6 sm:w-7 sm:h-7", 
                     star <= rating ? "text-brand-red fill-brand-red" : "text-gray-600"
                   )} 
                 />
@@ -3419,40 +3476,49 @@ const AddTestimonialForm = () => {
             ))}
           </div>
 
-          <div className="space-y-1.5 w-full">
+          <div className="space-y-1 w-full">
             <input 
               {...register('name', { required: true })}
               placeholder={t.testimonials.namePlaceholder}
               defaultValue={customer.name}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 focus:border-brand-red focus:outline-none transition-all text-sm sm:text-base text-white box-border"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 focus:border-brand-red focus:outline-none transition-all text-xs sm:text-sm text-white box-border"
             />
-            {errors.name && <span className="text-brand-red text-xs">{t.testimonials.nameError}</span>}
+            {errors.name && <span className="text-brand-red text-[11px]">{t.testimonials.nameError}</span>}
           </div>
 
-          <div className="space-y-1.5 w-full">
+          <div className="space-y-1 w-full">
             <textarea 
               {...register('comment', { required: true })}
               rows={3}
               placeholder={t.testimonials.commentPlaceholder}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 focus:border-brand-red focus:outline-none transition-all resize-none text-sm sm:text-base text-white box-border leading-relaxed"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 focus:border-brand-red focus:outline-none transition-all resize-none text-xs sm:text-sm text-white box-border leading-relaxed"
             />
-            {errors.comment && <span className="text-brand-red text-xs">{t.testimonials.commentError}</span>}
+            {errors.comment && <span className="text-brand-red text-[11px]">{t.testimonials.commentError}</span>}
           </div>
 
-          <button 
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-3.5 sm:py-4 bg-brand-red text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-brand-red/25 box-border text-sm sm:text-base"
-          >
-            {isSubmitting ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Send className={cn("w-4 h-4", lang === 'ar' ? "" : "rotate-180")} />
-                <span>{t.testimonials.submitReview}</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 pt-1">
+            <button 
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 py-2.5 bg-brand-red text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer shadow-md shadow-brand-red/20 box-border text-xs sm:text-sm"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  <Send className={cn("w-3.5 h-3.5", lang === 'ar' ? "" : "rotate-180")} />
+                  <span>{t.testimonials.submitReview}</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+            </button>
+          </div>
         </form>
       )}
     </div>
@@ -3509,11 +3575,19 @@ const AdminDashboard = ({
       return DEFAULT_PARTNERS;
     }
   });
+  const [contracts, setContracts] = useState<Contract[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_contracts');
+      return cached ? JSON.parse(cached) : DEFAULT_SAMPLE_CONTRACTS;
+    } catch {
+      return DEFAULT_SAMPLE_CONTRACTS;
+    }
+  });
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners' | 'manual'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'contracts' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners' | 'manual'>('dashboard');
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     type: 'batch_bookings' | 'batch_offers' | 'single';
@@ -3810,6 +3884,8 @@ const AdminDashboard = ({
     telegramChatId: settings.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
     enableSoundAlerts: settings.enableSoundAlerts ?? true,
     appDownloadUrl: settings.appDownloadUrl || DEFAULT_APP_SETTINGS.appDownloadUrl || 'https://drive.google.com/drive/folders/1dfh85Zi8ZELc7EfUkIPcTlPJjiM9kflh?usp=sharing',
+    showPrivacyPolicy: settings.showPrivacyPolicy ?? true,
+    showTermsOfService: settings.showTermsOfService ?? true,
     privacyPolicyText: settings.privacyPolicyText || '',
     termsOfServiceText: settings.termsOfServiceText || ''
   });
@@ -3911,6 +3987,8 @@ const AdminDashboard = ({
       telegramBotToken: settings.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN,
       telegramChatId: settings.telegramChatId || DEFAULT_TELEGRAM_CHAT_ID,
       enableSoundAlerts: settings.enableSoundAlerts ?? true,
+      showPrivacyPolicy: settings.showPrivacyPolicy ?? true,
+      showTermsOfService: settings.showTermsOfService ?? true,
       privacyPolicyText: settings.privacyPolicyText || '',
       termsOfServiceText: settings.termsOfServiceText || ''
     });
@@ -4059,6 +4137,23 @@ const AdminDashboard = ({
         console.warn('Partners fetch fallback:', error);
       });
 
+      // Contracts (Workshops & Corporate Fleets)
+      const qContracts = query(collection(db, 'contracts'), orderBy('createdAt', 'desc'));
+      const unsubContracts = onSnapshot(qContracts, (snapshot) => {
+        if (!snapshot.empty) {
+          const results: Contract[] = [];
+          snapshot.forEach((doc) => {
+            results.push({ id: doc.id, ...(doc.data() as any) } as Contract);
+          });
+          setContracts(results);
+          try { localStorage.setItem('drfix_contracts', JSON.stringify(results)); } catch {}
+        } else {
+          setContracts(DEFAULT_SAMPLE_CONTRACTS);
+        }
+      }, (error) => {
+        console.warn('Contracts fetch fallback:', error);
+      });
+
       return () => {
         clearTimeout(stabilizationTimer);
         unsubM();
@@ -4068,6 +4163,7 @@ const AdminDashboard = ({
         unsubG();
         unsubStaff();
         unsubPartners();
+        unsubContracts();
       };
     }
   }, [isAdmin]);
@@ -4383,6 +4479,169 @@ const AdminDashboard = ({
       });
     } catch (err) {
       console.error('Error toggling partners visibility:', err);
+    }
+  };
+
+  // Contracts & Fleet Management Handlers
+  const handleAddContract = async (contractData: Omit<Contract, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const docRef = await addDoc(collection(db, 'contracts'), {
+        ...contractData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      const newContract: Contract = {
+        id: docRef.id,
+        ...contractData,
+        createdAt: new Date().toISOString()
+      };
+      setContracts(prev => [newContract, ...prev]);
+      try {
+        localStorage.setItem('drfix_contracts', JSON.stringify([newContract, ...contracts]));
+      } catch {}
+      setDeleteToast({ message: 'تم إنشاء واعتماد العقد بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error adding contract:', err);
+      handleFirestoreError(err, OperationType.CREATE, 'contracts');
+      throw err;
+    }
+  };
+
+  const handleUpdateContract = async (id: string, updates: Partial<Contract>) => {
+    try {
+      if (id.startsWith('contract-')) {
+        await setDoc(doc(db, 'contracts', id), {
+          ...updates,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await updateDoc(doc(db, 'contracts', id), {
+          ...updates,
+          updatedAt: serverTimestamp()
+        });
+      }
+      setContracts(prev => prev.map(c => c.id === id ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c));
+      try {
+        const updatedList = contracts.map(c => c.id === id ? { ...c, ...updates } : c);
+        localStorage.setItem('drfix_contracts', JSON.stringify(updatedList));
+      } catch {}
+      setDeleteToast({ message: 'تم تحديث بيانات العقد بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error updating contract:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'contracts');
+      throw err;
+    }
+  };
+
+  const handleDeleteContract = async (id: string) => {
+    try {
+      if (!id.startsWith('contract-')) {
+        await deleteDoc(doc(db, 'contracts', id));
+      }
+      setContracts(prev => prev.filter(c => c.id !== id));
+      try {
+        const filtered = contracts.filter(c => c.id !== id);
+        localStorage.setItem('drfix_contracts', JSON.stringify(filtered));
+      } catch {}
+      setDeleteToast({ message: 'تم حذف العقد بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error deleting contract:', err);
+      handleFirestoreError(err, OperationType.DELETE, 'contracts');
+      throw err;
+    }
+  };
+
+  const handleAddVehicleToContract = async (contractId: string, vehicleData: Omit<ContractVehicle, 'id' | 'createdAt'>) => {
+    try {
+      const newVehicle: ContractVehicle = {
+        id: 'cv-' + Date.now(),
+        ...vehicleData,
+        createdAt: new Date().toISOString()
+      };
+
+      const targetContract = contracts.find(c => c.id === contractId);
+      const currentVehicles = targetContract?.vehicles || [];
+      const updatedVehicles = [newVehicle, ...currentVehicles];
+
+      if (contractId.startsWith('contract-')) {
+        await setDoc(doc(db, 'contracts', contractId), {
+          ...targetContract,
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await updateDoc(doc(db, 'contracts', contractId), {
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, vehicles: updatedVehicles } : c));
+      setDeleteToast({ message: 'تم تسجيل السيارة في سجل العقد بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error adding vehicle to contract:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'contracts');
+      throw err;
+    }
+  };
+
+  const handleUpdateVehicleInContract = async (contractId: string, vehicleId: string, updates: Partial<ContractVehicle>) => {
+    try {
+      const targetContract = contracts.find(c => c.id === contractId);
+      if (!targetContract) return;
+
+      const currentVehicles = targetContract.vehicles || [];
+      const updatedVehicles = currentVehicles.map(v => v.id === vehicleId ? { ...v, ...updates } : v);
+
+      if (contractId.startsWith('contract-')) {
+        await setDoc(doc(db, 'contracts', contractId), {
+          ...targetContract,
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await updateDoc(doc(db, 'contracts', contractId), {
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, vehicles: updatedVehicles } : c));
+      setDeleteToast({ message: 'تم تحديث حالة السيارة بنجاح', type: 'success' });
+    } catch (err) {
+      console.error('Error updating vehicle in contract:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'contracts');
+      throw err;
+    }
+  };
+
+  const handleDeleteVehicleFromContract = async (contractId: string, vehicleId: string) => {
+    try {
+      const targetContract = contracts.find(c => c.id === contractId);
+      if (!targetContract) return;
+
+      const currentVehicles = targetContract.vehicles || [];
+      const updatedVehicles = currentVehicles.filter(v => v.id !== vehicleId);
+
+      if (contractId.startsWith('contract-')) {
+        await setDoc(doc(db, 'contracts', contractId), {
+          ...targetContract,
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      } else {
+        await updateDoc(doc(db, 'contracts', contractId), {
+          vehicles: updatedVehicles,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, vehicles: updatedVehicles } : c));
+      setDeleteToast({ message: 'تم حذف السيارة من سجل العقد', type: 'success' });
+    } catch (err) {
+      console.error('Error deleting vehicle from contract:', err);
+      handleFirestoreError(err, OperationType.UPDATE, 'contracts');
+      throw err;
     }
   };
 
@@ -5085,6 +5344,7 @@ const AdminDashboard = ({
     { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
     { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
     { id: 'customers', label: lang === 'ar' ? 'العملاء وسجل السيارات' : 'Customers & Vehicles', icon: User, allowed: userPermissions.canManageCustomers !== false },
+    { id: 'contracts', label: lang === 'ar' ? 'إدارة العقود (ورش وشركات)' : 'Contracts (Workshops & Fleets)', icon: FileCheck, allowed: userPermissions.canManageContracts !== false },
     { id: 'reports', label: lang === 'ar' ? 'التقارير وسندات الصيانة (Word & PDF)' : 'Reports & Work Orders (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
     { id: 'analytics', label: lang === 'ar' ? 'التحليلات ومؤشرات الأداء' : 'Analytics & KPIs', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
     { id: 'staff', label: lang === 'ar' ? 'فريق العمل والصلاحيات' : 'Staff & Permissions', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
@@ -5311,10 +5571,14 @@ const AdminDashboard = ({
               className="space-y-8"
             >
               {/* Quick Actions */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
                 <button onClick={() => setIsAdding(true)} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center cursor-pointer">
                   <PlusCircle className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold italic">حجز جديد</span>
+                </button>
+                <button onClick={() => setActiveTab('contracts')} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center cursor-pointer">
+                  <FileCheck className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-bold italic">إدارة العقود</span>
                 </button>
                 <button onClick={() => { setActiveTab('content'); setContentTab('offers'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
                   <Tag className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
@@ -8564,7 +8828,7 @@ const AdminDashboard = ({
                               <div>
                                 <h4 className="font-bold text-sm text-white flex items-center gap-2">
                                   نظام تسجيل دخول وحسابات العملاء
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">ميزة تجريبية مفعّلة</span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/30">ميزة مفعّلة</span>
                                 </h4>
                                 <p className="text-xs text-gray-400 mt-0.5">
                                   إظهار زر "تسجيل الدخول / حسابي" في أعلى الموقع للعملاء لحفظ سياراتهم وتتبع حالة صيانة حجوزاتهم. يمكنك إيقافه أو تشغيله بنقرة واحدة في أي وقت.
@@ -8599,6 +8863,8 @@ const AdminDashboard = ({
                             { id: 'showServices', label: 'قسم الخدمات', icon: Wrench },
                             { id: 'showPartners', label: 'صفحة وقسم شركاء النجاح', icon: Handshake },
                             { id: 'showContact', label: 'قسم تواصل معنا', icon: Phone },
+                            { id: 'showPrivacyPolicy', label: 'رابط سياسة الخصوصية (PDPL)', icon: ShieldCheck },
+                            { id: 'showTermsOfService', label: 'رابط شروط الخدمة والضمان', icon: FileText },
                           ].map((section) => (
                             <button
                               key={section.id}
@@ -8744,8 +9010,71 @@ const AdminDashboard = ({
                             <ShieldCheck className="w-5 h-5" />
                           </div>
                           <div className="text-xs text-gray-300 leading-relaxed">
-                            <div className="font-bold text-white text-sm mb-1">الامتثال لنظام حماية البيانات الشخصية السعودي (PDPL)</div>
-                            تظهر هذه النصوص تلقائياً لعملائك وزوار الموقع عند الضغط على روابط «سياسة الخصوصية» و «شروط الخدمة» في تذييل الموقع، وتتيح للعميل الاطلاع على كيفية التعامل مع بيانات مركبته وموقعه الميداني بجدة مع ضمان عدم مشاركتها مع أي أطراف ثالثة.
+                            <div className="font-bold text-white text-sm mb-1">الامتثال لنظام حماية البيانات الشخصية السعودي (PDPL) وإدارة الظهور</div>
+                            يمكنك من هنا تعديل بنود الخصوصية وشروط الضمان أو إخفائها وإظهارها في تذييل الموقع بنقرة زر واحدة. عند التفعيل، تظهر الروابط تلقائياً لعملائك وزوار الموقع بجدة.
+                          </div>
+                        </div>
+
+                        {/* Visibility Toggles for Legal Docs */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className={cn(
+                            "p-4 rounded-2xl border transition-all flex items-center justify-between gap-3",
+                            settingsForm.showPrivacyPolicy !== false ? "bg-black/50 border-brand-red/40" : "bg-white/[0.02] border-white/10"
+                          )}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-xl bg-brand-red/15 text-brand-red shrink-0">
+                                <ShieldCheck className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-sm text-white">ظهور سياسة الخصوصية (PDPL)</h4>
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                  {settingsForm.showPrivacyPolicy !== false ? 'مفعلة وظاهرة في تذييل الموقع' : 'مخفية حالياً من تذييل الموقع'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSettingsForm({ ...settingsForm, showPrivacyPolicy: !(settingsForm.showPrivacyPolicy ?? true) })}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-all cursor-pointer shrink-0",
+                                (settingsForm.showPrivacyPolicy ?? true) ? "bg-brand-red" : "bg-gray-700"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                                (settingsForm.showPrivacyPolicy ?? true) ? "right-1" : "left-1"
+                              )} />
+                            </button>
+                          </div>
+
+                          <div className={cn(
+                            "p-4 rounded-2xl border transition-all flex items-center justify-between gap-3",
+                            settingsForm.showTermsOfService !== false ? "bg-black/50 border-brand-red/40" : "bg-white/[0.02] border-white/10"
+                          )}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-xl bg-brand-red/15 text-brand-red shrink-0">
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-sm text-white">ظهور شروط الخدمة والضمان</h4>
+                                <p className="text-[11px] text-gray-400 mt-0.5">
+                                  {settingsForm.showTermsOfService !== false ? 'مفعلة وظاهرة في تذييل الموقع' : 'مخفية حالياً من تذييل الموقع'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSettingsForm({ ...settingsForm, showTermsOfService: !(settingsForm.showTermsOfService ?? true) })}
+                              className={cn(
+                                "w-12 h-6 rounded-full relative transition-all cursor-pointer shrink-0",
+                                (settingsForm.showTermsOfService ?? true) ? "bg-brand-red" : "bg-gray-700"
+                              )}
+                            >
+                              <div className={cn(
+                                "absolute top-1 w-4 h-4 rounded-full bg-white transition-all",
+                                (settingsForm.showTermsOfService ?? true) ? "right-1" : "left-1"
+                              )} />
+                            </button>
                           </div>
                         </div>
 
@@ -8945,6 +9274,26 @@ const AdminDashboard = ({
                 onDeletePartner={handleDeletePartner}
                 isSectionVisible={settings.showPartners !== false}
                 onToggleSectionVisibility={handleTogglePartnersVisibility}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'contracts' && (
+            <motion.div
+              key="contracts"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <AdminContractsManager
+                contracts={contracts}
+                onAddContract={handleAddContract}
+                onUpdateContract={handleUpdateContract}
+                onDeleteContract={handleDeleteContract}
+                onAddVehicleToContract={handleAddVehicleToContract}
+                onUpdateVehicleInContract={handleUpdateVehicleInContract}
+                onDeleteVehicleFromContract={handleDeleteVehicleFromContract}
+                lang={lang}
               />
             </motion.div>
           )}
@@ -9682,7 +10031,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
           
           {visitors !== null && (
             <div className="mt-8 flex items-center gap-2 text-gray-500 text-sm">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-brand-red animate-pulse" />
               <span>{t.footer.visitors}: {visitors.toLocaleString()}</span>
             </div>
           )}
@@ -9719,7 +10068,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={settings.snapchat || DEFAULT_APP_SETTINGS.snapchat} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-[#FFFC00] hover:shadow-[0_0_12px_rgba(255,252,0,0.3)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="Snapchat - سناب شات"
             >
               <img 
@@ -9739,7 +10088,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={settings.tiktok || DEFAULT_APP_SETTINGS.tiktok} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-cyan-400 hover:shadow-[0_0_12px_rgba(37,244,238,0.3)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="TikTok - تيك توك"
             >
               <img 
@@ -9759,7 +10108,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={settings.instagram || DEFAULT_APP_SETTINGS.instagram} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-pink-500 hover:shadow-[0_0_12px_rgba(220,39,67,0.3)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="Instagram - إنستغرام"
             >
               <img 
@@ -9779,7 +10128,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={settings.twitter || DEFAULT_APP_SETTINGS.twitter} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-white/50 hover:shadow-[0_0_12px_rgba(255,255,255,0.2)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="X (Twitter) - منصة إكس"
             >
               <img 
@@ -9799,7 +10148,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={`https://wa.me/${(settings.whatsapp || DEFAULT_APP_SETTINGS.whatsapp || '966546870807').replace(/[^0-9]/g, '')}`} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-[#25D366] hover:shadow-[0_0_12px_rgba(37,211,102,0.3)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="WhatsApp - واتساب"
             >
               <img 
@@ -9819,7 +10168,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
               href={settings.facebook} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-[#1877F2] hover:shadow-[0_0_12px_rgba(24,119,242,0.3)] transition-all shadow-sm group cursor-pointer shrink-0"
+              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="Facebook - فيسبوك"
             >
               <img 
@@ -9840,27 +10189,35 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
       <div className="text-center md:text-start">{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</div>
       
       {/* Privacy Policy & Terms of Service Links */}
-      <div className="flex items-center gap-4 text-xs font-sans">
-        <button
-          type="button"
-          onClick={() => setLegalModalState({ isOpen: true, tab: 'privacy' })}
-          className="text-gray-400 hover:text-brand-red transition-colors underline-offset-4 hover:underline cursor-pointer flex items-center gap-1.5"
-          title="سياسة الخصوصية وحماية البيانات الشخصية"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-brand-red" />
-          <span>{lang === 'ar' ? 'سياسة الخصوصية (PDPL)' : 'Privacy Policy'}</span>
-        </button>
-        <span className="text-gray-700">•</span>
-        <button
-          type="button"
-          onClick={() => setLegalModalState({ isOpen: true, tab: 'terms' })}
-          className="text-gray-400 hover:text-brand-red transition-colors underline-offset-4 hover:underline cursor-pointer flex items-center gap-1.5"
-          title="شروط وأحكام الخدمة والضمان"
-        >
-          <FileText className="w-3.5 h-3.5 text-brand-red" />
-          <span>{lang === 'ar' ? 'شروط الخدمة والضمان' : 'Terms of Service'}</span>
-        </button>
-      </div>
+      {((settings.showPrivacyPolicy !== false) || (settings.showTermsOfService !== false)) && (
+        <div className="flex items-center gap-4 text-xs font-sans">
+          {settings.showPrivacyPolicy !== false && (
+            <button
+              type="button"
+              onClick={() => setLegalModalState({ isOpen: true, tab: 'privacy' })}
+              className="text-gray-400 hover:text-brand-red transition-colors underline-offset-4 hover:underline cursor-pointer flex items-center gap-1.5"
+              title="سياسة الخصوصية وحماية البيانات الشخصية"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-brand-red" />
+              <span>{lang === 'ar' ? 'سياسة الخصوصية (PDPL)' : 'Privacy Policy'}</span>
+            </button>
+          )}
+          {settings.showPrivacyPolicy !== false && settings.showTermsOfService !== false && (
+            <span className="text-gray-700">•</span>
+          )}
+          {settings.showTermsOfService !== false && (
+            <button
+              type="button"
+              onClick={() => setLegalModalState({ isOpen: true, tab: 'terms' })}
+              className="text-gray-400 hover:text-brand-red transition-colors underline-offset-4 hover:underline cursor-pointer flex items-center gap-1.5"
+              title="شروط وأحكام الخدمة والضمان"
+            >
+              <FileText className="w-3.5 h-3.5 text-brand-red" />
+              <span>{lang === 'ar' ? 'شروط الخدمة والضمان' : 'Terms of Service'}</span>
+            </button>
+          )}
+        </div>
+      )}
     </div>
 
     {/* Legal Modal (Privacy Policy & Terms of Service) */}

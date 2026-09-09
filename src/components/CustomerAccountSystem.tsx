@@ -6,7 +6,7 @@ import {
   MessageCircle, Check
 } from 'lucide-react';
 import { 
-  doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
+  doc, setDoc, getDoc, updateDoc, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
 } from 'firebase/firestore';
 import { 
   GoogleAuthProvider, 
@@ -540,6 +540,16 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Real-time synchronization of customer document if logged in
   useEffect(() => {
+    // Initialize local auth persistence once on mount
+    try {
+      setPersistence(auth, indexedDBLocalPersistence).catch(() => {
+        setPersistence(auth, browserLocalPersistence).catch(() => {});
+      });
+    } catch {}
+  }, []);
+
+  // Real-time synchronization of customer document if logged in
+  useEffect(() => {
     if (!customer?.id) return;
     const ref = doc(db, 'customers', customer.id);
     const unsub = onSnapshot(ref, (snap) => {
@@ -694,134 +704,260 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     photoURL?: string | null;
     phoneNumber?: string | null;
   }): Promise<{ success: boolean; error?: string }> => {
-    // 1. Check if user already exists by uid
-    const uidRef = doc(db, 'customers', user.uid);
-    let snap = await getDoc(uidRef);
-    let customerRef = uidRef;
+    try {
+      const cleanEmail = (user.email || '').trim().toLowerCase();
+      const rawUserPhone = user.phoneNumber ? cleanSaudiPhone(user.phoneNumber) : '';
+      let cachedPhone = '';
+      try {
+        cachedPhone = cleanSaudiPhone(localStorage.getItem('drfix_customer_phone') || '');
+      } catch {}
 
-    // 2. If not found by UID, check if one exists with matching email
-    if (!snap.exists() && user.email) {
-      const qEmail = query(collection(db, 'customers'), where('email', '==', user.email));
-      const emailSnap = await getDocs(qEmail);
-      if (!emailSnap.empty) {
-        snap = emailSnap.docs[0];
-        customerRef = doc(db, 'customers', snap.id);
+      // 1. Thoroughly search existing customer across all identifiers to prevent ANY duplicate profile creation
+      const candidateDocs: { id: string; ref: any; data: CustomerProfile }[] = [];
+      const seenIds = new Set<string>();
+
+      // a. Direct doc by UID
+      const uidRef = doc(db, 'customers', user.uid);
+      try {
+        const uidSnap = await getDoc(uidRef);
+        if (uidSnap.exists()) {
+          seenIds.add(uidSnap.id);
+          candidateDocs.push({ id: uidSnap.id, ref: uidRef, data: uidSnap.data() as CustomerProfile });
+        }
+      } catch (e) {
+        console.warn('UID check warning:', e);
       }
-    }
 
-    let profile: CustomerProfile;
+      // b. Query by googleUid
+      try {
+        const qGoogle = query(collection(db, 'customers'), where('googleUid', '==', user.uid));
+        const gSnap = await getDocs(qGoogle);
+        gSnap.forEach(d => {
+          if (!seenIds.has(d.id)) {
+            seenIds.add(d.id);
+            candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
+          }
+        });
+      } catch (e) {}
 
-    if (snap.exists()) {
-      const existingData = snap.data() as CustomerProfile;
-      const rawCars = Array.isArray(existingData.cars) ? existingData.cars : [];
-      const cleanCars = deduplicateCarsList(rawCars, existingData.removedCars || []);
-      profile = {
-        ...existingData,
-        id: snap.id,
-        name: existingData.name || user.displayName || 'عميل كريم',
-        email: user.email || existingData.email || '',
-        photoURL: user.photoURL || existingData.photoURL,
-        googleUid: user.uid,
-        cars: cleanCars
-      };
-      await updateDoc(customerRef, {
-        lastLoginAt: serverTimestamp(),
-        googleUid: user.uid,
-        photoURL: user.photoURL || existingData.photoURL || null,
-        email: user.email || existingData.email || '',
-        cars: cleanCars
-      }).catch((err) => console.warn('Non-critical customer update:', err));
-    } else {
-      profile = {
-        id: user.uid,
-        name: user.displayName || 'عميل كريم',
-        email: user.email || '',
-        phone: user.phoneNumber ? cleanSaudiPhone(user.phoneNumber) : '',
-        photoURL: user.photoURL || undefined,
-        googleUid: user.uid,
-        cars: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      await setDoc(customerRef, profile);
-      // Trigger instant notifications to admin via Telegram & Firestore
-      notifyAdminNewCustomerRegistration({
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        source: 'google'
-      });
-    }
+      // c. Query by email (exact match and lowercase)
+      if (user.email) {
+        try {
+          const qEmail = query(collection(db, 'customers'), where('email', '==', user.email));
+          const eSnap = await getDocs(qEmail);
+          eSnap.forEach(d => {
+            if (!seenIds.has(d.id)) {
+              seenIds.add(d.id);
+              candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
+            }
+          });
 
-    setCustomer(profile);
-    localStorage.setItem('drfix_customer_session', JSON.stringify(profile));
-
-    // Auto-sync cars from maintenance bookings
-    syncCustomerCarsWithBookings(profile).then(synced => {
-      if (synced && synced.cars && synced.cars.length !== profile.cars.length) {
-        setCustomer(synced);
+          if (cleanEmail && cleanEmail !== user.email) {
+            const qEmailLower = query(collection(db, 'customers'), where('email', '==', cleanEmail));
+            const elSnap = await getDocs(qEmailLower);
+            elSnap.forEach(d => {
+              if (!seenIds.has(d.id)) {
+                seenIds.add(d.id);
+                candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
+              }
+            });
+          }
+        } catch (e) {}
       }
-    }).catch(() => {});
 
-    setIsAuthOpen(false);
-    setLoading(false);
-    return { success: true };
+      // d. Match by phone if known (from user profile or cached phone)
+      const phoneToMatch = rawUserPhone || cachedPhone;
+      if (phoneToMatch && phoneToMatch.length >= 9) {
+        try {
+          const phoneDocRef = doc(db, 'customers', phoneToMatch);
+          const pSnap = await getDoc(phoneDocRef);
+          if (pSnap.exists() && !seenIds.has(pSnap.id)) {
+            seenIds.add(pSnap.id);
+            candidateDocs.push({ id: pSnap.id, ref: phoneDocRef, data: pSnap.data() as CustomerProfile });
+          }
+          const qPhone = query(collection(db, 'customers'), where('phone', '==', phoneToMatch));
+          const qpSnap = await getDocs(qPhone);
+          qpSnap.forEach(d => {
+            if (!seenIds.has(d.id)) {
+              seenIds.add(d.id);
+              candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
+            }
+          });
+        } catch (e) {}
+      }
+
+      let profile: CustomerProfile;
+
+      if (candidateDocs.length > 0) {
+        // Select master doc (prefer the one with id === user.uid or highest visits)
+        const masterCandidate = candidateDocs.find(c => c.id === user.uid) || candidateDocs[0];
+
+        // Merge cars, notes, and visit counters across all candidate docs
+        const allCars: CustomerCar[] = [];
+        const allRemovedCars: string[] = [];
+        let maxVisits = 0;
+        let maxSpent = 0;
+        let bestName = user.displayName || '';
+        let bestPhone = rawUserPhone || cachedPhone || '';
+        let bestNotes = '';
+
+        candidateDocs.forEach(c => {
+          const d = c.data;
+          if (Array.isArray(d.cars)) allCars.push(...d.cars);
+          if (Array.isArray(d.removedCars)) allRemovedCars.push(...d.removedCars);
+          maxVisits = Math.max(maxVisits, Number(d.totalVisits || 0));
+          maxSpent = Math.max(maxSpent, Number(d.totalSpent || 0));
+          if (d.name && d.name !== 'عميل كريم' && d.name !== 'عميل') bestName = d.name;
+          if (d.phone && !bestPhone) bestPhone = d.phone;
+          if (d.notes && !bestNotes.includes(d.notes)) {
+            bestNotes = bestNotes ? `${bestNotes}\n${d.notes}` : d.notes;
+          }
+        });
+
+        const mergedCleanCars = deduplicateCarsList(allCars, allRemovedCars);
+
+        profile = {
+          ...masterCandidate.data,
+          id: masterCandidate.id,
+          name: bestName || user.displayName || 'عميل كريم',
+          email: user.email || masterCandidate.data.email || '',
+          phone: bestPhone || masterCandidate.data.phone || '',
+          photoURL: user.photoURL || masterCandidate.data.photoURL,
+          googleUid: user.uid,
+          cars: mergedCleanCars,
+          totalVisits: maxVisits,
+          totalSpent: maxSpent,
+          notes: bestNotes || masterCandidate.data.notes || '',
+        };
+
+        // Update the master document
+        await updateDoc(masterCandidate.ref, {
+          googleUid: user.uid,
+          email: user.email || masterCandidate.data.email || '',
+          name: profile.name,
+          phone: profile.phone,
+          photoURL: user.photoURL || masterCandidate.data.photoURL || null,
+          cars: mergedCleanCars as any,
+          totalVisits: maxVisits,
+          totalSpent: maxSpent,
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }).catch(err => console.warn('Customer update warning:', err));
+
+        // Delete redundant duplicate docs so Firestore has zero duplicates
+        for (const duplicate of candidateDocs) {
+          if (duplicate.id !== masterCandidate.id) {
+            try {
+              await deleteDoc(duplicate.ref);
+              console.log(`Cleaned duplicate customer doc: ${duplicate.id}`);
+            } catch (delErr) {
+              console.warn('Duplicate doc cleanup warning:', delErr);
+            }
+          }
+        }
+      } else {
+        // Brand new customer: Create single document at customers/{user.uid}
+        profile = {
+          id: user.uid,
+          name: user.displayName || 'عميل كريم',
+          email: user.email || '',
+          phone: rawUserPhone || cachedPhone || '',
+          photoURL: user.photoURL || undefined,
+          googleUid: user.uid,
+          cars: [],
+          totalVisits: 0,
+          totalSpent: 0,
+          status: 'new',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        await setDoc(uidRef, profile);
+
+        notifyAdminNewCustomerRegistration({
+          name: profile.name,
+          email: profile.email,
+          phone: profile.phone,
+          source: 'google'
+        });
+      }
+
+      setCustomer(profile);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(profile));
+        if (profile.phone) {
+          localStorage.setItem('drfix_customer_phone', profile.phone);
+        }
+      } catch {}
+
+      // Auto-sync cars from maintenance bookings
+      syncCustomerCarsWithBookings(profile).then(synced => {
+        if (synced && synced.cars && synced.cars.length !== profile.cars.length) {
+          setCustomer(synced);
+        }
+      }).catch(() => {});
+
+      setIsAuthOpen(false);
+      setLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Google user process error:', err);
+      setLoading(false);
+      return { 
+        success: false, 
+        error: 'حدث خطأ أثناء مزامنة بيانات حساب Google. يرجى المحاولة مجدداً.' 
+      };
+    }
   };
 
   const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
 
     try {
-      // Ensure local persistence so state is not lost across Android WebView / mobile contexts
-      try {
-        await setPersistence(auth, indexedDBLocalPersistence);
-      } catch {
-        try {
-          await setPersistence(auth, browserLocalPersistence);
-        } catch {}
-      }
-
       const provider = new GoogleAuthProvider();
       provider.addScope('openid');
       provider.addScope('https://www.googleapis.com/auth/userinfo.email');
       provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      // Explicitly using signInWithPopup to preserve session and avoid missing initial state errors in WebView
+      // Call popup directly without prior await to preserve user activation gesture in mobile Safari
       const result = await signInWithPopup(auth, provider);
       if (result?.user) {
         return await handleGoogleUserSuccess(result.user);
       }
+      setLoading(false);
+      return { success: false, error: 'تعذر إتمام الدخول بحساب Google. يرجى المحاولة مجدداً.' };
     } catch (err: any) {
-      console.warn("Google Auth error in WebView/Browser:", err);
+      console.warn("Google Auth error:", err);
+      setLoading(false);
+
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        setLoading(false);
-        return { success: false, error: 'تم إغلاق نافذة تسجيل الدخول.' };
-      }
-      if (err?.code === 'auth/missing-initial-state' || (err?.message && /missing initial state/i.test(err.message))) {
-        setLoading(false);
-        return { 
-          success: false, 
-          error: 'لتسجيل الدخول السلس داخل التطبيق، يرجى استخدام رقم الجوال أدناه للدخول الفوري دون كلمة مرور.' 
-        };
+        return { success: false, error: 'تم إغلاق نافذة تسجيل الدخول بحساب Google. يمكنك النقر لإعادة المحاولة.' };
       }
       if (err?.code === 'auth/popup-blocked' || (err?.message && /popup/i.test(err.message))) {
-        setLoading(false);
         return { 
           success: false, 
-          error: 'تم حظر النوافذ المنبثقة بواسطة المتصفح. يمكنك الدخول فوراً وبكل سهولة بإدخال رقم جوالك أدناه دون الحاجة لكلمة مرور!' 
+          error: 'قام المتصفح بحظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة (Pop-ups) لموقع drfix.repair في إعدادات Safari أو المتصفح، ثم المحاولة مجدداً.' 
+        };
+      }
+      if (err?.code === 'auth/unauthorized-domain') {
+        return {
+          success: false,
+          error: 'النطاق الحالي غير مضاف في قائمة النطاقات المصرح بها في Firebase. يرجى التواصل مع إدارة النظام.'
+        };
+      }
+      if (err?.code === 'auth/network-request-failed') {
+        return {
+          success: false,
+          error: 'حدث انقطاع في الاتصال بالإنترنت أثناء الاتصال بـ Google. يرجى التحقق من اتصالك والمحاولة مجدداً.'
         };
       }
 
-      setLoading(false);
       return { 
         success: false, 
-        error: 'لتسجيل الدخول السريع، يمكنك إدخال رقم جوالك أدناه بدون كلمة مرور لفتح حسابك وسجل صياناتك مباشرة.' 
+        error: err?.message || 'تعذر إتمام الدخول بحساب Google. يرجى المحاولة مجدداً.' 
       };
     }
-
-    setLoading(false);
-    return { success: false, error: 'تعذر إتمام الدخول. يمكنك استخدام رقم جوالك مباشرة.' };
   };
 
   const register = async (
@@ -1109,23 +1245,11 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 };
 
 // =========================================================================
-// Modal: Customer Auth (Login & Register)
+// Modal: Customer Auth (Google Account Only)
 // =========================================================================
 export const CustomerAuthModal: React.FC = () => {
-  const { isAuthOpen, setIsAuthOpen, authMode, setAuthMode, login, loginWithGoogle, register, loading } = useCustomer();
-  const phoneInputRef = useRef<HTMLInputElement>(null);
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const { isAuthOpen, setIsAuthOpen, loginWithGoogle, loading } = useCustomer();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Optional quick car fields for registration
-  const [showCarFields, setShowCarFields] = useState(true);
-  const [carMake, setCarMake] = useState('');
-  const [carModel, setCarModel] = useState('');
-  const [carYear, setCarYear] = useState('2022');
-  const [plateNumber, setPlateNumber] = useState('');
 
   if (!isAuthOpen) return null;
 
@@ -1137,30 +1261,6 @@ export const CustomerAuthModal: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-
-    if (authMode === 'login') {
-      const res = await login(phone, password);
-      if (!res.success) {
-        setErrorMsg(res.error || 'فشل تسجيل الدخول');
-      }
-    } else {
-      const carData = (carMake.trim() && carModel.trim()) ? {
-        make: carMake,
-        model: carModel,
-        year: carYear,
-        plateNumber
-      } : undefined;
-
-      const res = await register(name, phone, password, carData);
-      if (!res.success) {
-        setErrorMsg(res.error || 'فشل إنشاء الحساب');
-      }
-    }
-  };
-
   return (
     <div 
       className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto" 
@@ -1169,25 +1269,23 @@ export const CustomerAuthModal: React.FC = () => {
         if (e.target === e.currentTarget) setIsAuthOpen(false);
       }}
     >
-      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] my-auto overflow-hidden animate-fadeIn">
+      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-3xl shadow-2xl flex flex-col my-auto overflow-hidden animate-fadeIn">
         {/* Background decorative glow */}
-        <div className="absolute top-0 right-0 w-40 h-40 bg-brand-red/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-40 h-40 bg-brand-red/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-48 h-48 bg-brand-red/15 rounded-full blur-3xl -z-10 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
 
-        {/* Sticky Header with Title and Close Button - ALWAYS visible and never off-screen */}
-        <div className="px-5 py-4 border-b border-white/10 bg-black/50 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
+        {/* Sticky Header with Title and Close Button */}
+        <div className="px-5 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 bg-black border border-white/10 rounded-xl p-1 flex items-center justify-center shadow-lg overflow-hidden shrink-0">
+            <div className="w-11 h-11 bg-black border border-white/15 rounded-2xl p-1.5 flex items-center justify-center shadow-lg overflow-hidden shrink-0">
               <img src="/logo-custom.png" alt="DR.FIX" className="w-full h-full object-contain" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-display font-black text-white leading-tight">
-                {authMode === 'login' ? 'تسجيل دخول العملاء' : 'إنشاء حساب عميل جديد'}
+                بوابة عملاء دكتور فيكس
               </h3>
               <p className="text-[11px] text-gray-400">
-                {authMode === 'login' 
-                  ? 'لوحة تتبع الصيانة وسياراتك' 
-                  : 'احفظ سياراتك وتتبع صيانتك بضغطة زر'}
+                تسجيل الدخول الموحد بحساب Google
               </p>
             </div>
           </div>
@@ -1203,265 +1301,99 @@ export const CustomerAuthModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Scrollable Modal Body */}
-        <div className="overflow-y-auto p-5 sm:p-6 space-y-4 flex-1">
-          {/* Auth Mode Toggle Tabs */}
-          <div className="grid grid-cols-2 p-1 bg-black/50 border border-white/10 rounded-xl">
-            <button
-              type="button"
-              onClick={() => { setAuthMode('login'); setErrorMsg(null); }}
-              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                authMode === 'login' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              تسجيل الدخول
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAuthMode('register'); setErrorMsg(null); }}
-              className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                authMode === 'register' ? 'bg-brand-red text-white shadow-md' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              إنشاء حساب جديد
-            </button>
+        {/* Modal Body */}
+        <div className="p-5 sm:p-6 space-y-4">
+          {/* Account Benefits List */}
+          <div className="space-y-2.5 bg-black/40 border border-white/10 rounded-2xl p-4">
+            <div className="flex items-center gap-3 text-xs text-gray-200">
+              <div className="w-7 h-7 rounded-lg bg-brand-red/20 border border-brand-red/30 flex items-center justify-center shrink-0">
+                <Car className="w-3.5 h-3.5 text-brand-red" />
+              </div>
+              <span className="font-medium">ملف وكرت موحد لجميع سياراتك بدون تكرار</span>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-gray-200">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <span className="font-medium">تتبع حي ومباشر لموقع ومسار الفني الميداني</span>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-gray-200">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0">
+                <Shield className="w-3.5 h-3.5 text-blue-400" />
+              </div>
+              <span className="font-medium">حفظ فواتير الصيانة وسجل الضمانات المعتمدة</span>
+            </div>
           </div>
 
+          {/* Error Message Box */}
           {errorMsg && (
             <div className="p-3.5 rounded-2xl bg-neutral-800/95 border border-brand-red/40 text-xs flex flex-col gap-2.5 shadow-lg animate-fadeIn">
               <div className="flex items-start gap-2.5 text-white">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-brand-red" />
                 <span className="leading-relaxed font-medium">{errorMsg}</span>
               </div>
-              {errorMsg.includes('لديك حساب بالفعل') ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('login');
-                    setErrorMsg(null);
-                  }}
-                  className="w-full py-2.5 bg-brand-red hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-md mt-1"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>الضغط هنا لتسجيل الدخول فوراً بهذا الرقم</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    phoneInputRef.current?.focus();
-                    phoneInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}
-                  className="self-start text-[11px] font-bold text-white bg-brand-red hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>المتابعة برقم الجوال أدناه</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="self-start text-[11px] font-bold text-white bg-brand-red hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>إعادة المحاولة الآن</span>
+              </button>
             </div>
           )}
 
           {/* Google Fast Authentication Button */}
-          <div className="mb-2">
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className="w-full py-3 px-4 bg-white hover:bg-neutral-100 text-gray-900 font-bold rounded-xl transition-all flex items-center justify-center gap-3 cursor-pointer shadow-md disabled:opacity-50 group border border-gray-200"
-          >
-            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-            </svg>
-            <span className="text-xs sm:text-sm font-bold text-gray-800 group-hover:text-black">
-              {authMode === 'login' ? 'المتابعة والدخول بحساب Google' : 'التسجيل السريع بحساب Google'}
-            </span>
-          </button>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full py-3.5 px-4 bg-white hover:bg-neutral-100 text-gray-900 font-bold rounded-2xl transition-all flex items-center justify-center gap-3 cursor-pointer shadow-xl disabled:opacity-60 group border border-gray-200"
+            >
+              {loading ? (
+                <span className="inline-block w-5 h-5 border-2 border-gray-400 border-t-brand-red rounded-full animate-spin" />
+              ) : (
+                <>
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span className="text-sm font-bold text-gray-900 group-hover:text-black">
+                    المتابعة والدخول بحساب Google
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
 
           {typeof window !== 'undefined' && window.self !== window.top && (
-            <p className="text-[11px] text-gray-400 text-center mt-2 flex items-center justify-center gap-1">
-              <span>إذا تم حظر النافذة بالمعاينة، يمكنك</span>
-              <a 
-                href={window.location.href} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-brand-red underline hover:text-red-400 font-bold inline-flex items-center gap-0.5"
-              >
-                فتح الموقع بنافذة مستقلة
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </p>
-          )}
-
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-neutral-900 px-3 text-gray-400 font-medium">أو من خلال رقم الجوال</span>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {authMode === 'register' && (
-            <div>
-              <label className="block text-xs font-bold text-gray-300 mb-1.5">الاسم الكريم</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="مثال: عبدالعزيز السندي"
-                  className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-500 outline-none focus:border-brand-red transition-colors"
-                />
-                <User className="absolute left-3 top-3.5 w-4 h-4 text-gray-500" />
-              </div>
+            <div className="bg-black/30 rounded-xl p-2.5 border border-white/5">
+              <p className="text-[11px] text-gray-400 text-center flex items-center justify-center gap-1.5 flex-wrap">
+                <span>إذا حظر المتصفح النافذة المنبثقة:</span>
+                <a 
+                  href={window.location.href} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-brand-red underline hover:text-red-400 font-bold inline-flex items-center gap-1"
+                >
+                  افتح الموقع بنافذة مستقلة
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </p>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-bold text-gray-300 mb-1.5">رقم الجوال</label>
-            <div className="relative">
-              <input
-                ref={phoneInputRef}
-                type="tel"
-                required
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="05XXXXXXXX"
-                dir="ltr"
-                className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-500 outline-none focus:border-brand-red transition-colors text-right"
-              />
-              <Phone className="absolute left-3 top-3.5 w-4 h-4 text-gray-500" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-300 mb-1.5">
-              كلمة المرور / الرمز السري <span className="text-[10px] text-gray-500 font-normal">(اختياري لتأمين الحساب)</span>
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                dir="ltr"
-                className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-gray-500 outline-none focus:border-brand-red transition-colors text-right"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute left-3 top-3 text-gray-400 hover:text-white"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick car input on signup */}
-          {authMode === 'register' && (
-            <div className="pt-2 border-t border-white/10">
-              <div 
-                onClick={() => setShowCarFields(!showCarFields)} 
-                className="flex items-center justify-between text-xs font-bold text-gray-300 cursor-pointer py-1 select-none"
-              >
-                <span className="flex items-center gap-1.5 text-brand-red">
-                  <Car className="w-4 h-4" />
-                  إضافة سيارتك الآن (لتسريع الحجز لاحقاً)
-                </span>
-                <span className="text-[10px] text-gray-400">{showCarFields ? 'إخفاء' : 'إظهار'}</span>
-              </div>
-
-              {showCarFields && (
-                <div className="grid grid-cols-2 gap-2.5 mt-2 bg-black/30 p-3 rounded-xl border border-white/5">
-                  <div>
-                    <label className="text-[10px] text-gray-400 block mb-1">الشركة المصنعة</label>
-                    <input
-                      type="text"
-                      value={carMake}
-                      onChange={e => setCarMake(e.target.value)}
-                      placeholder="تويوتا، فورد..."
-                      className="w-full bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-red"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400 block mb-1">الموديل</label>
-                    <input
-                      type="text"
-                      value={carModel}
-                      onChange={e => setCarModel(e.target.value)}
-                      placeholder="كامري، تورس..."
-                      className="w-full bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-red"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400 block mb-1">سنة الصنع</label>
-                    <input
-                      type="text"
-                      value={carYear}
-                      onChange={e => setCarYear(e.target.value)}
-                      placeholder="2022"
-                      className="w-full bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-red"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400 block mb-1">رقم اللوحة (اختياري)</label>
-                    <input
-                      type="text"
-                      value={plateNumber}
-                      onChange={e => setPlateNumber(e.target.value)}
-                      placeholder="أ ب ج 1234"
-                      className="w-full bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-red"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 bg-brand-red hover:bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-brand-red/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
-          >
-            {loading ? (
-              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : authMode === 'login' ? (
-              <>
-                <UserCheck className="w-4 h-4" />
-                <span>دخول لحسابي</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>تأكيد وإنشاء الحساب</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="text-center mt-4">
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode(authMode === 'login' ? 'register' : 'login');
-              setErrorMsg(null);
-            }}
-            className="text-xs text-gray-400 hover:text-brand-red transition-colors cursor-pointer"
-          >
-            {authMode === 'login' 
-              ? 'ليس لديك حساب بعد؟ اضغط هنا للتسجيل' 
-              : 'لديك حساب بالفعل؟ اضغط هنا لتسجيل الدخول'}
-          </button>
+          <p className="text-[11px] text-gray-500 text-center leading-relaxed pt-1">
+            يتم توحيد حسابك وسياراتك تلقائياً بحساب Google المعتمد لضمان بطاقة عميل واحدة دائمة.
+          </p>
         </div>
       </div>
     </div>
-  </div>
   );
 };
 

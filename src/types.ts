@@ -19,9 +19,18 @@ export interface CustomerProfile {
   photoURL?: string;
   googleUid?: string;
   address?: string;
+  city?: string;
   cars: CustomerCar[];
+  vehicles?: any[];
   removedCars?: string[];
   password?: string;
+  totalVisits?: number;
+  totalSpent?: number;
+  status?: string;
+  notes?: string;
+  lastVisitDate?: any;
+  firstVisitDate?: any;
+  lastLoginAt?: any;
   createdAt: any;
   updatedAt?: any;
 }
@@ -306,7 +315,182 @@ export interface StaffPermissions {
   canManageContent: boolean;
   canManageSettings: boolean;
   canManageStaff: boolean;
+  canManageContracts?: boolean;
 }
+
+// ==========================================================
+// Contracts Management (Outbound Workshops & Inbound Corporate Fleets)
+// ==========================================================
+export type ContractType = 'workshop_outbound' | 'company_inbound';
+// 'workshop_outbound': عقد ورشة خارجية (نرسل لها سيارات للصيانة المتخصصة)
+// 'company_inbound': عقد شركة تجارية / أسطول (نستلم منها سيارات ونقوم بصيانتها)
+
+export type ContractStatus = 'active' | 'expired' | 'suspended' | 'draft';
+export type ContractVehicleStatus = 'dispatched' | 'in_progress' | 'ready' | 'delivered' | 'cancelled';
+
+export interface ContractVehicle {
+  id: string;
+  contractId: string;
+  plateNumber: string; // رقم اللوحة
+  carModel: string; // الماركة والموديل (تويوتا كامري 2023)
+  carYear?: string;
+  vin?: string;
+  driverOrContact?: string; // السائق أو المفوض
+  driverPhone?: string; // رقم الجوال
+  serviceRequired: string; // العطل أو الأعمال المطلوبة
+  dispatchDate: string; // تاريخ الإرسال / الاستلام (YYYY-MM-DD)
+  expectedCompletionDate?: string; // تاريخ الإنجاز المتوقع
+  actualCompletionDate?: string;
+  workshopCost?: number; // تكلفة الورشة الخارجية علينا (في عقود الورش)
+  billingAmount?: number; // سعر الفاتورة للشركة أو العميل
+  status: ContractVehicleStatus;
+  workNotes?: string;
+  invoiceNumber?: string;
+  warrantyPeriod?: string;
+  createdAt?: any;
+}
+
+export interface Contract {
+  id: string;
+  contractNumber: string; // مثال: CTR-WRK-2025-01 أو CTR-CORP-2025-03
+  type: ContractType; // 'workshop_outbound' | 'company_inbound'
+  title: string; // مسمى الاتفاقية
+  partyName: string; // اسم الورشة الشريكة أو اسم الشركة / المؤسسة
+  crNumber?: string; // السجل التجاري
+  taxNumber?: string; // الرقم الضريبي
+  contactPerson: string; // اسم المسؤول أو مدير الأسطول/الورشة
+  contactPhone: string; // رقم الجوال
+  contactEmail?: string;
+  city: string; // المدينة (جدة)
+  address?: string; // الحي أو الموقع
+  specializationOrScope?: string; // التخصص للورش (سمكرة، رش، قيرات) أو نطاق العمل للشركات (صيانة أسطول)
+  estimatedVehiclesCount?: number; // عدد السيارات المتوقع أو حجم الأسطول
+  commissionOrDiscount?: string; // نسبة الخصم المعتمدة أو عمولة المركز (مثل 20%)
+  paymentTerms: 'monthly_billing' | 'per_vehicle' | 'credit_30' | 'advance_deposit' | 'custom';
+  paymentTermsDetails?: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: ContractStatus;
+  termsConditions?: string; // بنود وشروط الاتفاقية
+  notes?: string; // ملاحظات إدارية
+  vehicles?: ContractVehicle[]; // سجل السيارات المرتبطة بهذا العقد
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export const DEFAULT_SAMPLE_CONTRACTS: Contract[] = [
+  {
+    id: 'contract-wrk-sample-1',
+    contractNumber: 'CTR-WRK-2025-01',
+    type: 'workshop_outbound',
+    title: 'اتفاقية إسناد أعمال سمكرة ودهان أفران وضمان جودة',
+    partyName: 'ورشة أوتو فيكس المتخصصة للسمكرة والدهان',
+    crNumber: '4030198822',
+    taxNumber: '310293847200003',
+    contactPerson: 'م. عادل السلمي (مدير الورشة)',
+    contactPhone: '0503456789',
+    contactEmail: 'autofix.paint.jed@gmail.com',
+    city: 'جدة',
+    address: 'صناعية عسفان - شارع الورش الرئيسي',
+    specializationOrScope: 'سمكرة ألمنيوم وحديد، رش أفران حرارية، تعديل صدمات على البارد PDR، وسحب شاسيه بمقاييس ليزر',
+    commissionOrDiscount: '20% خصم خاص لعملاء DR.FIX',
+    paymentTerms: 'monthly_billing',
+    paymentTermsDetails: 'تسوية كشف الحساب بصفة شهرية نهاية كل شهر ميلادي مع تحويل بنكي رسمي',
+    startDate: '2025-01-01',
+    endDate: '2026-12-31',
+    status: 'active',
+    termsConditions: '1. التزام الورشة باستخدام دهانات أوروبية أصلية بضمان لا يقل عن سنتين ضد التقشير وتغير اللون.\n2. إنجاز السيارات المستلمة خلال مدة أقصاها 5 أيام عمل من تاريخ التسليم.\n3. توفير تقرير فحص صور قبل وبعد العمل.',
+    notes: 'ورشة موثوقة جداً في رش السيارات الفاخرة، التعامل مباشر مع المهندس عادل.',
+    vehicles: [
+      {
+        id: 'cv-101',
+        contractId: 'contract-wrk-sample-1',
+        plateNumber: 'أ ب ج 4589',
+        carModel: 'تويوتا لاندكروزر 2023',
+        driverOrContact: 'عبدالله بن فهد',
+        driverPhone: '0501122334',
+        serviceRequired: 'سمكرة وتعديل رفرف أمامي يمين ورش فرن حراري مع مطابقة درجة اللون الأصلية',
+        dispatchDate: '2026-09-02',
+        expectedCompletionDate: '2026-09-08',
+        actualCompletionDate: '2026-09-08',
+        workshopCost: 1400,
+        billingAmount: 1950,
+        status: 'ready',
+        workNotes: 'تم رش الباب والرفرف بنجاح ومطابقة البوية 100% وبانتظار استلامها من الورشة للمركز.'
+      },
+      {
+        id: 'cv-102',
+        contractId: 'contract-wrk-sample-1',
+        plateNumber: 'د ر هـ 1022',
+        carModel: 'هونداي توسان 2024',
+        driverOrContact: 'سارة خالد',
+        driverPhone: '0567788990',
+        serviceRequired: 'تعديل صدمة شنطة خلفية على البارد PDR ورش صدام خلفي جديد',
+        dispatchDate: '2026-09-06',
+        expectedCompletionDate: '2026-09-11',
+        workshopCost: 650,
+        billingAmount: 950,
+        status: 'in_progress',
+        workNotes: 'السيارة حالياً بداخل كابينة الدهان، سيتم التجفيف والتلميع غداً.'
+      }
+    ]
+  },
+  {
+    id: 'contract-corp-sample-2',
+    contractNumber: 'CTR-CORP-2025-03',
+    type: 'company_inbound',
+    title: 'اتفاقية صيانة دورية وإصلاح ميكانيكي لأسطول سيارات الشحن السريع',
+    partyName: 'شركة النقل السريع للخدمات اللوجستية (أسطول الغربية)',
+    crNumber: '4030876541',
+    taxNumber: '300987654300003',
+    contactPerson: 'أ. ماجد الغامدي (مدير العمليات والأسطول)',
+    contactPhone: '0558765432',
+    contactEmail: 'fleet.logistics@fasttransport.sa',
+    city: 'جدة',
+    address: 'المدينة الصناعية - منطقة مستودعات الخمرة',
+    specializationOrScope: 'صيانة دورية وقائية لأسطول الفانات والشاحنات، غيار زيوت وبترومين، فحص فرامل، إصلاح كهرباء وتكييف، وخدمة سريعة في المركز وميدانياً',
+    estimatedVehiclesCount: 35,
+    commissionOrDiscount: '15% خصم عقود الأساطيل السنوية',
+    paymentTerms: 'credit_30',
+    paymentTermsDetails: 'فواتير ضريبية إلكترونية موحدة تصدر نهاية كل أسبوعين مع مهلة سداد 30 يوماً',
+    startDate: '2025-03-01',
+    endDate: '2026-03-01',
+    status: 'active',
+    termsConditions: '1. أولوية دخول فورية لسيارات الأسطول دون انتظار.\n2. استخدام قطع غيار أصلية معتمدة مع ضمان 6 أشهر على كافة الإصلاحات.\n3. توفير تقرير حالة فني إلكتروني لكل مركبة بعد كل صيانة.',
+    notes: 'الأسطول يتكون من 30 فان تويوتا هايس وفورد ترانزيت + 5 سيارات إدارية كامري.',
+    vehicles: [
+      {
+        id: 'cv-201',
+        contractId: 'contract-corp-sample-2',
+        plateNumber: 'س ن ق 7714',
+        carModel: 'فورد ترانزيت 2023 (فان بضائع #14)',
+        driverOrContact: 'محمد إدريس (سائق توزيع)',
+        driverPhone: '0543322110',
+        serviceRequired: 'صيانة دورية 40 ألف كم + تغيير زيت 10W-30 وفلتر أصلي + فحمات فرامل أمامية',
+        dispatchDate: '2026-09-07',
+        expectedCompletionDate: '2026-09-08',
+        actualCompletionDate: '2026-09-08',
+        billingAmount: 1120,
+        status: 'ready',
+        workNotes: 'تمت الصيانة بنجاح واختبار قيادة الفرامل، السيارة جاهزة لتسليمها لشركة النقل.'
+      },
+      {
+        id: 'cv-202',
+        contractId: 'contract-corp-sample-2',
+        plateNumber: 'ك ل م 5590',
+        carModel: 'تويوتا هايس 2022 (باص نقل موظفين)',
+        driverOrContact: 'طارق الزهراني',
+        driverPhone: '0598877665',
+        serviceRequired: 'تصفية ماكينة كاملة، فحص تسريب فريون مكيف خلفي وتعبئة غاز أصلي R134a وتغيير راديتر',
+        dispatchDate: '2026-09-08',
+        expectedCompletionDate: '2026-09-10',
+        billingAmount: 1650,
+        status: 'in_progress',
+        workNotes: 'تم فك الراديتر وتركيب القطعة الأصلية، وجاري اختبار ضغط الفريون للمكيف الخلفي.'
+      }
+    ]
+  }
+];
 
 export interface StaffUser {
   id: string;
@@ -337,6 +521,7 @@ export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   canManageContent: true,
   canManageSettings: true,
   canManageStaff: true,
+  canManageContracts: true,
 };
 
 export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string; permissions: StaffPermissions }> = {
@@ -361,6 +546,7 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageContent: false,
       canManageSettings: false,
       canManageStaff: false,
+      canManageContracts: true,
     }
   },
   technician: {
@@ -699,5 +885,7 @@ export interface AppSettings {
   // Privacy Policy & Terms of Service (PDPL Compliant)
   privacyPolicyText?: string;
   termsOfServiceText?: string;
+  showPrivacyPolicy?: boolean;
+  showTermsOfService?: boolean;
 }
 

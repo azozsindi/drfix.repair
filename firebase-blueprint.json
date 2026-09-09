@@ -158,6 +158,24 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "imageUrl", "locationUrl", "isActive"]
+    },
+    "contract": {
+      "title": "Contract Agreement",
+      "description": "Agreements with subcontracting workshops (outbound car dispatch) or corporate fleet clients (inbound car servicing).",
+      "type": "object",
+      "properties": {
+        "contractNumber": { "type": "string" },
+        "type": { "type": "string", "enum": ["workshop_outbound", "company_inbound"] },
+        "title": { "type": "string" },
+        "partyName": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["active", "expired", "suspended", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractNumber", "type", "title", "partyName", "contactPerson", "contactPhone", "status"]
     }
   },
   "firestore": {
@@ -208,6 +226,10 @@
     "/partners/{partnerId}": {
       "schema": "partner",
       "description": "Collection of success partner workshops and automotive stores."
+    },
+    "/contracts/{contractId}": {
+      "schema": "contract",
+      "description": "Collection of workshop subcontracting contracts and corporate fleet maintenance agreements."
     }
   }
 }

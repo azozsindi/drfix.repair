@@ -9,7 +9,8 @@ import {
   addDoc, 
   updateDoc, 
   serverTimestamp, 
-  writeBatch 
+  writeBatch,
+  getDocs 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { MaintenanceRecord } from '../types';
@@ -114,7 +115,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
   useEffect(() => {
     const q = query(collection(db, 'customers'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: CustomerProfile[] = [];
+      const rawList: CustomerProfile[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         const parsedVehicles: CustomerVehicle[] = [];
@@ -150,7 +151,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           });
         }
 
-        list.push({
+        rawList.push({
           id: docSnap.id,
           name: data.name || 'عميل كريم',
           phone: data.phone || '',
@@ -168,7 +169,49 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           updatedAt: data.updatedAt
         });
       });
-      setCustomers(list);
+
+      // Deduplicate into unified customer cards in UI so no duplicate rows appear
+      const unifiedMap = new Map<string, CustomerProfile>();
+
+      rawList.forEach((item) => {
+        const cleanP = unifySaudiPhone(item.phone) || item.phone.trim();
+        const cleanE = item.email ? item.email.toLowerCase().trim() : '';
+        const key = cleanE ? `email:${cleanE}` : (cleanP ? `phone:${cleanP}` : `id:${item.id}`);
+
+        if (!unifiedMap.has(key)) {
+          unifiedMap.set(key, { ...item, phone: cleanP || item.phone });
+        } else {
+          const prev = unifiedMap.get(key)!;
+          // Merge vehicles
+          const combinedVehicles = [...prev.vehicles];
+          item.vehicles.forEach(v => {
+            if (!combinedVehicles.some(cv => cv.model.toLowerCase() === v.model.toLowerCase() && cv.plateNumber === v.plateNumber)) {
+              combinedVehicles.push(v);
+            }
+          });
+
+          // Pick best name
+          const bestName = (prev.name && prev.name !== 'عميل' && prev.name !== 'عميل كريم')
+            ? prev.name
+            : (item.name && item.name !== 'عميل' && item.name !== 'عميل كريم' ? item.name : prev.name);
+
+          unifiedMap.set(key, {
+            ...prev,
+            id: prev.id.length > 20 ? prev.id : (item.id.length > 20 ? item.id : prev.id),
+            name: bestName,
+            phone: prev.phone || cleanP,
+            email: prev.email || cleanE,
+            vehicles: combinedVehicles,
+            totalVisits: Math.max(prev.totalVisits, item.totalVisits),
+            totalSpent: Math.max(prev.totalSpent, item.totalSpent),
+            status: (prev.totalVisits >= 3 || item.totalVisits >= 3) ? 'vip' : (prev.status === 'vip' || item.status === 'vip' ? 'vip' : prev.status),
+            notes: prev.notes && item.notes && !prev.notes.includes(item.notes) ? `${prev.notes} | ${item.notes}` : (prev.notes || item.notes),
+            lastVisitDate: prev.lastVisitDate || item.lastVisitDate
+          });
+        }
+      });
+
+      setCustomers(Array.from(unifiedMap.values()));
       setLoading(false);
     }, (err) => {
       console.error('Firestore customers listener error:', err);
@@ -177,6 +220,103 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
     return () => unsubscribe();
   }, []);
+
+  const [isDeduplicating, setIsDeduplicating] = useState(false);
+
+  // 1b. One-click Firestore cleaner to merge all duplicate customer records permanently
+  const handlePurgeDuplicatesInFirestore = async () => {
+    setIsDeduplicating(true);
+    try {
+      const custSnap = await getDocs(collection(db, 'customers'));
+      const allDocs: { id: string; ref: any; data: any }[] = [];
+      custSnap.forEach(d => allDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() }));
+
+      const groups = new Map<string, typeof allDocs>();
+
+      allDocs.forEach(d => {
+        const data = d.data;
+        const gUid = data.googleUid || (d.id.length > 20 && !d.id.startsWith('05') ? d.id : null);
+        const email = data.email ? data.email.toLowerCase().trim() : null;
+        const phone = data.phone ? (unifySaudiPhone(data.phone) || data.phone.trim()) : null;
+
+        let groupKey: string | null = null;
+        if (gUid) groupKey = `guid:${gUid}`;
+        else if (email) groupKey = `email:${email}`;
+        else if (phone) groupKey = `phone:${phone}`;
+        else groupKey = `id:${d.id}`;
+
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, []);
+        }
+        groups.get(groupKey)!.push(d);
+      });
+
+      let cleanedCount = 0;
+      for (const [_, group] of groups.entries()) {
+        if (group.length > 1) {
+          const master = group.slice().sort((a, b) => {
+            const aIsGoogle = (a.data.googleUid || a.id.length > 20) ? 1 : 0;
+            const bIsGoogle = (b.data.googleUid || b.id.length > 20) ? 1 : 0;
+            if (aIsGoogle !== bIsGoogle) return bIsGoogle - aIsGoogle;
+            return (Number(b.data.totalVisits) || 0) - (Number(a.data.totalVisits) || 0);
+          })[0];
+
+          let mergedCars: any[] = [];
+          let mergedVehicles: any[] = [];
+          let totalVisits = 0;
+          let totalSpent = 0;
+          let notes = master.data.notes || '';
+          let name = master.data.name || '';
+          let phone = master.data.phone || '';
+          let email = master.data.email || '';
+
+          group.forEach(d => {
+            if (Array.isArray(d.data.cars)) mergedCars.push(...d.data.cars);
+            if (Array.isArray(d.data.vehicles)) mergedVehicles.push(...d.data.vehicles);
+            totalVisits = Math.max(totalVisits, Number(d.data.totalVisits || 0));
+            totalSpent = Math.max(totalSpent, Number(d.data.totalSpent || 0));
+            if (!name && d.data.name && d.data.name !== 'عميل' && d.data.name !== 'عميل كريم') name = d.data.name;
+            if (!phone && d.data.phone) phone = d.data.phone;
+            if (!email && d.data.email) email = d.data.email;
+            if (d.id !== master.id && d.data.notes && !notes.includes(d.data.notes)) {
+              notes = notes ? `${notes}\n${d.data.notes}` : d.data.notes;
+            }
+          });
+
+          await setDoc(master.ref, {
+            ...master.data,
+            name: name || master.data.name || 'عميل كريم',
+            phone: phone || master.data.phone || '',
+            email: email || master.data.email || '',
+            cars: mergedCars,
+            vehicles: mergedVehicles,
+            totalVisits,
+            totalSpent,
+            notes,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+
+          for (const d of group) {
+            if (d.id !== master.id) {
+              try {
+                await deleteDoc(d.ref);
+                cleanedCount++;
+              } catch (delErr) {
+                console.warn('Error deleting duplicate doc:', delErr);
+              }
+            }
+          }
+        }
+      }
+
+      showToast(cleanedCount > 0 ? `تم دمج وتنظيف (${cleanedCount}) كروت وسجلات مكررة بنجاح!` : 'جميع كروت وسجلات العملاء موحدة تماماً ولا توجد كروت مكررة 👍');
+    } catch (err) {
+      console.error('Deduplication error:', err);
+      showToast('حدث خطأ أثناء فحص ودمج الكروت المكررة');
+    } finally {
+      setIsDeduplicating(false);
+    }
+  };
 
   // 2. Auto-sync or manual sync from maintenance records & bookings into customers collection
   const handleSyncFromRecords = async () => {
@@ -679,6 +819,16 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
             >
               <Download className="w-4 h-4 text-emerald-400" />
               <span>تصدير الكل (Excel)</span>
+            </button>
+
+            <button 
+              onClick={handlePurgeDuplicatesInFirestore}
+              disabled={isDeduplicating}
+              className="px-3.5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              title="فحص قاعدة البيانات ودمج أي كروت أو حسابات مكررة لنفس العميل في كرت موحد"
+            >
+              <Sparkles className={cn("w-4 h-4 text-amber-400", isDeduplicating && "animate-spin")} />
+              <span>{isDeduplicating ? 'جارِ دمج الكروت...' : 'دمج وتوحيد الكروت'}</span>
             </button>
 
             <button 

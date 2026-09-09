@@ -170,7 +170,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <h3 className="text-base sm:text-xl font-display font-black text-white truncate">
                     {activeTab === 'privacy' ? 'سياسة الخصوصية وحماية البيانات' : 'شروط وأحكام الخدمة'}
                   </h3>
-                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/30 shrink-0">
+                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-brand-red/15 text-brand-red border border-brand-red/30 shrink-0">
                     <CheckCircle2 className="w-3 h-3" />
                     معتمد ومحدث 2026
                   </span>
@@ -255,7 +255,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   </div>
 
                   <div className="flex items-start gap-3 p-2">
-                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                    <div className="p-2 rounded-lg bg-brand-red/10 text-brand-red shrink-0">
                       <MapPin className="w-4 h-4" />
                     </div>
                     <div>
@@ -265,8 +265,8 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   </div>
 
                   <div className="flex items-start gap-3 p-2">
-                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 shrink-0">
-                      <Lock className="w-4 h-4" />
+                    <div className="p-2 rounded-lg bg-white/10 text-white shrink-0">
+                      <Lock className="w-4 h-4 text-brand-red" />
                     </div>
                     <div>
                       <div className="font-bold text-xs sm:text-sm text-white">حظر تام للمشاركة</div>
@@ -338,7 +338,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
           {/* Footer of Modal */}
           <div className="px-5 sm:px-8 py-4 border-t border-white/10 bg-black/60 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-gray-400 text-center sm:text-right">
-              <ShieldCheck className="w-4 h-4 text-green-400 shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-brand-red shrink-0" />
               <span>آخر تحديث: سبتمبر 2026 • متوافق مع لوائح التجارة الإلكترونية وأنظمة حماية البيانات بالسعودية</span>
             </div>
 

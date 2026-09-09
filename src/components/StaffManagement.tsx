@@ -284,6 +284,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
     { key: 'canChangeStatus', title: 'تغيير حالات الحجز', desc: 'قبول، تحريك الفني بالطريق، إنجاز، وإلغاء الطلبات وفتح واتساب', icon: '🔄' },
     { key: 'canViewCalendar', title: 'التقويم والمواعيد', desc: 'استعراض مواعيد الصيانة على التقويم الشهري واليومي', icon: '📅' },
     { key: 'canManageCustomers', title: 'سجل العملاء والسيارات', desc: 'قاعدة بيانات العملاء وأرقام هواتفهم وسجل صيانة سياراتهم', icon: '👥' },
+    { key: 'canManageContracts', title: 'إدارة العقود (ورش وشركات)', desc: 'إبرام عقود توريد الورش وأساطيل الشركات ومتابعة حركة تسليم السيارات', icon: '📋' },
     { key: 'canViewReports', title: 'التقارير وسندات الصيانة', desc: 'طباعة وتصدير كشوفات الحساب وسندات استلام الصيانة (Word & PDF)', icon: '📄' },
     { key: 'canManageTestimonials', title: 'التقييمات والآراء', desc: 'قراءة تقييمات العملاء والرد عليها أو حذفها', icon: '⭐' },
     { key: 'canManageNotifications', title: 'الإشعارات وتيليجرام', desc: 'إعدادات ربط البوت واختبار إشعارات الحجوزات', icon: '🔔' },

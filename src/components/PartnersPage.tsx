@@ -84,7 +84,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-brand-red/5 rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/4 left-0 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[140px]" />
+        <div className="absolute bottom-1/4 left-0 w-[500px] h-[500px] bg-brand-red/5 rounded-full blur-[140px]" />
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10 space-y-12">
@@ -312,9 +312,9 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                             href={`https://wa.me/${partner.whatsapp.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="py-2.5 px-3 rounded-xl bg-[#25D366]/10 hover:bg-[#25D366] hover:text-white border border-[#25D366]/30 text-xs font-bold text-[#25D366] flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                            className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-brand-red hover:text-white border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-all active:scale-95 group"
                           >
-                            <MessageCircle className="w-3.5 h-3.5" />
+                            <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
                             <span>واتساب</span>
                           </a>
                         ) : null}
@@ -357,7 +357,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                 href={`https://api.whatsapp.com/send?phone=${whatsappSupportNumber}&text=${encodeURIComponent('السلام عليكم، أرغب في الانضمام إلى شبكة شركاء نجاح Dr.Fix مع ورشتي / متجري')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-[#25D366]/20 transition-all active:scale-95"
+                className="px-6 py-3 rounded-2xl bg-brand-red hover:bg-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/25 transition-all active:scale-95"
               >
                 <MessageCircle className="w-4 h-4" />
                 <span>قدم طلب الانضمام عبر واتساب</span>
