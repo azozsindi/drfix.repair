@@ -11,6 +11,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { MaintenanceRecord, BookingStatus, StaffUser } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface StatusChangeModalProps {
   record: MaintenanceRecord;
@@ -37,6 +38,9 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
   onClose,
   onConfirmStatusChange
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   // Cancellation State
@@ -79,8 +83,8 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-auto text-white flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Header */}
         <div className={`px-5 py-4 border-b border-white/10 flex items-center justify-between ${
           targetStatus === 'cancelled'
@@ -121,7 +125,7 @@ export const StatusChangeModal: React.FC<StatusChangeModalProps> = ({
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs sm:text-sm">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-xs sm:text-sm flex-1">
           {/* Cancelled View */}
           {targetStatus === 'cancelled' && (
             <div className="space-y-3.5">

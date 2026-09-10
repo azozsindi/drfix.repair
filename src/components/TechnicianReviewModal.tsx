@@ -11,6 +11,7 @@ import {
   Share2
 } from 'lucide-react';
 import { MaintenanceRecord, TechnicianDetailedReview, StaffUser } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface TechnicianReviewModalProps {
   record: MaintenanceRecord;
@@ -25,6 +26,9 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
   onClose,
   onSaveReview
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const existing = record.techDetailedReview;
@@ -96,8 +100,8 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-auto text-white flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-brand-red/25 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
@@ -132,7 +136,7 @@ export const TechnicianReviewModal: React.FC<TechnicianReviewModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs sm:text-sm">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-xs sm:text-sm flex-1">
           {/* 4 Pillars */}
           <div className="space-y-3.5 bg-black/40 p-4 rounded-2xl border border-white/5">
             {/* 1. Work Quality */}

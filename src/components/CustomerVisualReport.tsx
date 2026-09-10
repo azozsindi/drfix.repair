@@ -18,6 +18,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto } from '../types';
+import { InspectionVideoPlayer } from './InspectionVideoPlayer';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface CustomerVisualReportProps {
   record: MaintenanceRecord;
@@ -36,6 +38,9 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
     caption?: string; 
     title?: string 
   } | null>(null);
+
+  // Prevent background scrolling when customer views photo or video lightbox
+  useScrollLock(!!lightboxMedia);
 
   const steps: ServiceStepLog[] = record.serviceSteps || [];
   
@@ -257,9 +262,9 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
         {lightboxMedia && (
           <div 
             onClick={() => setLightboxMedia(null)}
-            className="fixed inset-0 z-60 bg-black/95 flex items-center justify-center p-4 backdrop-blur-md"
+            className="fixed inset-0 z-60 bg-black/95 flex items-center justify-center p-2.5 sm:p-4 backdrop-blur-md overscroll-contain"
           >
-            <div className="relative max-w-3xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <div className="relative max-w-3xl w-full max-h-[92dvh] sm:max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
               <button
                 type="button"
                 onClick={() => setLightboxMedia(null)}
@@ -271,51 +276,28 @@ export const CustomerVisualReport: React.FC<CustomerVisualReportProps> = ({
 
               {/* Video or Image Renderer */}
               {lightboxMedia.mediaType === 'video' || lightboxMedia.videoUrl ? (
-                <div className="w-full flex flex-col items-center">
-                  <div className="relative w-full max-h-[75vh] flex items-center justify-center bg-black rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
-                    <video 
-                      src={lightboxMedia.videoUrl || (lightboxMedia.url.startsWith('http') || lightboxMedia.url.startsWith('/uploads') ? lightboxMedia.url : undefined)}
-                      poster={lightboxMedia.url.startsWith('data:image') ? lightboxMedia.url : undefined}
-                      controls
-                      autoPlay
-                      playsInline
-                      className="max-w-full max-h-[75vh] rounded-2xl bg-black"
-                    >
-                      {lightboxMedia.videoUrl && (
-                        <source src={lightboxMedia.videoUrl} type="video/mp4" />
-                      )}
-                      عذراً، متصفحك لا يدعم تشغيل الفيديو مباشرة.
-                    </video>
-                  </div>
-
-                  {/* Open in external tab / download link */}
-                  {lightboxMedia.videoUrl && (
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <a
-                        href={lightboxMedia.videoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all border border-white/15 cursor-pointer"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-brand-red" />
-                        <span>فتح الفيديو في نافذة مستقلة ↗</span>
-                      </a>
+                <InspectionVideoPlayer
+                  videoUrl={lightboxMedia.videoUrl || lightboxMedia.url}
+                  poster={lightboxMedia.url.startsWith('data:image') ? lightboxMedia.url : undefined}
+                  title={lightboxMedia.title || 'فيديو معاينة وفحص السيارة 🎥'}
+                  caption={lightboxMedia.caption}
+                  onClose={() => setLightboxMedia(null)}
+                  allowReupload={false}
+                />
+              ) : (
+                <>
+                  <img 
+                    src={lightboxMedia.url} 
+                    alt={lightboxMedia.caption || 'صورة الصيانة'} 
+                    className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
+                  />
+                  {(lightboxMedia.title || lightboxMedia.caption) && (
+                    <div className="mt-3 text-center space-y-0.5 max-w-xl">
+                      {lightboxMedia.title && <div className="text-white text-sm font-bold">{lightboxMedia.title}</div>}
+                      {lightboxMedia.caption && <div className="text-gray-300 text-xs">{lightboxMedia.caption}</div>}
                     </div>
                   )}
-                </div>
-              ) : (
-                <img 
-                  src={lightboxMedia.url} 
-                  alt={lightboxMedia.caption || 'صورة الصيانة'} 
-                  className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
-                />
-              )}
-
-              {(lightboxMedia.title || lightboxMedia.caption) && (
-                <div className="mt-3 text-center space-y-0.5 max-w-xl">
-                  {lightboxMedia.title && <div className="text-white text-sm font-bold">{lightboxMedia.title}</div>}
-                  {lightboxMedia.caption && <div className="text-gray-300 text-xs">{lightboxMedia.caption}</div>}
-                </div>
+                </>
               )}
             </div>
           </div>

@@ -15,6 +15,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { MaintenanceRecord, WarrantyDetails, ServiceComplaint, StaffUser } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface WarrantyAndComplaintsModalProps {
   record: MaintenanceRecord;
@@ -37,6 +38,9 @@ export const WarrantyAndComplaintsModal: React.FC<WarrantyAndComplaintsModalProp
   onAddComplaint,
   onUpdateComplaint
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const [activeTab, setActiveTab] = useState<'warranty' | 'complaints'>('warranty');
@@ -176,8 +180,8 @@ export const WarrantyAndComplaintsModal: React.FC<WarrantyAndComplaintsModalProp
   const complaintsList = record.complaints || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-brand-red/20 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
@@ -229,7 +233,7 @@ export const WarrantyAndComplaintsModal: React.FC<WarrantyAndComplaintsModalProp
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-5 flex-1 text-sm">
+        <div className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 sm:space-y-5 flex-1 text-sm">
           {activeTab === 'warranty' && (
             <div className="space-y-4">
               {/* Current Warranty Status Card */}

@@ -15,6 +15,7 @@ import {
   Filter
 } from 'lucide-react';
 import { MaintenanceRecord, AuditLogEntry } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface AuditLogModalProps {
   record: MaintenanceRecord;
@@ -27,6 +28,9 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
   isOpen,
   onClose
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const [search, setSearch] = useState('');
@@ -88,8 +92,8 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[90vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-purple-900/20 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
@@ -139,7 +143,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
         </div>
 
         {/* Audit Log Timeline */}
-        <div className="p-5 overflow-y-auto space-y-4 flex-1 text-sm">
+        <div className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 flex-1 text-sm">
           {filteredLogs.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-xs">
               لا توجد عمليات تطابق البحث المحدد.

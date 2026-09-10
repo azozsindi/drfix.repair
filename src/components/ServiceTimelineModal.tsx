@@ -43,6 +43,8 @@ import { db } from '../firebase';
 import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto, ServiceStepKey, StaffUser } from '../types';
 import { generateVideoThumbnail, storeInspectionVideo } from '../lib/videoStorage';
 import { generateTechnicianAssignmentWhatsAppUrl, getTechnicianAssignmentMessage } from '../lib/whatsappUtils';
+import { InspectionVideoPlayer } from './InspectionVideoPlayer';
+import { useScrollLock } from '../lib/scrollLock';
 import { cn } from '../lib/utils';
 
 interface ServiceTimelineModalProps {
@@ -212,9 +214,13 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const [isCompleting, setIsCompleting] = useState(false);
   const [completionSuccess, setCompletionSuccess] = useState(false);
 
+  // Lock body scrolling while modal is open so background never moves
+  useScrollLock(true);
+
   // Shared Photo & Video Media State
   const [isProcessingImages, setIsProcessingImages] = useState(false);
   const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  const [videoProgressStatus, setVideoProgressStatus] = useState<string>('');
   const [lightboxImage, setLightboxImage] = useState<{ 
     url: string; 
     caption?: string; 
@@ -379,9 +385,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     }
 
     setIsProcessingVideo(true);
+    setVideoProgressStatus('جاري بدء معالجة الفيديو...');
     try {
       const videoKey = `video_${record.id}_${Date.now()}`;
-      const { videoUrl, thumbnailUrl } = await storeInspectionVideo(videoKey, file);
+      const { videoUrl, thumbnailUrl } = await storeInspectionVideo(
+        videoKey, 
+        file, 
+        (pct, text) => setVideoProgressStatus(`${text} (${pct}%)`)
+      );
 
       // Select the arrival video inspection category automatically
       const arrivalCat = IN_PROGRESS_CATEGORIES.find(c => c.id === 'arrival_video_inspection') || IN_PROGRESS_CATEGORIES[0];
@@ -406,6 +417,74 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       alert('حدث خطأ أثناء معالجة وحفظ الفيديو، يرجى المحاولة مجدداً.');
     } finally {
       setIsProcessingVideo(false);
+      setVideoProgressStatus('');
+    }
+  };
+
+  // Re-upload or replace video directly into Firestore cloud storage (fixes legacy expired blob URLs)
+  const handleReuploadVideoForRecord = async (file: File) => {
+    if (!file || !file.type.startsWith('video/')) {
+      alert('يرجى اختيار ملف فيديو صالح.');
+      return;
+    }
+
+    setIsProcessingVideo(true);
+    setVideoProgressStatus('جاري رفع المقطع الجديد إلى السحابة...');
+    try {
+      const videoKey = `video_${record.id}_${Date.now()}`;
+      const { videoUrl, thumbnailUrl } = await storeInspectionVideo(
+        videoKey, 
+        file, 
+        (pct, text) => setVideoProgressStatus(`${text} (${pct}%)`)
+      );
+
+      // Update existing record timeline history steps
+      const currentSteps: ServiceStepLog[] = record.serviceSteps || [];
+      const updatedSteps = currentSteps.map(step => {
+        const updatedPhotos = (step.photos || []).map(p => {
+          if (p.mediaType === 'video' || p.videoUrl || p.caption?.includes('فيديو')) {
+            return {
+              ...p,
+              url: thumbnailUrl || p.url,
+              videoUrl: videoUrl,
+              mediaType: 'video' as const,
+              caption: p.caption || 'فيديو توثيق فحص واستلام السيارة عند الوصول 🎥'
+            };
+          }
+          return p;
+        });
+        return { ...step, photos: updatedPhotos };
+      });
+
+      // Update record in Firestore
+      const recordRef = doc(db, 'maintenance', record.id);
+      await updateDoc(recordRef, {
+        serviceSteps: updatedSteps,
+        updatedAt: new Date().toISOString()
+      });
+
+      // Notify parent state
+      onUpdateRecord({
+        ...record,
+        serviceSteps: updatedSteps
+      });
+
+      // Update lightbox player view
+      setLightboxImage({
+        url: thumbnailUrl,
+        videoUrl: videoUrl,
+        mediaType: 'video',
+        title: 'فيديو الفحص والمعاينة السحابي 🎥',
+        caption: 'تم الحفظ في السحابة بنجاح!'
+      });
+
+      alert('تم رفع وتثبيت فيديو الفحص السحابي بنجاح! يعمل الآن على جميع الأجهزة.');
+    } catch (err) {
+      console.error('Failed to reupload video:', err);
+      alert('تعذر استكمال رفع الفيديو، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsProcessingVideo(false);
+      setVideoProgressStatus('');
     }
   };
 
@@ -908,12 +987,12 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        className="relative w-full max-w-4xl bg-brand-dark/95 border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-right"
+        className="relative w-full max-w-4xl bg-brand-dark/95 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[92vh] my-auto text-right"
         dir="rtl"
       >
         {/* Compact Header Bar */}
@@ -1160,7 +1239,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-3.5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 sm:space-y-6">
           {/* TAB 1: WORKFLOW STAGES (1 -> 2 -> 3 -> 4) */}
           {activeTab === 'workflow' && (
             <div className="space-y-6">
@@ -1520,7 +1599,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       {isProcessingVideo ? (
                         <>
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>جاري معالجة وحفظ فيديو الفحص...</span>
+                          <span>{videoProgressStatus || 'جاري معالجة وحفظ فيديو الفحص...'}</span>
                         </>
                       ) : (
                         <>
@@ -2576,9 +2655,9 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         {lightboxImage && (
           <div 
             onClick={() => setLightboxImage(null)}
-            className="fixed inset-0 z-60 bg-black/95 flex items-center justify-center p-4 backdrop-blur-md"
+            className="fixed inset-0 z-60 bg-black/95 flex items-center justify-center p-2.5 sm:p-4 backdrop-blur-md overscroll-contain"
           >
-            <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <div className="relative max-w-4xl w-full max-h-[92dvh] sm:max-h-[90vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setLightboxImage(null)}
                 className="absolute -top-12 left-0 p-2 text-white/80 hover:text-white bg-white/10 rounded-full transition-colors cursor-pointer"
@@ -2587,50 +2666,29 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               </button>
 
               {lightboxImage.mediaType === 'video' || lightboxImage.videoUrl ? (
-                <div className="w-full flex flex-col items-center">
-                  <div className="relative w-full max-h-[78vh] flex items-center justify-center bg-black rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
-                    <video
-                      src={lightboxImage.videoUrl || (lightboxImage.url.startsWith('http') || lightboxImage.url.startsWith('/uploads') ? lightboxImage.url : undefined)}
-                      poster={lightboxImage.url.startsWith('data:image') ? lightboxImage.url : undefined}
-                      controls
-                      autoPlay
-                      playsInline
-                      className="max-w-full max-h-[78vh] rounded-2xl bg-black"
-                    >
-                      {lightboxImage.videoUrl && (
-                        <source src={lightboxImage.videoUrl} type="video/mp4" />
-                      )}
-                      عذراً، متصفحك لا يدعم تشغيل هذا الفيديو مباشرة.
-                    </video>
-                  </div>
-
-                  {lightboxImage.videoUrl && (
-                    <div className="mt-2.5 flex items-center gap-2">
-                      <a
-                        href={lightboxImage.videoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all border border-white/15 cursor-pointer"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-brand-red" />
-                        <span>فتح الفيديو في نافذة مستقلة / تنزيل ↗</span>
-                      </a>
+                <InspectionVideoPlayer
+                  videoUrl={lightboxImage.videoUrl || lightboxImage.url}
+                  poster={lightboxImage.url.startsWith('data:image') ? lightboxImage.url : undefined}
+                  title={lightboxImage.title || 'فيديو معاينة وفحص السيارة 🎥'}
+                  caption={lightboxImage.caption}
+                  onClose={() => setLightboxImage(null)}
+                  allowReupload={true}
+                  onReupload={handleReuploadVideoForRecord}
+                />
+              ) : (
+                <>
+                  <img 
+                    src={lightboxImage.url} 
+                    alt={lightboxImage.caption || 'صورة الصيانة'} 
+                    className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
+                  />
+                  {(lightboxImage.title || lightboxImage.caption) && (
+                    <div className="mt-3 text-center space-y-0.5">
+                      {lightboxImage.title && <div className="text-white text-sm font-bold">{lightboxImage.title}</div>}
+                      {lightboxImage.caption && <div className="text-gray-400 text-xs">{lightboxImage.caption}</div>}
                     </div>
                   )}
-                </div>
-              ) : (
-                <img 
-                  src={lightboxImage.url} 
-                  alt={lightboxImage.caption || 'صورة الصيانة'} 
-                  className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
-                />
-              )}
-
-              {(lightboxImage.title || lightboxImage.caption) && (
-                <div className="mt-3 text-center space-y-0.5">
-                  {lightboxImage.title && <div className="text-white text-sm font-bold">{lightboxImage.title}</div>}
-                  {lightboxImage.caption && <div className="text-gray-400 text-xs">{lightboxImage.caption}</div>}
-                </div>
+                </>
               )}
             </div>
           </div>

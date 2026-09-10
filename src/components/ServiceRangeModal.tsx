@@ -15,6 +15,7 @@ import {
   Car
 } from 'lucide-react';
 import { ServiceZone, ServiceRangeConfig, ZoneCheckResult } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 // Default Jeddah Service Zones
 export const DEFAULT_SERVICE_RANGE_CONFIG: ServiceRangeConfig = {
@@ -233,6 +234,9 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
   initialCoords,
   onSelectZoneFee
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const [config, setConfig] = useState<ServiceRangeConfig>(() => {
@@ -263,8 +267,8 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-4xl bg-[#0f0f12] border border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto text-right">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="relative w-full max-w-4xl bg-[#0f0f12] border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[94dvh] sm:max-h-[92vh] overflow-hidden my-auto text-right">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between shrink-0">
@@ -294,7 +298,7 @@ export const ServiceRangeModal: React.FC<ServiceRangeModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-6">
+        <div className="p-3.5 sm:p-7 overflow-y-auto overscroll-contain flex-1 space-y-4 sm:space-y-6">
 
           {/* Coverage Summary Alert */}
           <div className="bg-gradient-to-r from-brand-red/10 via-white/5 to-emerald-500/10 border border-white/10 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">

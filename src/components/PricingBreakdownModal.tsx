@@ -12,6 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { MaintenanceRecord, PricingBreakdown, StaffUser } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface PricingBreakdownModalProps {
   record: MaintenanceRecord;
@@ -28,6 +29,9 @@ export const PricingBreakdownModal: React.FC<PricingBreakdownModalProps> = ({
   onClose,
   onSavePricing
 }) => {
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const initialPricing = record.pricing || {
@@ -100,8 +104,8 @@ export const PricingBreakdownModal: React.FC<PricingBreakdownModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl my-auto text-white flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-emerald-900/20 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
@@ -124,7 +128,7 @@ export const PricingBreakdownModal: React.FC<PricingBreakdownModalProps> = ({
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSave} className="p-5 space-y-4 text-xs sm:text-sm">
+        <form onSubmit={handleSave} className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-xs sm:text-sm flex-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             {/* Labor Cost */}
             <div>

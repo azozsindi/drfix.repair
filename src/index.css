@@ -66,6 +66,45 @@
   }
 }
 
+/* Universal Modal & Screen Scroll Lock (Prevents background movement on mobile & PC) */
+html.modal-scroll-lock,
+body.modal-scroll-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  height: 100% !important;
+}
+
+/* Modal and dialog scroll containment (Prevents scroll chaining to background) */
+.fixed.inset-0,
+[role="dialog"],
+.modal-overlay,
+.modal-backdrop,
+.modal-content-scroll {
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure inner scrollable containers inside modals scroll smoothly without moving background */
+.fixed.inset-0 .overflow-y-auto,
+.fixed.inset-0 .overflow-auto,
+.modal-content-scroll {
+  touch-action: pan-y;
+  overscroll-behavior-y: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Responsive Modal Heights and Dimensions for Mobile & PC */
+.modal-max-height {
+  max-height: 92vh;
+  max-height: 92dvh;
+}
+@media (max-width: 639px) {
+  .modal-max-height-mobile {
+    max-height: calc(100dvh - 1.5rem);
+  }
+}
+
 /* Safe area padding & margin utilities for mobile phones & tablets */
 :root {
   --safe-area-top: env(safe-area-inset-top, 0px);

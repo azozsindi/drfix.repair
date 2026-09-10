@@ -18,6 +18,7 @@ import {
 import { db, auth, firebaseConfig } from '../firebase';
 import { CustomerProfile, CustomerCar, MaintenanceRecord, sortBookingsNewestFirst } from '../types';
 import { CustomerVisualReport } from './CustomerVisualReport';
+import { useScrollLock } from '../lib/scrollLock';
 
 // Helper to normalize Saudi phone numbers for consistent indexing
 export const cleanSaudiPhone = (raw: string): string => {
@@ -1251,6 +1252,9 @@ export const CustomerAuthModal: React.FC = () => {
   const { isAuthOpen, setIsAuthOpen, loginWithGoogle, loading } = useCustomer();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Prevent background scroll when auth modal is open
+  useScrollLock(isAuthOpen);
+
   if (!isAuthOpen) return null;
 
   const handleGoogleSignIn = async () => {
@@ -1263,13 +1267,13 @@ export const CustomerAuthModal: React.FC = () => {
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto" 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain" 
       dir="rtl"
       onClick={(e) => {
         if (e.target === e.currentTarget) setIsAuthOpen(false);
       }}
     >
-      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-3xl shadow-2xl flex flex-col my-auto overflow-hidden animate-fadeIn">
+      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col my-auto overflow-hidden animate-fadeIn max-h-[94dvh] sm:max-h-[90vh]">
         {/* Background decorative glow */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-brand-red/15 rounded-full blur-3xl -z-10 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
@@ -1405,6 +1409,9 @@ export const CustomerPortalModal: React.FC = () => {
     customer, isPortalOpen, setIsPortalOpen, logout, addCar, removeCar, 
     updateProfile, prefillBookingWithCar 
   } = useCustomer();
+
+  // Prevent background scroll when portal modal is open
+  useScrollLock(isPortalOpen);
 
   const [activeTab, setActiveTab] = useState<'bookings' | 'cars' | 'profile'>('bookings');
   const [showAddCarForm, setShowAddCarForm] = useState(false);
@@ -1627,8 +1634,8 @@ export const CustomerPortalModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" dir="rtl">
-      <div className="relative w-full max-w-2xl bg-neutral-900 border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn overscroll-contain" dir="rtl">
+      <div className="relative w-full max-w-2xl bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Modal Top Bar */}
         <div className="p-4 sm:p-5 border-b border-white/10 bg-black/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1757,7 +1764,7 @@ export const CustomerPortalModal: React.FC = () => {
         </div>
 
         {/* Tab Content Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+        <div className="p-3.5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4">
           {/* TAB 1: MY CARS */}
           {activeTab === 'cars' && (
             <div className="space-y-4">

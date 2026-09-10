@@ -15,6 +15,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { MaintenanceRecord, CustomerRepairApproval, QuotationItem, StaffUser } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface CustomerRepairApprovalModalProps {
   record: MaintenanceRecord;
@@ -31,6 +32,9 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
   onClose,
   onSaveApproval
 }) => {
+  // Prevent background scroll when approval modal is open
+  useScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   const existing = record.repairApproval;
@@ -192,8 +196,8 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="bg-[#121418] border border-white/10 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+      <div className="bg-[#121418] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl my-auto text-white flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-gradient-to-r from-brand-red/20 via-black/40 to-black/20">
           <div className="flex items-center gap-3">
@@ -244,7 +248,7 @@ export const CustomerRepairApprovalModal: React.FC<CustomerRepairApprovalModalPr
         </div>
 
         {/* Body Content */}
-        <div className="p-5 overflow-y-auto space-y-5 flex-1 text-sm">
+        <div className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 sm:space-y-5 flex-1 text-sm">
           {/* Approved Summary Badge if already approved */}
           {existing?.status === 'approved' && approvalMode === 'view' && (
             <div className="p-4 rounded-2xl bg-green-950/40 border border-green-500/30 space-y-2">

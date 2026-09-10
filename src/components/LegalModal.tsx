@@ -14,6 +14,7 @@ import {
   Lock
 } from 'lucide-react';
 import { AppSettings } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 export const DEFAULT_PRIVACY_POLICY = `
 سياسة الخصوصية وحماية البيانات الشخصية - DR.FIX
@@ -113,17 +114,8 @@ export const LegalModal: React.FC<LegalModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Lock body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
+  // Lock body scroll when modal is open so background never moves
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 
@@ -136,7 +128,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto">
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -152,7 +144,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-4xl max-h-[90vh] bg-[#0F0F10] border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden text-right"
+          className="relative w-full max-w-4xl max-h-[94dvh] sm:max-h-[90vh] bg-[#0F0F10] border border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden text-right my-auto"
           dir="rtl"
         >
           {/* Header */}

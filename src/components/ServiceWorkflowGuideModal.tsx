@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Calendar
 } from 'lucide-react';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface ServiceWorkflowGuideModalProps {
   isOpen: boolean;
@@ -29,14 +30,17 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
   onClose,
   defaultTab = 'customer'
 }) => {
-  const [activeTab, setActiveTab] = useState<'customer' | 'technician'>(defaultTab);
+  // Prevent background scroll when modal is open
+  useScrollLock(isOpen);
 
   if (!isOpen) return null;
 
+  const [activeTab, setActiveTab] = useState<'customer' | 'technician'>(defaultTab);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain">
       <div 
-        className="relative w-full max-w-4xl bg-brand-dark/95 border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-right"
+        className="relative w-full max-w-4xl bg-brand-dark/95 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[92vh] text-right my-auto"
         dir="rtl"
       >
         {/* Header */}
@@ -94,7 +98,7 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-sm">
+        <div className="p-3.5 sm:p-6 overflow-y-auto overscroll-contain space-y-4 sm:space-y-6 text-sm flex-1">
           {/* CUSTOMER WORKFLOW */}
           {activeTab === 'customer' && (
             <div className="space-y-6 animate-fadeIn">

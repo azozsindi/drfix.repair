@@ -2,6 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initGlobalScrollLockObserver } from './lib/scrollLock';
+
+// Initialize global scroll lock observer to prevent background movement when any screen/modal is open
+initGlobalScrollLockObserver();
 
 // Unregister any active service worker and clear stale caches to prevent old code flash
 if ('serviceWorker' in navigator) {

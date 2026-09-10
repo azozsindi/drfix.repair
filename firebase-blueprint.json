@@ -176,6 +176,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["contractNumber", "type", "title", "partyName", "contactPerson", "contactPhone", "status"]
+    },
+    "inspectionVideo": {
+      "title": "Inspection Video Chunk",
+      "description": "Chunk of an inspection video stored permanently in Firestore.",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string" },
+        "chunkIndex": { "type": "number" },
+        "totalChunks": { "type": "number" },
+        "data": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "size": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoId", "chunkIndex", "totalChunks", "data"]
     }
   },
   "firestore": {
@@ -230,6 +245,10 @@
     "/contracts/{contractId}": {
       "schema": "contract",
       "description": "Collection of workshop subcontracting contracts and corporate fleet maintenance agreements."
+    },
+    "/inspection_videos/{chunkId}": {
+      "schema": "inspectionVideo",
+      "description": "Collection of inspection video chunks for vehicle arrival and service documentation."
     }
   }
 }

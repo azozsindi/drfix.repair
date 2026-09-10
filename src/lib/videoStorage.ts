@@ -1,9 +1,15 @@
-// Dedicated Video & Media Handler for Vehicle Inspection at Arrival
+// Dedicated Video & Media Handler for Vehicle Inspection at Arrival & Service Documentation
+import { db } from '../firebase';
+import { collection, doc, setDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
 
 const DB_NAME = 'drfix_media_cache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'inspection_videos';
+const CHUNK_SIZE = 450 * 1024; // 450 KB binary per chunk (~600 KB base64, safe for Firestore 1MB doc limit)
 
+/**
+ * Open local IndexedDB for instant offline-safe video caching
+ */
 function openMediaDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
@@ -13,10 +19,10 @@ function openMediaDB(): Promise<IDBDatabase> {
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+    request.onupgradeneeded = (event) => {
+      const dbInstance = request.result;
+      if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+        dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
     };
 
@@ -26,21 +32,81 @@ function openMediaDB(): Promise<IDBDatabase> {
 }
 
 /**
+ * Save video blob into local IndexedDB
+ */
+export async function cacheVideoLocally(key: string, blob: Blob, mimeType: string, thumbnail?: string): Promise<void> {
+  try {
+    const idb = await openMediaDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = idb.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put({
+        id: key,
+        blob,
+        thumbnail: thumbnail || '',
+        mimeType: mimeType || 'video/mp4',
+        savedAt: Date.now()
+      });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('Failed to cache video in IndexedDB:', e);
+  }
+}
+
+/**
+ * Get video blob from local IndexedDB
+ */
+export async function getCachedVideoLocally(key: string): Promise<{ blob: Blob; mimeType: string } | null> {
+  try {
+    const idb = await openMediaDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(key);
+      req.onsuccess = () => {
+        if (req.result?.blob) {
+          resolve({
+            blob: req.result.blob,
+            mimeType: req.result.mimeType || req.result.blob.type || 'video/mp4'
+          });
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Generates a crisp base64 JPEG thumbnail from a video file/blob
  */
 export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       const video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
       video.autoplay = false;
-      video.preload = 'metadata';
+      video.preload = 'auto';
 
       const url = URL.createObjectURL(videoFile);
       video.src = url;
 
       let hasResolved = false;
+
+      const finishWithFallback = () => {
+        if (hasResolved) return;
+        hasResolved = true;
+        try { URL.revokeObjectURL(url); } catch {}
+        // Return a sleek SVG poster thumbnail fallback
+        const svgFallback = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" fill="%23111827"><rect width="640" height="360" fill="%23111827"/><circle cx="320" cy="180" r="48" fill="%23dc2626"/><polygon points="310,160 340,180 310,200" fill="white"/><text x="320" y="260" font-family="sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">فيديو توثيق الفحص والمعاينة 🎥</text></svg>`;
+        resolve(svgFallback);
+      };
 
       const captureFrame = () => {
         if (hasResolved) return;
@@ -68,22 +134,23 @@ export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> 
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(video, 0, 0, width, height);
-            const thumbBase64 = canvas.toDataURL('image/jpeg', 0.7);
+            const thumbBase64 = canvas.toDataURL('image/jpeg', 0.8);
             URL.revokeObjectURL(url);
             resolve(thumbBase64);
           } else {
-            URL.revokeObjectURL(url);
-            resolve('');
+            finishWithFallback();
           }
-        } catch (e) {
-          URL.revokeObjectURL(url);
-          resolve('');
+        } catch {
+          finishWithFallback();
         }
       };
 
       video.onloadeddata = () => {
-        // seek a bit into the video to avoid black frames
-        video.currentTime = Math.min(1.0, (video.duration || 1) / 2);
+        try {
+          video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+        } catch {
+          captureFrame();
+        }
       };
 
       video.onseeked = () => {
@@ -91,43 +158,105 @@ export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> 
       };
 
       video.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve('');
+        finishWithFallback();
       };
 
-      // Fallback timeout in case video loading hangs
+      // Fallback timeout in case video loading hangs on mobile
       setTimeout(() => {
         if (!hasResolved) {
-          hasResolved = true;
-          URL.revokeObjectURL(url);
-          resolve('');
+          captureFrame();
         }
-      }, 5000);
-    } catch (err) {
+      }, 3000);
+    } catch {
       resolve('');
     }
   });
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 /**
  * Stores inspection video:
- * 1. Uploads to backend server (/api/upload-video) so it produces a real, permanent, universally accessible URL
- *    that works across laptops, customer devices, and phones.
- * 2. Generates a crisp base64 JPEG thumbnail for instant preview and listing.
- * 3. Also caches in local IndexedDB as an offline safety backup.
+ * 1. Generates a thumbnail for immediate display.
+ * 2. Saves directly to Cloud Firestore in distributed chunks (works universally across Vercel, Cloud Run, Safari, Chrome).
+ * 3. Caches in local IndexedDB for 0ms instantaneous replay on the current device.
+ * 4. Also attempts uploading to backend server endpoint as an optional static backup.
  */
 export async function storeInspectionVideo(
   key: string,
-  videoBlob: Blob | File
+  videoBlob: Blob | File,
+  onProgress?: (percent: number, statusText: string) => void
 ): Promise<{ videoUrl: string; thumbnailUrl: string }> {
-  const thumbnailUrl = await generateVideoThumbnail(videoBlob);
-  let serverVideoUrl = '';
+  const cleanId = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const mimeType = videoBlob.type || 'video/mp4';
 
-  // 1. Attempt upload to backend server
+  onProgress?.(10, 'جاري توليد الصورة المصغرة للفيديو...');
+  const thumbnailUrl = await generateVideoThumbnail(videoBlob);
+
+  // 1. Cache immediately in IndexedDB so the recording user never has to wait to view their video
+  await cacheVideoLocally(cleanId, videoBlob, mimeType, thumbnailUrl);
+
+  // 2. Upload in chunks to Firestore so it is permanently stored in the cloud
+  onProgress?.(25, 'جاري تجهيز مقطع الفيديو للرفع السحابي...');
+  
+  try {
+    const totalBytes = videoBlob.size;
+    const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, totalBytes);
+      const chunkBlob = videoBlob.slice(start, end, mimeType);
+      const chunkBase64 = await blobToBase64(chunkBlob);
+
+      const chunkDocId = `${cleanId}_c${i}`;
+      const chunkRef = doc(db, 'inspection_videos', chunkDocId);
+
+      await setDoc(chunkRef, {
+        videoId: cleanId,
+        chunkIndex: i,
+        totalChunks,
+        data: chunkBase64,
+        mimeType,
+        size: totalBytes,
+        createdAt: new Date().toISOString()
+      });
+
+      const currentProgress = 25 + Math.round(((i + 1) / totalChunks) * 65);
+      onProgress?.(currentProgress, `جاري رفع أجزاء الفيديو إلى السحابة (${i + 1}/${totalChunks})...`);
+    }
+
+    onProgress?.(95, 'اكتمل الحفظ السحابي للفيديو بنجاح!');
+  } catch (cloudErr) {
+    console.warn('Firestore video chunks upload failed, relying on local and server backup:', cloudErr);
+  }
+
+  // 3. Optional server upload attempt (if backend runs on Node/Express with disk access)
+  let serverVideoUrl = '';
   try {
     const formData = new FormData();
-    const originalName = (videoBlob as File).name || `${key}.mp4`;
-    const mimeType = videoBlob.type || 'video/mp4';
+    const originalName = (videoBlob as File).name || `${cleanId}.mp4`;
     const fileToUpload = videoBlob instanceof File 
       ? videoBlob 
       : new File([videoBlob], originalName, { type: mimeType });
@@ -144,63 +273,152 @@ export async function storeInspectionVideo(
       if (data.success && data.videoUrl) {
         serverVideoUrl = data.videoUrl;
       }
-    } else {
-      console.warn('Server video upload returned non-200:', response.status);
     }
-  } catch (uploadErr) {
-    console.warn('Server video upload failed, falling back to local storage:', uploadErr);
+  } catch {
+    // Expected on Vercel serverless functions without write permissions
   }
 
-  // 2. Cache in local IndexedDB as backup
-  try {
-    const db = await openMediaDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put({
-        id: key,
-        blob: videoBlob,
-        thumbnail: thumbnailUrl,
-        serverUrl: serverVideoUrl,
-        savedAt: Date.now(),
-        type: videoBlob.type || 'video/mp4'
-      });
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch (dbErr) {
-    console.warn('IndexedDB write warning for inspection video:', dbErr);
-  }
-
-  // Fallback to object URL if server was unreachable
-  const finalVideoUrl = serverVideoUrl || URL.createObjectURL(videoBlob);
+  // Use the cloud firestore-video protocol identifier as the durable master URL
+  const masterVideoUrl = `firestore-video://${cleanId}`;
 
   return {
-    videoUrl: finalVideoUrl,
-    thumbnailUrl: thumbnailUrl || finalVideoUrl
+    videoUrl: masterVideoUrl,
+    thumbnailUrl: thumbnailUrl || ''
   };
+}
+
+/**
+ * Checks if a blob: URL is still valid and alive in current browser memory
+ */
+export async function isBlobUrlAlive(url: string): Promise<boolean> {
+  if (!url.startsWith('blob:')) return true;
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok || res.type === 'opaque';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolves any video URL (firestore-video://, blob:, /uploads/, or https://) into an active, playable Object URL or direct link
+ */
+export async function resolveInspectionVideoUrl(
+  rawUrl: string,
+  onProgress?: (percent: number, message: string) => void
+): Promise<{
+  playbackUrl: string | null;
+  mimeType: string;
+  isExpiredBlob?: boolean;
+  error?: string;
+}> {
+  if (!rawUrl) {
+    return { playbackUrl: null, mimeType: 'video/mp4', error: 'لم يتم توفير رابط للفيديو' };
+  }
+
+  // 1. Direct Web/Server URL (https://, http://, /uploads/)
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://') || rawUrl.startsWith('/uploads/')) {
+    return { playbackUrl: rawUrl, mimeType: 'video/mp4' };
+  }
+
+  // 2. Blob URL
+  if (rawUrl.startsWith('blob:')) {
+    const isAlive = await isBlobUrlAlive(rawUrl);
+    if (isAlive) {
+      return { playbackUrl: rawUrl, mimeType: 'video/mp4' };
+    }
+    // Expired legacy blob URL
+    return {
+      playbackUrl: null,
+      mimeType: 'video/mp4',
+      isExpiredBlob: true,
+      error: 'عذراً، هذا المقطع سُجّل سابقاً كمعاينة مؤقتة (blob) وانتهت صلاحيته مع إغلاق المتصفح.'
+    };
+  }
+
+  // 3. Firestore Video Protocol: firestore-video://${videoId}
+  let videoId = rawUrl;
+  if (videoId.startsWith('firestore-video://')) {
+    videoId = videoId.replace('firestore-video://', '');
+  }
+
+  onProgress?.(15, 'فحص الذاكرة المؤقتة للجهاز...');
+
+  // Check local IndexedDB first
+  const cached = await getCachedVideoLocally(videoId);
+  if (cached?.blob) {
+    const playbackUrl = URL.createObjectURL(cached.blob);
+    onProgress?.(100, 'تم التحميل من الذاكرة المحلية!');
+    return { playbackUrl, mimeType: cached.mimeType || 'video/mp4' };
+  }
+
+  // Fetch chunks from Cloud Firestore
+  onProgress?.(30, 'جاري طلب أجزاء الفيديو من السحابة...');
+  try {
+    const col = collection(db, 'inspection_videos');
+    const q = query(col, where('videoId', '==', videoId));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return {
+        playbackUrl: null,
+        mimeType: 'video/mp4',
+        error: 'لم يتم العثور على أجزاء الفيديو السحابية. قد يكون المقطع لم يكتمل رفعه.'
+      };
+    }
+
+    onProgress?.(60, `تم استلام ${snap.size} جزء سحابي، جاري تجميع المقطع...`);
+
+    interface ChunkData {
+      chunkIndex: number;
+      totalChunks: number;
+      data: string;
+      mimeType: string;
+    }
+
+    const chunks: ChunkData[] = [];
+    let detectedMime = 'video/mp4';
+
+    snap.forEach((docSnap) => {
+      const d = docSnap.data() as ChunkData;
+      chunks.push(d);
+      if (d.mimeType) detectedMime = d.mimeType;
+    });
+
+    chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+
+    // Convert and concatenate all chunks
+    const byteArrays: Uint8Array[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      byteArrays.push(base64ToUint8Array(chunks[i].data));
+    }
+
+    const fullBlob = new Blob(byteArrays, { type: detectedMime });
+
+    // Cache locally for instant next view
+    await cacheVideoLocally(videoId, fullBlob, detectedMime);
+
+    const playbackUrl = URL.createObjectURL(fullBlob);
+    onProgress?.(100, 'تم تجهيز الفيديو للتشغيل بنجاح!');
+
+    return {
+      playbackUrl,
+      mimeType: detectedMime
+    };
+  } catch (err: any) {
+    console.error('Error resolving firestore video:', err);
+    return {
+      playbackUrl: null,
+      mimeType: 'video/mp4',
+      error: `فشل تحميل الفيديو من السحابة: ${err?.message || 'خطأ في الاتصال'}`
+    };
+  }
 }
 
 /**
  * Retrieves a stored video by key and creates a playback URL
  */
 export async function getInspectionVideoUrl(key: string): Promise<string | null> {
-  try {
-    const db = await openMediaDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(key);
-      req.onsuccess = () => {
-        if (req.result?.blob) {
-          resolve(URL.createObjectURL(req.result.blob));
-        } else {
-          resolve(null);
-        }
-      };
-      req.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
+  const res = await resolveInspectionVideoUrl(key);
+  return res.playbackUrl;
 }
