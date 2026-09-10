@@ -34,12 +34,15 @@ import {
   Video,
   Play,
   Film,
-  MessageCircle
+  MessageCircle,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto, ServiceStepKey, StaffUser } from '../types';
 import { generateVideoThumbnail, storeInspectionVideo } from '../lib/videoStorage';
+import { generateTechnicianAssignmentWhatsAppUrl, getTechnicianAssignmentMessage } from '../lib/whatsappUtils';
 import { cn } from '../lib/utils';
 
 interface ServiceTimelineModalProps {
@@ -260,6 +263,20 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const [manualTechPhone, setManualTechPhone] = useState(record.assignedStaffPhone || '');
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignSuccessMsg, setAssignSuccessMsg] = useState('');
+  const [assignedWhatsAppDialog, setAssignedWhatsAppDialog] = useState<{
+    isOpen: boolean;
+    url: string;
+    techName: string;
+    techPhone: string;
+    message: string;
+  }>({
+    isOpen: false,
+    url: '',
+    techName: '',
+    techPhone: '',
+    message: ''
+  });
+  const [copiedMessage, setCopiedMessage] = useState(false);
 
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
@@ -713,6 +730,11 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       }
       techName = manualTechName.trim();
       techPhone = manualTechPhone.trim();
+      if (!techPhone) {
+        if (!window.confirm('تنبيه: لم تقم بإدخال رقم جوال الفني. لن يتمكن النظام من تحويلك إلى واتساب الفني لإرسال تفاصيل المهمة تلقائياً.\n\nهل ترغب بالاستمرار بدون رقم جوال؟ (يُفضل إدخال رقم الجوال)')) {
+          return;
+        }
+      }
       techId = record.assignedStaffId?.startsWith('manual_') ? record.assignedStaffId : `manual_${Date.now()}`;
     } else {
       if (!selectedTechnicianId) {
@@ -748,8 +770,30 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       };
 
       onUpdateRecord(updatedRecord);
-      setAssignSuccessMsg(`تم إسناد الطلب للفني (${techName}) بنجاح!`);
-      setTimeout(() => setAssignSuccessMsg(''), 3500);
+
+      // WhatsApp Redirection: Open chat and display dispatch confirmation modal
+      const waUrl = techPhone ? generateTechnicianAssignmentWhatsAppUrl(updatedRecord, techPhone, techName) : '';
+      if (waUrl) {
+        try {
+          window.open(waUrl, '_blank');
+        } catch (e) {
+          console.warn('Popup blocked, WhatsApp modal dialog will be displayed', e);
+        }
+
+        setAssignedWhatsAppDialog({
+          isOpen: true,
+          url: waUrl,
+          techName,
+          techPhone,
+          message: getTechnicianAssignmentMessage(updatedRecord, techName)
+        });
+      } else {
+        setAssignSuccessMsg(`تم إسناد الطلب للفني (${techName}) بنجاح!`);
+        setTimeout(() => {
+          setAssignSuccessMsg('');
+          setActiveTab('workflow');
+        }, 3000);
+      }
     } catch (err) {
       console.error('Error assigning technician:', err);
       alert('تعذر إسناد الفني.');
@@ -936,6 +980,19 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 title="مشاركة مع العميل عبر الواتساب"
               >
                 <MessageCircle className="w-4 h-4" />
+              </a>
+            )}
+
+            {record.assignedStaffPhone && (
+              <a
+                href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 transition-colors flex items-center gap-1"
+                title={`واتساب الفني المكلف (${record.assignedStaffName || 'الفني'}) - إرسال تفاصيل المهمة`}
+              >
+                <MessageCircle className="w-4 h-4 fill-current text-emerald-400" />
+                <span className="hidden lg:inline text-[10px] font-bold text-emerald-300">واتساب الفني</span>
               </a>
             )}
 
@@ -1521,24 +1578,36 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         {inProgressPhotos.map((photo, idx) => (
                           <div key={idx} className="bg-black/40 p-2 rounded-xl border border-white/10 space-y-1.5">
-                            <div className="relative aspect-video rounded-lg overflow-hidden bg-black group/preview">
+                            <div 
+                              onClick={() => setLightboxImage({ 
+                                url: photo.url, 
+                                caption: photo.caption, 
+                                title: 'معاينة المرفق قبل الاعتماد', 
+                                mediaType: photo.mediaType || (photo.videoUrl ? 'video' : 'image'), 
+                                videoUrl: photo.videoUrl 
+                              })}
+                              className="relative aspect-video rounded-lg overflow-hidden bg-black group/preview cursor-pointer"
+                            >
                               <img src={photo.url} alt="Uploaded preview" className="w-full h-full object-cover" />
                               
                               {/* Video indicator badge */}
                               {photo.mediaType === 'video' && (
-                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
-                                  <div className="w-10 h-10 rounded-full bg-brand-red/90 text-white flex items-center justify-center shadow-lg">
-                                    <Play className="w-5 h-5 mr-0.5" />
+                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                  <div className="w-10 h-10 rounded-full bg-brand-red/90 text-white flex items-center justify-center shadow-lg group-hover/preview:scale-110 transition-transform">
+                                    <Play className="w-5 h-5 mr-0.5 fill-current" />
                                   </div>
                                   <span className="absolute top-1.5 right-1.5 text-[9px] font-bold px-2 py-0.5 rounded-full bg-black/80 text-white border border-white/20">
-                                    🎥 فيديو معاينة
+                                    🎥 فيديو معاينة (انقر للتشغيل)
                                   </span>
                                 </div>
                               )}
 
                               <button
                                 type="button"
-                                onClick={() => setInProgressPhotos(prev => prev.filter((_, i) => i !== idx))}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInProgressPhotos(prev => prev.filter((_, i) => i !== idx));
+                                }}
                                 className="absolute top-1 left-1 p-1 bg-red-600/80 hover:bg-red-700 text-white rounded-md transition-colors cursor-pointer z-10"
                                 title="حذف المرفق"
                               >
@@ -1973,25 +2042,36 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                   الصور المرفقة ({step.photos.length}):
                                 </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                  {step.photos.map((photo, pIdx) => (
-                                    <div 
-                                      key={photo.id || pIdx}
-                                      onClick={() => setLightboxImage({ url: photo.url, caption: photo.caption, title: step.title, mediaType: photo.mediaType, videoUrl: photo.videoUrl })}
-                                      className="group relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer shadow-sm hover:border-brand-red/50 transition-all"
-                                    >
-                                      <img 
-                                        src={photo.url} 
-                                        alt={photo.caption || step.title}
-                                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                                        loading="lazy"
-                                      />
-                                      {photo.mediaType === "video" && (
-                                        <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
-                                          <div className="w-8 h-8 rounded-full bg-brand-red text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                                            <Play className="w-4 h-4 mr-0.5" />
+                                  {step.photos.map((photo, pIdx) => {
+                                    const isVideo = photo.mediaType === "video" || !!photo.videoUrl || photo.caption?.includes('فيديو') || step.title?.includes('فيديو');
+                                    return (
+                                      <div 
+                                        key={photo.id || pIdx}
+                                        onClick={() => setLightboxImage({ 
+                                          url: photo.url, 
+                                          caption: photo.caption, 
+                                          title: step.title, 
+                                          mediaType: isVideo ? 'video' : 'image', 
+                                          videoUrl: photo.videoUrl 
+                                        })}
+                                        className="group relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer shadow-sm hover:border-brand-red/50 transition-all"
+                                      >
+                                        <img 
+                                          src={photo.url} 
+                                          alt={photo.caption || step.title}
+                                          className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                          loading="lazy"
+                                        />
+                                        {isVideo && (
+                                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                            <div className="w-8 h-8 rounded-full bg-brand-red text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                              <Play className="w-4 h-4 mr-0.5 fill-current" />
+                                            </div>
+                                            <span className="absolute top-1.5 left-1.5 bg-brand-red/90 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow">
+                                              فيديو 🎥
+                                            </span>
                                           </div>
-                                        </div>
-                                      )}
+                                        )}
                                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2 justify-between">
                                         <span className="text-[10px] text-white truncate max-w-[80%]">
                                           {photo.caption || 'تكبير الصورة'}
@@ -2012,7 +2092,8 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                         )}
                                       </div>
                                     </div>
-                                  ))}
+                                  );
+                                })}
                                 </div>
                               </div>
                             )}
@@ -2205,7 +2286,28 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {record.assignedStaffPhone && (
+                      <a
+                        href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-emerald-900/40"
+                        title="فتح محادثة واتساب الفني وإرسال تفاصيل المهمة له"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                        <span>مراسلة واتساب (إرسال تفاصيل الطلب) 💬</span>
+                      </a>
+                    )}
+                    {record.assignedStaffPhone && (
+                      <a
+                        href={`tel:${record.assignedStaffPhone}`}
+                        className="p-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-1"
+                        title="اتصال هاتفي بالفني"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                      </a>
+                    )}
                     <button
                       type="button"
                       onClick={handleUnassignTechnician}
@@ -2448,17 +2550,17 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       (assignmentMode === 'staff_list' && !selectedTechnicianId) ||
                       (assignmentMode === 'manual' && !manualTechName.trim())
                     }
-                    className="px-6 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all"
+                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-900/30 cursor-pointer disabled:opacity-50 transition-all"
                   >
                     {isAssigning ? (
                       <>
                         <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>جاري الحفظ...</span>
+                        <span>جاري الحفظ والتحويل...</span>
                       </>
                     ) : (
                       <>
-                        <Check className="w-4 h-4" />
-                        <span>تأكيد إسناد الفني</span>
+                        <MessageCircle className="w-4 h-4 fill-current" />
+                        <span>تأكيد الإسناد والتحويل للواتساب 💬</span>
                       </>
                     )}
                   </button>
@@ -2485,13 +2587,37 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               </button>
 
               {lightboxImage.mediaType === 'video' || lightboxImage.videoUrl ? (
-                <video
-                  src={lightboxImage.videoUrl || lightboxImage.url}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="max-w-full max-h-[80vh] rounded-2xl border border-white/15 shadow-2xl bg-black"
-                />
+                <div className="w-full flex flex-col items-center">
+                  <div className="relative w-full max-h-[78vh] flex items-center justify-center bg-black rounded-2xl overflow-hidden border border-white/15 shadow-2xl">
+                    <video
+                      src={lightboxImage.videoUrl || (lightboxImage.url.startsWith('http') || lightboxImage.url.startsWith('/uploads') ? lightboxImage.url : undefined)}
+                      poster={lightboxImage.url.startsWith('data:image') ? lightboxImage.url : undefined}
+                      controls
+                      autoPlay
+                      playsInline
+                      className="max-w-full max-h-[78vh] rounded-2xl bg-black"
+                    >
+                      {lightboxImage.videoUrl && (
+                        <source src={lightboxImage.videoUrl} type="video/mp4" />
+                      )}
+                      عذراً، متصفحك لا يدعم تشغيل هذا الفيديو مباشرة.
+                    </video>
+                  </div>
+
+                  {lightboxImage.videoUrl && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <a
+                        href={lightboxImage.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all border border-white/15 cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-brand-red" />
+                        <span>فتح الفيديو في نافذة مستقلة / تنزيل ↗</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <img 
                   src={lightboxImage.url} 
@@ -2507,6 +2633,111 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* WhatsApp Technician Assignment Confirmation Dialog */}
+      <AnimatePresence>
+        {assignedWhatsAppDialog.isOpen && (
+          <div 
+            onClick={() => {
+              setAssignedWhatsAppDialog(prev => ({ ...prev, isOpen: false }));
+              setActiveTab('workflow');
+            }}
+            className="fixed inset-0 z-70 bg-black/85 flex items-center justify-center p-4 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.92, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-900 border border-emerald-500/40 rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 text-center relative overflow-hidden"
+            >
+              <div className="absolute -top-16 -right-16 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 mx-auto flex items-center justify-center shadow-lg">
+                <MessageCircle className="w-8 h-8 fill-current" />
+              </div>
+
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold mb-1">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>تم إسناد الطلب للفني بنجاح!</span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white">
+                  إرسال تفاصيل المهمة للفني عبر واتساب 📲
+                </h3>
+                <p className="text-xs text-gray-300">
+                  الفني المكلف: <span className="font-bold text-white">{assignedWhatsAppDialog.techName}</span>
+                  {assignedWhatsAppDialog.techPhone && (
+                    <span className="text-emerald-400 font-mono dir-ltr ml-1 font-bold">({assignedWhatsAppDialog.techPhone})</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Message Preview Box */}
+              <div className="bg-black/50 border border-white/10 rounded-2xl p-3.5 text-right text-xs text-gray-300 space-y-2 max-h-48 overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[11px] text-gray-400 font-bold">
+                  <span>معاينة نص التكليف المرسل للفني:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(assignedWhatsAppDialog.message);
+                      setCopiedMessage(true);
+                      setTimeout(() => setCopiedMessage(false), 2500);
+                    }}
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-[11px] cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition-colors"
+                  >
+                    {copiedMessage ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedMessage ? 'تم النسخ بنجاح!' : 'نسخ الرسالة'}</span>
+                  </button>
+                </div>
+                <p className="whitespace-pre-line text-[11px] leading-relaxed font-sans text-gray-200 select-text">
+                  {assignedWhatsAppDialog.message}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-1">
+                <a
+                  href={assignedWhatsAppDialog.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer transition-all active:scale-98"
+                >
+                  <MessageCircle className="w-5 h-5 fill-current" />
+                  <span>فتح محادثة واتساب الفني الآن 🚀</span>
+                </a>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(assignedWhatsAppDialog.message);
+                      setCopiedMessage(true);
+                      setTimeout(() => setCopiedMessage(false), 2500);
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedMessage ? 'تم النسخ' : 'نسخ النص'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignedWhatsAppDialog(prev => ({ ...prev, isOpen: false }));
+                      setActiveTab('workflow');
+                    }}
+                    className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    <span>متابعة مراحل السند ➡️</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

@@ -110,14 +110,48 @@ export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> 
 }
 
 /**
- * Stores inspection video blob in local IndexedDB and returns playback URL and thumbnail
+ * Stores inspection video:
+ * 1. Uploads to backend server (/api/upload-video) so it produces a real, permanent, universally accessible URL
+ *    that works across laptops, customer devices, and phones.
+ * 2. Generates a crisp base64 JPEG thumbnail for instant preview and listing.
+ * 3. Also caches in local IndexedDB as an offline safety backup.
  */
 export async function storeInspectionVideo(
   key: string,
   videoBlob: Blob | File
 ): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const thumbnailUrl = await generateVideoThumbnail(videoBlob);
+  let serverVideoUrl = '';
 
+  // 1. Attempt upload to backend server
+  try {
+    const formData = new FormData();
+    const originalName = (videoBlob as File).name || `${key}.mp4`;
+    const mimeType = videoBlob.type || 'video/mp4';
+    const fileToUpload = videoBlob instanceof File 
+      ? videoBlob 
+      : new File([videoBlob], originalName, { type: mimeType });
+
+    formData.append('video', fileToUpload);
+
+    const response = await fetch('/api/upload-video', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.videoUrl) {
+        serverVideoUrl = data.videoUrl;
+      }
+    } else {
+      console.warn('Server video upload returned non-200:', response.status);
+    }
+  } catch (uploadErr) {
+    console.warn('Server video upload failed, falling back to local storage:', uploadErr);
+  }
+
+  // 2. Cache in local IndexedDB as backup
   try {
     const db = await openMediaDB();
     await new Promise<void>((resolve, reject) => {
@@ -127,6 +161,7 @@ export async function storeInspectionVideo(
         id: key,
         blob: videoBlob,
         thumbnail: thumbnailUrl,
+        serverUrl: serverVideoUrl,
         savedAt: Date.now(),
         type: videoBlob.type || 'video/mp4'
       });
@@ -137,11 +172,12 @@ export async function storeInspectionVideo(
     console.warn('IndexedDB write warning for inspection video:', dbErr);
   }
 
-  // Create an object URL for immediate in-session playback
-  const objectUrl = URL.createObjectURL(videoBlob);
+  // Fallback to object URL if server was unreachable
+  const finalVideoUrl = serverVideoUrl || URL.createObjectURL(videoBlob);
+
   return {
-    videoUrl: objectUrl,
-    thumbnailUrl: thumbnailUrl || objectUrl
+    videoUrl: finalVideoUrl,
+    thumbnailUrl: thumbnailUrl || finalVideoUrl
   };
 }
 

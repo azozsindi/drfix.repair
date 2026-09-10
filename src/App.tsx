@@ -121,6 +121,7 @@ import { TechnicianWorkspace } from './components/TechnicianWorkspace';
 import { BookingTimeSlotPicker } from './components/BookingTimeSlotPicker';
 import { ServiceWorkflowGuideModal } from './components/ServiceWorkflowGuideModal';
 import { LegalModal, DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
+import { generateTechnicianAssignmentWhatsAppUrl } from './lib/whatsappUtils';
 import { 
   MaintenanceRecord,
   StaffUser, 
@@ -6273,15 +6274,28 @@ const AdminDashboard = ({
                                     )}
                                     <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                                       {record.assignedStaffName ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenTimeline(record, 'timeline')}
-                                          className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
-                                          title="الفني الميداني المسند - اضغط لفتح التوثيق ومراحل العمل"
-                                        >
-                                          <UserCheck className="w-2.5 h-2.5 text-emerald-400" />
-                                          <span>الفني: {record.assignedStaffName}</span>
-                                        </button>
+                                        <div className="inline-flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenTimeline(record, 'timeline')}
+                                            className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                            title="الفني الميداني المسند - اضغط لفتح التوثيق ومراحل العمل"
+                                          >
+                                            <UserCheck className="w-2.5 h-2.5 text-emerald-400" />
+                                            <span>الفني: {record.assignedStaffName}</span>
+                                          </button>
+                                          {record.assignedStaffPhone && (
+                                            <a
+                                              href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="p-1 text-emerald-400 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/40 rounded-full border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                              title={`مراسلة الفني (${record.assignedStaffName}) عبر واتساب وإرسال تفاصيل المهمة`}
+                                            >
+                                              <MessageCircle className="w-2.5 h-2.5 fill-current" />
+                                            </a>
+                                          )}
+                                        </div>
                                       ) : !isTechnician ? (
                                         <button
                                           type="button"
@@ -6492,15 +6506,28 @@ const AdminDashboard = ({
                                 <div className="flex justify-between items-center text-gray-300 pt-1.5 border-t border-white/5">
                                   <span className="text-gray-500">الفني الميداني:</span>
                                   {record.assignedStaffName ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenTimeline(record, 'timeline')}
-                                      className="font-bold text-emerald-300 text-[11px] flex items-center gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/30 cursor-pointer"
-                                      title="عرض مراحل العمل وتوثيق الصور"
-                                    >
-                                      <UserCheck className="w-3 h-3 text-emerald-400" />
-                                      <span>{record.assignedStaffName}</span>
-                                    </button>
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenTimeline(record, 'timeline')}
+                                        className="font-bold text-emerald-300 text-[11px] flex items-center gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/30 cursor-pointer"
+                                        title="عرض مراحل العمل وتوثيق الصور"
+                                      >
+                                        <UserCheck className="w-3 h-3 text-emerald-400" />
+                                        <span>{record.assignedStaffName}</span>
+                                      </button>
+                                      {record.assignedStaffPhone && (
+                                        <a
+                                          href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1 text-emerald-400 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/40 rounded-lg border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                          title={`مراسلة الفني (${record.assignedStaffName}) عبر واتساب`}
+                                        >
+                                          <MessageCircle className="w-3 h-3 fill-current" />
+                                        </a>
+                                      )}
+                                    </div>
                                   ) : !isTechnician ? (
                                     <button
                                       type="button"

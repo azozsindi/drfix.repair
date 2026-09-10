@@ -9,6 +9,7 @@ import setupWebhookHandler from './api/setup-webhook';
 import statusRedirectHandler from './api/status-redirect';
 import accountingHandler from './api/accounting';
 import notifyCustomerRegistrationHandler from './api/notify-customer-registration';
+import uploadVideoHandler from './api/upload-video';
 
 async function startServer() {
   const app = express();
@@ -70,6 +71,14 @@ async function startServer() {
   app.all('/api/accounting*', async (req, res) => {
     await accountingHandler(req, res);
   });
+
+  // Inspection Video Upload Endpoint
+  app.all('/api/upload-video', async (req, res) => {
+    await uploadVideoHandler(req, res);
+  });
+
+  // Serve uploaded media (videos, inspection files) statically
+  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
   // Explicit Static Content-Type routes for SEO, Googlebot-Favicon & Social Previews
   app.get('/favicon.ico', (req, res) => {
