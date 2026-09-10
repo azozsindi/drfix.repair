@@ -30,11 +30,17 @@ import {
   Globe, 
   Timer, 
   CheckCheck,
-  ChevronDown
+  ChevronDown,
+  Video,
+  Play,
+  Film,
+  MessageCircle
 } from 'lucide-react';
 import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto, ServiceStepKey, StaffUser } from '../types';
+import { generateVideoThumbnail, storeInspectionVideo } from '../lib/videoStorage';
+import { cn } from '../lib/utils';
 
 interface ServiceTimelineModalProps {
   record: MaintenanceRecord;
@@ -45,7 +51,7 @@ interface ServiceTimelineModalProps {
     botToken?: string;
     chatId?: string;
   };
-  initialTab?: 'workflow' | 'timeline' | 'add_step' | 'assign';
+  initialTab?: 'workflow' | 'timeline' | 'details' | 'add_step' | 'assign';
   onClose: () => void;
   onUpdateRecord: (updatedRecord: MaintenanceRecord) => void;
 }
@@ -95,6 +101,12 @@ export const compressImage = (file: File, maxWidth = 1000, maxHeight = 1000, qua
 // Preset categories for continuous in-progress updates
 const IN_PROGRESS_CATEGORIES = [
   {
+    id: 'arrival_video_inspection',
+    title: 'فيديو وصور فحص السيارة عند الوصول 🎥',
+    icon: '🎥',
+    defaultNote: 'تم الوصول لموقع العميل وتوثيق الحالة الخارجية للسيارة والعداد بفيديو الفحص الأولي.'
+  },
+  {
     id: 'start_inspection',
     title: 'فحص أولي وبدء العمل',
     icon: '🔍',
@@ -142,10 +154,13 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const getInitialTab = () => {
     if (initialTab === 'assign' && !isTechnician) return 'assign';
     if (initialTab === 'timeline') return 'timeline';
+    if (initialTab === 'details') return 'details';
     return 'workflow';
   };
 
-  const [activeTab, setActiveTab] = useState<'workflow' | 'timeline' | 'assign'>(getInitialTab());
+  const [activeTab, setActiveTab] = useState<'workflow' | 'timeline' | 'details' | 'assign'>(getInitialTab());
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'media'>('all');
+  const [showCompletedExtraForm, setShowCompletedExtraForm] = useState(false);
   const [techAvailabilityFilter, setTechAvailabilityFilter] = useState<'all' | 'free' | 'busy'>('all');
 
   // Determine active workflow stage based on record status
@@ -171,22 +186,42 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   // Stage 3 State (قيد العمل - التحديثات المستمرة)
   const [inProgressCategory, setInProgressCategory] = useState(IN_PROGRESS_CATEGORIES[0]);
   const [inProgressNote, setInProgressNote] = useState('');
-  const [inProgressPhotos, setInProgressPhotos] = useState<{ url: string; caption: string; isInternalOnly: boolean }[]>([]);
+  const [inProgressPhotos, setInProgressPhotos] = useState<{ 
+    url: string; 
+    caption: string; 
+    isInternalOnly: boolean;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  }[]>([]);
   const [isCustomerVisible, setIsCustomerVisible] = useState<boolean>(true); // true: Customer Visible, false: Private
   const [isInProgressSaving, setIsInProgressSaving] = useState(false);
   const [inProgressSuccessMsg, setInProgressSuccessMsg] = useState('');
 
   // Stage 4 State (مكتمل)
   const [completedNote, setCompletedNote] = useState('');
-  const [completedPhotos, setCompletedPhotos] = useState<{ url: string; caption: string; isInternalOnly: boolean }[]>([]);
+  const [completedPhotos, setCompletedPhotos] = useState<{ 
+    url: string; 
+    caption: string; 
+    isInternalOnly: boolean;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  }[]>([]);
   const [isCompleting, setIsCompleting] = useState(false);
   const [completionSuccess, setCompletionSuccess] = useState(false);
 
-  // Shared Photo & Image State
+  // Shared Photo & Video Media State
   const [isProcessingImages, setIsProcessingImages] = useState(false);
-  const [lightboxImage, setLightboxImage] = useState<{ url: string; caption?: string; title?: string } | null>(null);
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ 
+    url: string; 
+    caption?: string; 
+    title?: string;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  } | null>(null);
 
   const steps: ServiceStepLog[] = record.serviceSteps || [];
+  const totalPhotosCount = useMemo(() => steps.reduce((sum, s) => sum + (s.photos?.length || 0), 0), [steps]);
 
   // Strictly filter technicians: ONLY active staff with technician role or 'فني' in their title
   const technicians = useMemo(() => {
@@ -228,6 +263,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
+  const arrivalVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Real-time calculation of technician availability and active workloads
   const techWorkloadMap = useMemo(() => {
@@ -313,6 +349,46 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       alert('حدث خطأ أثناء معالجة الصور، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsProcessingImages(false);
+    }
+  };
+
+  // Video Uploader Handler for Arrival Inspection
+  const handleProcessVideoFile = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (!file.type.startsWith('video/')) {
+      alert('يرجى اختيار ملف فيديو صالح.');
+      return;
+    }
+
+    setIsProcessingVideo(true);
+    try {
+      const videoKey = `video_${record.id}_${Date.now()}`;
+      const { videoUrl, thumbnailUrl } = await storeInspectionVideo(videoKey, file);
+
+      // Select the arrival video inspection category automatically
+      const arrivalCat = IN_PROGRESS_CATEGORIES.find(c => c.id === 'arrival_video_inspection') || IN_PROGRESS_CATEGORIES[0];
+      setInProgressCategory(arrivalCat);
+
+      if (!inProgressNote) {
+        setInProgressNote('تم الوصول وتصوير السيارة فيديو لمعاينة البودي الخارجي والعداد قبل بدء الصيانة.');
+      }
+
+      setInProgressPhotos(prev => [
+        ...prev,
+        {
+          url: thumbnailUrl,
+          videoUrl: videoUrl,
+          mediaType: 'video',
+          caption: 'فيديو توثيق فحص واستلام السيارة عند الوصول 🎥',
+          isInternalOnly: false
+        }
+      ]);
+    } catch (err) {
+      console.error('Error processing inspection video:', err);
+      alert('حدث خطأ أثناء معالجة وحفظ الفيديو، يرجى المحاولة مجدداً.');
+    } finally {
+      setIsProcessingVideo(false);
     }
   };
 
@@ -503,7 +579,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         isInternalOnly: !isCustomerVisible ? true : p.isInternalOnly,
         isCustomerVisible: isCustomerVisible && !p.isInternalOnly,
         uploadedAt: new Date().toISOString(),
-        uploadedBy: currentTechName
+        uploadedBy: currentTechName,
+        mediaType: p.mediaType || 'image',
+        videoUrl: p.videoUrl,
+        thumbnailUrl: p.url
       }));
 
       const newStep: ServiceStepLog = {
@@ -793,245 +872,234 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         className="relative w-full max-w-4xl bg-brand-dark/95 border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-right"
         dir="rtl"
       >
-        {/* Header Bar */}
-        <div className="p-5 sm:p-6 border-b border-white/10 bg-gradient-to-r from-brand-red/15 via-white/5 to-white/5 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red shrink-0 shadow-lg shadow-brand-red/10">
-              <Wrench className="w-6 h-6" />
+        {/* Compact Header Bar */}
+        <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-white/10 bg-gradient-to-r from-brand-red/15 via-white/5 to-white/5 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red shrink-0 shadow-sm">
+              <Wrench className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-black text-white">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-bold text-white truncate">
                   السند الفني #{bookingNumber}
                 </h3>
                 {getStatusBadge()}
-                {record.estimatedArrival && (
-                  <span className="text-[11px] font-semibold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-lg border border-indigo-500/25 flex items-center gap-1">
+                {record.assignedStaffName && (
+                  <span className="text-[10px] text-gray-300 bg-white/5 px-2 py-0.5 rounded-md border border-white/10 hidden sm:inline-flex items-center gap-1">
+                    <User className="w-3 h-3 text-brand-red" />
+                    <span>الفني: <strong className="text-white">{record.assignedStaffName}</strong></span>
+                  </span>
+                )}
+                {record.estimatedArrival && record.status !== 'completed' && (
+                  <span className="text-[10px] font-semibold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-md border border-indigo-500/25 hidden xs:inline-flex items-center gap-1">
                     <Timer className="w-3 h-3" />
                     <span>{record.estimatedArrival}</span>
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-300 mt-0.5 flex items-center gap-2 flex-wrap">
+              <p className="text-[11px] text-gray-300 mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-white">{record.carModel}</span>
                 <span>•</span>
-                <span>الخدمة: {record.serviceType}</span>
+                <span className="text-brand-red/90 font-medium">{record.serviceType}</span>
                 {record.customerName && (
                   <>
                     <span>•</span>
-                    <span className="text-gray-400">العميل: {record.customerName}</span>
+                    <span className="text-gray-300">{record.customerName}</span>
                   </>
+                )}
+                {record.serviceDate && (
+                  <span className="text-gray-400 font-mono text-[10px] hidden md:inline">
+                    ({new Date(record.serviceDate).toLocaleDateString('ar-SA')})
+                  </span>
                 )}
               </p>
             </div>
           </div>
 
-          <button 
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
-            title="إغلاق النافذة"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Quick Info & Action Strip */}
-        <div className="px-5 sm:px-6 py-2.5 bg-black/40 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
-            {record.assignedStaffName ? (
-              <div className="flex items-center gap-1.5 text-gray-300">
-                <User className="w-3.5 h-3.5 text-brand-red" />
-                <span>الفني المكلف: <b className="text-white">{record.assignedStaffName}</b></span>
-                {record.assignedStaffPhone && (
-                  <a href={`tel:${record.assignedStaffPhone}`} className="text-gray-400 hover:text-white text-[11px] font-mono">
-                    ({record.assignedStaffPhone})
-                  </a>
-                )}
-              </div>
-            ) : isTechnician ? (
-              <div className="flex items-center gap-1.5 text-white/80 font-medium">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>لم يتم تحديد اسم الفني بالسند</span>
-              </div>
-            ) : (
-              <button
-                onClick={() => setActiveTab('assign')}
-                className="text-brand-red hover:text-red-400 font-bold flex items-center gap-1 cursor-pointer"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {record.customerPhone && (
+              <a 
+                href={`tel:${record.customerPhone}`}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-colors"
+                title={`اتصال هاتفي (${record.customerPhone})`}
               >
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>لم يتم إسناد فني بعد - انقر للتعيين</span>
-              </button>
+                <Phone className="w-4 h-4 text-emerald-400" />
+              </a>
             )}
-          </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <a 
-              href={`tel:${record.customerPhone}`}
-              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 flex items-center gap-1 transition-colors"
-              title="اتصال بالعميل"
-            >
-              <Phone className="w-3 h-3 text-brand-red" />
-              <span>{record.customerPhone}</span>
-            </a>
+            {customerWaPhone && (
+              <a
+                href={getCustomerProgressWhatsAppUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 transition-colors"
+                title="مشاركة مع العميل عبر الواتساب"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </a>
+            )}
 
             {record.coordinates?.latitude && record.coordinates?.longitude && (
               <a 
                 href={`https://maps.google.com/?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/25 flex items-center gap-1 transition-colors"
-                title="موقع العميل على الخريطة"
+                className="p-1.5 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 transition-colors"
+                title="فتح موقع العميل GPS"
               >
-                <Navigation className="w-3 h-3" />
-                <span>GPS موقع العميل</span>
+                <Navigation className="w-4 h-4" />
               </a>
             )}
+
+            <button 
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+              title="إغلاق النافذة"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
-        {/* 4-Step Interactive Stepper Bar (سير حالات السند الفني المطلوب لـ DR.FIX) */}
-        <div className="px-5 sm:px-6 pt-4 pb-3 bg-white/5 border-b border-white/5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-gray-400 mb-2">
-            <span>سير مراحل السند الفني لـ DR.FIX:</span>
-            <span className="text-brand-red font-mono">الترتيب المعتمد (1 ← 2 ← 3 ← 4)</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {/* Single Unified Compact Navigation & Stepper Bar (شريط مدمج موحد وأنيق يوفر المساحة) */}
+        <div className="px-3 sm:px-4 py-1.5 bg-black/40 border-b border-white/10 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar text-xs">
+          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
             {/* Step 1: تم القبول */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(1); }}
-              className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
-                record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : workflowStage === 1 && activeTab === 'workflow'
-                    ? 'bg-brand-red/20 border-brand-red text-white ring-1 ring-brand-red'
-                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-              }`}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                workflowStage === 1 && activeTab === 'workflow'
+                  ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
+                  : (record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed')
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                    : "bg-white/5 text-gray-400 hover:text-white"
+              )}
             >
-              <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center font-bold text-xs shrink-0">
-                {record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : '1'}
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold text-xs truncate text-white">1. تم القبول</div>
-                <div className="text-[10px] text-gray-400 truncate">ملاحظات فقط</div>
-              </div>
+              <span>1. تم القبول</span>
+              {(record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed') && (
+                <Check className="w-3 h-3 text-emerald-400" />
+              )}
             </button>
 
-            {/* Step 2: الفني بالطريق */}
+            {/* Step 2: بالطريق */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(2); }}
-              className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
-                record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed'
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : workflowStage === 2 && activeTab === 'workflow'
-                    ? 'bg-brand-red/20 border-brand-red text-white ring-1 ring-brand-red'
-                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-              }`}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                workflowStage === 2 && activeTab === 'workflow'
+                  ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
+                  : (record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed')
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                    : "bg-white/5 text-gray-400 hover:text-white"
+              )}
             >
-              <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center font-bold text-xs shrink-0">
-                {record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : '2'}
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold text-xs truncate text-white">2. الفني بالطريق</div>
-                <div className="text-[10px] text-gray-400 truncate">وقت الوصول + ملاحظة</div>
-              </div>
+              <span>2. بالطريق 🚗</span>
+              {(record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed') && (
+                <Check className="w-3 h-3 text-emerald-400" />
+              )}
             </button>
 
             {/* Step 3: قيد العمل */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(3); }}
-              className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
-                record.status === 'in-progress'
-                  ? 'bg-brand-red/15 border-brand-red/40 text-red-200 ring-1 ring-brand-red/50 animate-pulse'
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                workflowStage === 3 && activeTab === 'workflow'
+                  ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : record.status === 'completed'
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    : workflowStage === 3 && activeTab === 'workflow'
-                      ? 'bg-brand-red/20 border-brand-red text-white ring-1 ring-brand-red'
-                      : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-              }`}
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                    : record.status === 'in-progress'
+                      ? "bg-brand-red/20 text-red-200 border border-brand-red/40 animate-pulse"
+                      : "bg-white/5 text-gray-400 hover:text-white"
+              )}
             >
-              <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center font-bold text-xs shrink-0">
-                {record.status === 'completed' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : '3'}
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold text-xs truncate text-white">3. قيد العمل 🔄</div>
-                <div className="text-[10px] text-gray-400 truncate">تحديثات وصور مستمرة</div>
-              </div>
+              <span>3. قيد العمل 🔄</span>
+              {record.status === 'completed' && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
             {/* Step 4: مكتمل */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(4); }}
-              className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
-                record.status === 'completed'
-                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 ring-1 ring-emerald-500'
-                  : workflowStage === 4 && activeTab === 'workflow'
-                    ? 'bg-brand-red/20 border-brand-red text-white ring-1 ring-brand-red'
-                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
-              }`}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                workflowStage === 4 && activeTab === 'workflow'
+                  ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
+                  : record.status === 'completed'
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    : "bg-white/5 text-gray-400 hover:text-white"
+              )}
             >
-              <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center font-bold text-xs shrink-0">
-                {record.status === 'completed' ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : '4'}
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold text-xs truncate text-white">4. مكتمل 🏁</div>
-                <div className="text-[10px] text-gray-400 truncate">صورة نهائية + إشعار</div>
-              </div>
+              <span>4. مكتمل 🏁</span>
+              {record.status === 'completed' && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
-          </div>
-        </div>
 
-        {/* Tab Navigation */}
-        <div className="px-5 sm:px-6 pt-3 border-b border-white/5 flex gap-2">
-          <button
-            onClick={() => setActiveTab('workflow')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'workflow' 
-                ? 'text-brand-red border-brand-red' 
-                : 'text-gray-400 border-transparent hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>تنفيذ الإجراءات وسير العمل (الخطوة {workflowStage})</span>
-          </button>
+            <div className="h-4 w-[1px] bg-white/15 mx-1 shrink-0" />
 
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'timeline' 
-                ? 'text-brand-red border-brand-red' 
-                : 'text-gray-400 border-transparent hover:text-white'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>سجل الـ Timeline والصور ({steps.length})</span>
-          </button>
-
-          {!isTechnician && (
+            {/* Tab: سجل الـ Timeline */}
             <button
-              onClick={() => setActiveTab('assign')}
-              className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'assign' 
-                  ? 'text-brand-red border-brand-red' 
-                  : 'text-gray-400 border-transparent hover:text-white'
-              }`}
+              type="button"
+              onClick={() => setActiveTab('timeline')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                activeTab === 'timeline'
+                  ? "bg-brand-red text-white shadow-sm"
+                  : "bg-white/5 text-gray-300 hover:text-white"
+              )}
             >
-              <User className="w-3.5 h-3.5" />
-              <span>إسناد الفني</span>
+              <Clock className="w-3.5 h-3.5" />
+              <span>الـ Timeline ({steps.length})</span>
             </button>
-          )}
+
+            {/* Tab: بيانات الطلب والسيارة */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                activeTab === 'details'
+                  ? "bg-brand-red text-white shadow-sm"
+                  : "bg-white/5 text-gray-300 hover:text-white"
+              )}
+            >
+              <Car className="w-3.5 h-3.5" />
+              <span>بيانات السند</span>
+            </button>
+
+            {/* Tab: إسناد الفني */}
+            {!isTechnician && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('assign')}
+                className={cn(
+                  "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                  activeTab === 'assign'
+                    ? "bg-brand-red text-white shadow-sm"
+                    : "bg-white/5 text-gray-300 hover:text-white"
+                )}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>إسناد الفني</span>
+              </button>
+            )}
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 shrink-0">
+            <a
+              href={getCustomerProgressWhatsAppUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1 transition-colors"
+              title="مشاركة تقرير الإنجاز مع العميل عبر الواتساب"
+            >
+              <Share2 className="w-3 h-3" />
+              <span>مشاركة</span>
+            </a>
+          </div>
         </div>
 
         {/* Content Area */}
@@ -1356,14 +1424,64 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Arrival Inspection Video Recorder Card (Featured Action) */}
+                  <div className="bg-gradient-to-r from-brand-red/20 via-black/50 to-black/60 p-4 rounded-2xl border-2 border-brand-red/40 space-y-3 shadow-lg shadow-brand-red/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-10 h-10 rounded-xl bg-brand-red text-white flex items-center justify-center shrink-0 shadow-md shadow-brand-red/30 mt-0.5">
+                          <Video className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5 flex-wrap">
+                            <span>🎥 تصوير فيديو فحص واستلام السيارة عند الوصول</span>
+                            <span className="text-[10px] bg-brand-red text-white px-2 py-0.5 rounded-full font-bold">
+                              أول خطوة عند الوصول
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-300 mt-0.5 leading-relaxed">
+                            توثيق فيديو سريع (10-20 ثانية) لجسم السيارة الخارجي، الخدوش السابقة، ورقم العداد (Odometer) لحماية حقوق العميل والفني.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <input 
+                      type="file"
+                      ref={arrivalVideoInputRef}
+                      onChange={(e) => handleProcessVideoFile(e.target.files)}
+                      accept="video/*"
+                      capture="environment"
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => arrivalVideoInputRef.current?.click()}
+                      disabled={isProcessingVideo}
+                      className="w-full py-3 px-4 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer disabled:opacity-50 active:scale-98"
+                    >
+                      {isProcessingVideo ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>جاري معالجة وحفظ فيديو الفحص...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Video className="w-4 h-4 animate-pulse" />
+                          <span>🎥 بدء تسجيل / رفع فيديو فحص واستلام السيارة</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
                   {/* Photo Upload Zone */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-gray-300">
-                        إرفاق صور التحديث (كاميرا الجوال أو الألبوم):
+                        إرفاق صور إضافية للتحديث (كاميرا الجوال أو الألبوم):
                       </label>
                       <span className="text-[11px] text-gray-400">
-                        {inProgressPhotos.length} صور محددة
+                        {inProgressPhotos.length} عناصر مرفقة
                       </span>
                     </div>
 
@@ -1398,17 +1516,31 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Previews of selected photos */}
+                    {/* Previews of selected photos & videos */}
                     {inProgressPhotos.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                         {inProgressPhotos.map((photo, idx) => (
                           <div key={idx} className="bg-black/40 p-2 rounded-xl border border-white/10 space-y-1.5">
-                            <div className="relative aspect-video rounded-lg overflow-hidden bg-black">
+                            <div className="relative aspect-video rounded-lg overflow-hidden bg-black group/preview">
                               <img src={photo.url} alt="Uploaded preview" className="w-full h-full object-cover" />
+                              
+                              {/* Video indicator badge */}
+                              {photo.mediaType === 'video' && (
+                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center pointer-events-none">
+                                  <div className="w-10 h-10 rounded-full bg-brand-red/90 text-white flex items-center justify-center shadow-lg">
+                                    <Play className="w-5 h-5 mr-0.5" />
+                                  </div>
+                                  <span className="absolute top-1.5 right-1.5 text-[9px] font-bold px-2 py-0.5 rounded-full bg-black/80 text-white border border-white/20">
+                                    🎥 فيديو معاينة
+                                  </span>
+                                </div>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={() => setInProgressPhotos(prev => prev.filter((_, i) => i !== idx))}
-                                className="absolute top-1 left-1 p-1 bg-red-600/80 hover:bg-red-700 text-white rounded-md transition-colors"
+                                className="absolute top-1 left-1 p-1 bg-red-600/80 hover:bg-red-700 text-white rounded-md transition-colors cursor-pointer z-10"
+                                title="حذف المرفق"
                               >
                                 <X className="w-3 h-3" />
                               </button>
@@ -1420,7 +1552,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                 const val = e.target.value;
                                 setInProgressPhotos(prev => prev.map((p, i) => i === idx ? { ...p, caption: val } : p));
                               }}
-                              placeholder="وصف مختصر للصورة..."
+                              placeholder={photo.mediaType === 'video' ? 'وصف فيديو المعاينة...' : 'وصف مختصر للصورة...'}
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-red"
                             />
                           </div>
@@ -1477,25 +1609,114 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   </div>
 
                   {completionSuccess || record.status === 'completed' ? (
-                    <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-3xl text-center space-y-3">
-                      <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400">
+                    <div className="p-5 sm:p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-3xl text-center space-y-4">
+                      <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400 shadow-lg">
                         <CheckCheck className="w-6 h-6" />
                       </div>
-                      <h4 className="text-base font-bold text-white">تم إكمال السند الفني بنجاح! 🏁</h4>
-                      <p className="text-xs text-gray-300 max-w-md mx-auto leading-relaxed">
-                        تم تحديث حالة السند إلى «مكتمل»، وتوثيق المرحلة الختامية، وإرسال إشعار رسمي للإدارة / Owner مع كافة الملاحظات والصور في الـ Timeline.
-                      </p>
-                      {!isTechnician && (
-                        <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                          <a
-                            href={getCustomerProgressWhatsAppUrl()}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                      <div className="space-y-1">
+                        <h4 className="text-base sm:text-lg font-black text-white">السند الفني مكتمل وموثق بنجاح! 🏁</h4>
+                        <p className="text-xs text-gray-300 max-w-lg mx-auto leading-relaxed">
+                          تم إنجاز كافة أعمال الصيانة وتوثيق المراحل الأربعة وإشعار الإدارة. يمكنك مشاركة التقرير الميداني مباشرة مع العميل أو استعراض أرشيف الصور والتحديثات المسجلة.
+                        </p>
+                      </div>
+
+                      {/* Quick Action Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg mx-auto pt-1">
+                        <a
+                          href={getCustomerProgressWhatsAppUrl()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                        >
+                          <Share2 className="w-4 h-4" />
+                          <span>مشاركة التقرير مع العميل عبر الواتساب</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('timeline')}
+                          className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
+                        >
+                          <Clock className="w-4 h-4 text-brand-red" />
+                          <span>استعراض سجل الـ Timeline ({steps.length})</span>
+                        </button>
+                      </div>
+
+                      {/* Collapsible toggle for supplementary note/photo */}
+                      <div className="pt-2 border-t border-emerald-500/20">
+                        <button
+                          type="button"
+                          onClick={() => setShowCompletedExtraForm(prev => !prev)}
+                          className="text-xs text-gray-400 hover:text-white inline-flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <span>{showCompletedExtraForm ? 'إخفاء نموذج الإضافة الإضافية' : 'هل ترغب في إضافة توثيق إضافي أو ملاحظة ختامية للسند؟'}</span>
+                          <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showCompletedExtraForm && "rotate-180")} />
+                        </button>
+                      </div>
+
+                      {showCompletedExtraForm && (
+                        <div className="text-right pt-3 space-y-4 border-t border-white/10 mt-3">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-300 block">
+                              صورة أو فيديو إضافي:
+                            </label>
+                            <input 
+                              type="file"
+                              ref={completedFileInputRef}
+                              onChange={(e) => handleProcessImageFiles(e.target.files, setCompletedPhotos, false)}
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                            />
+                            <div 
+                              onClick={() => completedFileInputRef.current?.click()}
+                              className="border border-dashed border-white/20 hover:border-emerald-500/60 bg-black/40 p-3 rounded-xl text-center cursor-pointer transition-colors"
+                            >
+                              <Camera className="w-5 h-5 mx-auto text-emerald-400 mb-1" />
+                              <span className="text-xs text-gray-300">
+                                {completedPhotos.length > 0 ? `تم تحديد ${completedPhotos.length} صورة` : 'انقر لالتقاط صورة إضافية'}
+                              </span>
+                            </div>
+                            {completedPhotos.length > 0 && (
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                {completedPhotos.map((p, idx) => (
+                                  <div key={idx} className="relative aspect-video rounded-xl overflow-hidden bg-black border border-white/10">
+                                    <img src={p.url} alt="Extra" className="w-full h-full object-cover" />
+                                    <button
+                                      type="button"
+                                      onClick={() => setCompletedPhotos([])}
+                                      className="absolute top-1 left-1 p-1 bg-red-600 text-white rounded-md"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-gray-300 block">
+                              ملاحظة إضافية:
+                            </label>
+                            <textarea
+                              value={completedNote}
+                              onChange={(e) => setCompletedNote(e.target.value)}
+                              placeholder="أضف أي ملاحظات تكميلية..."
+                              rows={2}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red resize-none"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleCompleteService}
+                            disabled={isCompleting || isProcessingImages}
+                            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-all"
                           >
-                            <Share2 className="w-3.5 h-3.5" />
-                            <span>إرسال تقرير الإنجاز للعميل على الواتساب ↗</span>
-                          </a>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>حفظ التوثيق الإضافي في الـ Timeline</span>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1634,13 +1855,38 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs text-gray-400 pb-1">
-                    <span>سجل التحديثات الميدانية الكامل ({steps.length} مراحل مسجلة):</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs pb-2 border-b border-white/10">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-gray-300 font-bold">سجل التحديثات الميدانية ({steps.length}):</span>
+                      <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/5">
+                        <button
+                          type="button"
+                          onClick={() => setTimelineFilter('all')}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer",
+                            timelineFilter === 'all' ? "bg-brand-red text-white shadow-sm" : "text-gray-400 hover:text-white"
+                          )}
+                        >
+                          الكل ({steps.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTimelineFilter('media')}
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer",
+                            timelineFilter === 'media' ? "bg-brand-red text-white shadow-sm" : "text-gray-400 hover:text-white"
+                          )}
+                        >
+                          الصور والميديا ({totalPhotosCount})
+                        </button>
+                      </div>
+                    </div>
+
                     <a
                       href={getCustomerProgressWhatsAppUrl()}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold"
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 flex items-center gap-1.5 font-bold transition-colors"
                       title="مشاركة التقرير عبر الواتساب"
                     >
                       <Share2 className="w-3.5 h-3.5" />
@@ -1649,7 +1895,9 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   </div>
 
                   <div className="relative border-r-2 border-white/10 pr-4 sm:pr-6 space-y-6 mr-2 sm:mr-3">
-                    {steps.map((step, sIdx) => {
+                    {steps
+                      .filter(s => timelineFilter === 'all' || (s.photos && s.photos.length > 0))
+                      .map((step, sIdx) => {
                       const stepDate = step.recordedAt ? new Date(step.recordedAt) : new Date();
 
                       return (
@@ -1690,15 +1938,17 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleDeleteStep(step.id)}
-                                  className="p-1.5 text-gray-400 hover:text-brand-red hover:bg-white/5 rounded-lg transition-colors"
-                                  title="حذف هذا التحديث"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              {!isTechnician && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleDeleteStep(step.id)}
+                                    className="p-1.5 text-gray-400 hover:text-brand-red hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                                    title="حذف هذا التحديث (صلاحية إدارية)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
 
                             {/* Estimated arrival if recorded */}
@@ -1726,15 +1976,22 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                                   {step.photos.map((photo, pIdx) => (
                                     <div 
                                       key={photo.id || pIdx}
-                                      onClick={() => setLightboxImage({ url: photo.url, caption: photo.caption, title: step.title })}
+                                      onClick={() => setLightboxImage({ url: photo.url, caption: photo.caption, title: step.title, mediaType: photo.mediaType, videoUrl: photo.videoUrl })}
                                       className="group relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 cursor-pointer shadow-sm hover:border-brand-red/50 transition-all"
                                     >
                                       <img 
                                         src={photo.url} 
-                                        alt={photo.caption || step.title} 
+                                        alt={photo.caption || step.title}
                                         className="w-full h-full object-cover transition-transform group-hover:scale-105"
                                         loading="lazy"
                                       />
+                                      {photo.mediaType === "video" && (
+                                        <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+                                          <div className="w-8 h-8 rounded-full bg-brand-red text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                            <Play className="w-4 h-4 mr-0.5" />
+                                          </div>
+                                        </div>
+                                      )}
                                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2 justify-between">
                                         <span className="text-[10px] text-white truncate max-w-[80%]">
                                           {photo.caption || 'تكبير الصورة'}
@@ -1766,6 +2023,156 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB: JOB & CUSTOMER DETAILS */}
+          {activeTab === 'details' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Card 1: Customer & Appointment */}
+                <div className="bg-white/5 p-4 sm:p-5 rounded-2xl border border-white/10 space-y-3.5">
+                  <div className="flex items-center gap-2 text-brand-red font-bold text-sm border-b border-white/10 pb-2.5">
+                    <User className="w-4 h-4" />
+                    <span>بيانات العميل والموعد</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">اسم العميل:</span>
+                      <span className="text-white font-bold">{record.customerName || 'غير محدد'}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">رقم الهاتف:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-mono">{record.customerPhone}</span>
+                        {record.customerPhone && (
+                          <a
+                            href={`tel:${record.customerPhone}`}
+                            className="p-1 rounded bg-white/10 hover:bg-white/20 text-emerald-400"
+                            title="اتصال"
+                          >
+                            <Phone className="w-3 h-3" />
+                          </a>
+                        )}
+                        {customerWaPhone && (
+                          <a
+                            href={getCustomerProgressWhatsAppUrl()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400"
+                            title="واتساب"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">تاريخ الموعد:</span>
+                      <span className="text-white font-mono">
+                        {record.serviceDate ? new Date(record.serviceDate).toLocaleDateString('ar-SA') : 'غير محدد'}
+                      </span>
+                    </div>
+
+                    {record.timeSlot && (
+                      <div className="flex justify-between items-center py-1 border-b border-white/5">
+                        <span className="text-gray-400">الفترة المفضلة:</span>
+                        <span className="text-amber-300 font-bold">{record.timeSlot}</span>
+                      </div>
+                    )}
+
+                    {record.estimatedArrival && record.status !== 'completed' && (
+                      <div className="flex justify-between items-center py-1 border-b border-white/5">
+                        <span className="text-gray-400">وقت الوصول المقدر:</span>
+                        <span className="text-indigo-300 font-bold">{record.estimatedArrival}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 2: Vehicle & Service Details */}
+                <div className="bg-white/5 p-4 sm:p-5 rounded-2xl border border-white/10 space-y-3.5">
+                  <div className="flex items-center gap-2 text-brand-red font-bold text-sm border-b border-white/10 pb-2.5">
+                    <Car className="w-4 h-4" />
+                    <span>بيانات المركبة والخدمة</span>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">طراز المركبة:</span>
+                      <span className="text-white font-bold">{record.carModel}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">سنة الصنع:</span>
+                      <span className="text-white font-mono">{record.carYear || 'غير محدد'}</span>
+                    </div>
+
+                    {record.licensePlate && (
+                      <div className="flex justify-between items-center py-1 border-b border-white/5">
+                        <span className="text-gray-400">رقم اللوحة:</span>
+                        <span className="text-white font-mono font-bold bg-white/10 px-2 py-0.5 rounded">
+                          {record.licensePlate}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center py-1 border-b border-white/5">
+                      <span className="text-gray-400">نوع الخدمة:</span>
+                      <span className="text-brand-red font-bold">{record.serviceType}</span>
+                    </div>
+
+                    {record.description && (
+                      <div className="pt-1">
+                        <span className="text-gray-400 block mb-1">وصف العطل / ملاحظات العميل:</span>
+                        <p className="text-gray-200 bg-black/40 p-2.5 rounded-xl border border-white/5 whitespace-pre-line leading-relaxed">
+                          {record.description}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Location Card */}
+              <div className="bg-white/5 p-4 sm:p-5 rounded-2xl border border-white/10 space-y-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                  <div className="flex items-center gap-2 text-brand-red font-bold text-sm">
+                    <MapPin className="w-4 h-4" />
+                    <span>موقع العميل وملاحة الوصول</span>
+                  </div>
+                  {record.coordinates?.latitude && record.coordinates?.longitude && (
+                    <a
+                      href={`https://maps.google.com/?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>فتح في Google Maps</span>
+                    </a>
+                  )}
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  {record.customerAddress ? (
+                    <p className="text-gray-300 leading-relaxed">
+                      {record.customerAddress}
+                    </p>
+                  ) : (
+                    <p className="text-gray-500 italic">لم يتم إدخال عنوان نصي، يرجى الاستدلال بالإحداثيات المرفقة.</p>
+                  )}
+
+                  {record.coordinates?.latitude && record.coordinates?.longitude && (
+                    <div className="text-[11px] text-gray-400 font-mono bg-black/40 p-2 rounded-xl border border-white/5 inline-block">
+                      GPS: {record.coordinates.latitude.toFixed(6)}, {record.coordinates.longitude.toFixed(6)}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -2077,11 +2484,21 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 <X className="w-5 h-5" />
               </button>
 
-              <img 
-                src={lightboxImage.url} 
-                alt={lightboxImage.caption || 'صورة الصيانة'} 
-                className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
-              />
+              {lightboxImage.mediaType === 'video' || lightboxImage.videoUrl ? (
+                <video
+                  src={lightboxImage.videoUrl || lightboxImage.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="max-w-full max-h-[80vh] rounded-2xl border border-white/15 shadow-2xl bg-black"
+                />
+              ) : (
+                <img 
+                  src={lightboxImage.url} 
+                  alt={lightboxImage.caption || 'صورة الصيانة'} 
+                  className="max-w-full max-h-[80vh] object-contain rounded-2xl border border-white/15 shadow-2xl"
+                />
+              )}
 
               {(lightboxImage.title || lightboxImage.caption) && (
                 <div className="mt-3 text-center space-y-0.5">

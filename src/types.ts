@@ -43,6 +43,9 @@ export interface ServiceStepPhoto {
   isCustomerVisible?: boolean;
   uploadedAt: any;
   uploadedBy?: string;
+  mediaType?: 'image' | 'video'; // image or video inspection
+  videoUrl?: string; // Direct or blob/IndexedDB video playback URL
+  thumbnailUrl?: string; // Video poster thumbnail
 }
 
 export type ServiceStepKey = 'assigned' | 'accepted' | 'on_the_way' | 'arrived_inspection' | 'in_progress' | 'completed' | 'custom';
@@ -206,6 +209,8 @@ export interface MaintenanceRecord {
   plateNumber?: string;
   carPlate?: string;
   serviceDate: any;
+  serviceTimeSlot?: string; // e.g. "05:00 م - 07:00 م"
+  isImmediate?: boolean;    // true if express emergency / immediate dispatch requested
   serviceType: string;
   notes?: string;
   location?: string;
@@ -316,6 +321,7 @@ export interface StaffPermissions {
   canManageSettings: boolean;
   canManageStaff: boolean;
   canManageContracts?: boolean;
+  canDeleteBookings?: boolean;
 }
 
 // ==========================================================
@@ -523,6 +529,7 @@ export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   canManageSettings: true,
   canManageStaff: true,
   canManageContracts: true,
+  canDeleteBookings: true,
 };
 
 export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string; permissions: StaffPermissions }> = {
@@ -548,6 +555,7 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageSettings: false,
       canManageStaff: false,
       canManageContracts: true,
+      canDeleteBookings: false,
     }
   },
   technician: {
@@ -562,10 +570,12 @@ export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string;
       canManageTestimonials: false,
       canManageNotifications: false,
       canViewAnalytics: false,
-      canViewReports: true,
+      canViewReports: false,
       canManageContent: false,
       canManageSettings: false,
       canManageStaff: false,
+      canManageContracts: false,
+      canDeleteBookings: false,
     }
   },
   support: {

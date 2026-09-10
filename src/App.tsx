@@ -117,6 +117,9 @@ import { PartnersPage } from './components/PartnersPage';
 import { AdminPartnersManager } from './components/AdminPartnersManager';
 import { AdminContractsManager } from './components/AdminContractsManager';
 import { SystemManual } from './components/SystemManual';
+import { TechnicianWorkspace } from './components/TechnicianWorkspace';
+import { BookingTimeSlotPicker } from './components/BookingTimeSlotPicker';
+import { ServiceWorkflowGuideModal } from './components/ServiceWorkflowGuideModal';
 import { LegalModal, DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { 
   MaintenanceRecord,
@@ -1952,7 +1955,17 @@ const Gallery = () => {
   );
 };
 
-const BookingForm = ({ selectedService, settings }: { selectedService?: string, settings?: AppSettings }) => {
+const BookingForm = ({ 
+  selectedService, 
+  settings,
+  existingBookings = [],
+  onOpenWorkflowGuide
+}: { 
+  selectedService?: string; 
+  settings?: AppSettings;
+  existingBookings?: MaintenanceRecord[];
+  onOpenWorkflowGuide?: () => void;
+}) => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
@@ -1962,6 +1975,11 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
   const [locationName, setLocationName] = useState('');
   const [locationError, setLocationError] = useState<string | null>(null);
   const [showLocationHelp, setShowLocationHelp] = useState(false);
+
+  // Booking Date & Time Slot Selection States
+  const [selectedServiceDate, setSelectedServiceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('09:00 AM - 11:00 AM');
+  const [isImmediateBooking, setIsImmediateBooking] = useState<boolean>(false);
   
   const { t, lang } = useLanguage();
   const { customer, loginWithGoogle, logout, setIsAuthOpen } = useCustomer();
@@ -2220,7 +2238,9 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         cost: 0,
         source: 'website',
         createdAt: serverTimestamp(),
-        serviceDate: new Date().toISOString().split('T')[0]
+        serviceDate: selectedServiceDate,
+        serviceTimeSlot: selectedTimeSlot,
+        isImmediate: isImmediateBooking
       };
 
       await addDoc(collection(db, 'maintenance'), bookingDocData);
@@ -2417,7 +2437,9 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
             notes: data.description.trim(),
             location: locationName || 'جدة',
             coordinates: coords,
-            serviceDate: new Date().toLocaleDateString('ar-SA')
+            serviceDate: selectedServiceDate,
+            serviceTimeSlot: selectedTimeSlot,
+            isImmediate: isImmediateBooking
           })
         });
         if (notifyRes.ok) {
@@ -2456,6 +2478,7 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
         const safeLoc = escapeTelegramHtml(locationName || 'جدة');
         const safeDesc = data.description ? escapeTelegramHtml(data.description) : 'بدون تفاصيل إضافية';
         const safeTime = escapeTelegramHtml(new Date().toLocaleTimeString('ar-SA'));
+        const safeSlot = isImmediateBooking ? '⚡ خدمة فورية عاجلة' : escapeTelegramHtml(`${selectedServiceDate} (${selectedTimeSlot})`);
 
         const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
@@ -2463,9 +2486,10 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
           `👤 <b>العميل:</b> <code>${safePhone}</code>\n` +
           `🚘 <b>السيارة:</b> ${safeCar}\n` +
           `🔧 <b>الخدمة:</b> ${safeService}\n` +
+          `📅 <b>الموعد المطلوب:</b> ${safeSlot}\n` +
           `📍 <b>الموقع:</b> ${safeLoc}\n` +
           `📝 <b>الوصف:</b> ${safeDesc}\n` +
-          `⏰ <b>الوقت:</b> ${safeTime}\n` +
+          `⏰ <b>وقت التسجيل:</b> ${safeTime}\n` +
           `━━━━━━━━━━━━━━━━━━`;
 
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
@@ -2573,6 +2597,17 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
               {t.booking.title} <span className="text-brand-red">{t.booking.titleAccent}</span>
             </h2>
             <p className="text-gray-400">{t.booking.description}</p>
+            {onOpenWorkflowGuide && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={onOpenWorkflowGuide}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-brand-red/15 hover:bg-brand-red/25 border border-brand-red/35 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-98"
+                >
+                  <span>📖 شرح خطوات طلب وفحص الصيانة للعميل (خطوة بخطوة)</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {bookingError && (
@@ -2946,6 +2981,18 @@ const BookingForm = ({ selectedService, settings }: { selectedService?: string, 
                 </div>
               </div>
             </div>
+
+            {/* Booking Date & Time Slots with Available Slots indicator */}
+            <BookingTimeSlotPicker
+              selectedDate={selectedServiceDate}
+              selectedSlot={selectedTimeSlot}
+              isImmediate={isImmediateBooking}
+              existingBookings={existingBookings}
+              onSelectDate={(date) => setSelectedServiceDate(date)}
+              onSelectSlot={(slot) => setSelectedTimeSlot(slot)}
+              onToggleImmediate={(immediate) => setIsImmediateBooking(immediate)}
+              lang={lang}
+            />
 
             <div className="p-4 rounded-xl bg-brand-red/5 border border-brand-red/20 flex items-start gap-3">
               <Camera className="w-5 h-5 text-brand-red shrink-0 mt-0.5" />
@@ -3611,6 +3658,8 @@ const AdminDashboard = ({
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<MaintenanceRecord | null>(null);
   const [timelineBookingRecord, setTimelineBookingRecord] = useState<MaintenanceRecord | null>(null);
   const [timelineInitialTab, setTimelineInitialTab] = useState<'timeline' | 'add_step' | 'assign'>('timeline');
+  const [showWorkflowGuideModal, setShowWorkflowGuideModal] = useState(false);
+  const [workflowGuideDefaultRole, setWorkflowGuideDefaultRole] = useState<'customer' | 'technician'>('technician');
 
   // New Modals for Repair Approval, Warranty & Complaints, Audit Log, Pricing Breakdown, Status Change, and Technician Reviews
   const [repairApprovalRecord, setRepairApprovalRecord] = useState<MaintenanceRecord | null>(null);
@@ -3621,12 +3670,12 @@ const AdminDashboard = ({
   const [techReviewRecord, setTechReviewRecord] = useState<MaintenanceRecord | null>(null);
 
   const handleSelectBookingDetails = (record: MaintenanceRecord) => {
-    if (isTechnician && currentStaffUser) {
-      const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
-      const isAssigned = record.assignedStaffId === currentStaffUser.id || 
+    if (isTechnician) {
+      const staffName = (currentStaffUser?.fullName || '').trim().toLowerCase();
+      const isAssigned = (currentStaffUser && record.assignedStaffId === currentStaffUser.id) || 
         Boolean(record.assignedStaffName && staffName && record.assignedStaffName.trim().toLowerCase() === staffName);
       if (!isAssigned) {
-        alert('هذا الطلب غير مسند إليك، الصلاحية تقتصر على طلباتك فقط.');
+        alert('هذا الطلب غير مسند إليك، الصلاحية تقتصر على مهامك فقط.');
         return;
       }
     }
@@ -4649,6 +4698,10 @@ const AdminDashboard = ({
   };
 
   const handleEdit = (type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial', item: any) => {
+    if (isTechnician) {
+      alert('عذراً، الفني الميداني ليس لديه صلاحية تعديل السجلات أو المحتوى الإداري.');
+      return;
+    }
     setEditingItem({ id: item.id || ('static-' + (item.title || item.name || 'item')), type });
     if (type === 'service') {
       setServiceForm({
@@ -4726,6 +4779,10 @@ const AdminDashboard = ({
   };
 
   const handleDelete = (collectionName: string, id: string, label?: string) => {
+    if (isTechnician) {
+      alert('عذراً، الفني الميداني ليس لديه صلاحية حذف الحجوزات أو السجلات.');
+      return;
+    }
     setDeleteConfirmTarget({
       type: 'single',
       collectionName,
@@ -4735,6 +4792,7 @@ const AdminDashboard = ({
   };
 
   const handleToggleSelectBooking = (id: string) => {
+    if (isTechnician) return;
     setSelectedBookingIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -4747,6 +4805,7 @@ const AdminDashboard = ({
   };
 
   const handleSelectAllFilteredBookings = (allIds: string[]) => {
+    if (isTechnician) return;
     if (allIds.length === 0) return;
     const allSelected = allIds.every(id => selectedBookingIds.has(id));
     if (allSelected) {
@@ -4757,6 +4816,10 @@ const AdminDashboard = ({
   };
 
   const handleDeleteSelectedBookings = () => {
+    if (isTechnician) {
+      alert('عذراً، الفني الميداني ليس لديه صلاحية حذف الحجوزات.');
+      return;
+    }
     if (selectedBookingIds.size === 0) {
       setDeleteToast({ message: 'يرجى تحديد حجز واحد على الأقل أولاً لحذفه', type: 'error' });
       return;
@@ -4770,6 +4833,11 @@ const AdminDashboard = ({
 
   const handleConfirmDelete = async () => {
     if (!deleteConfirmTarget) return;
+    if (isTechnician) {
+      setDeleteConfirmTarget(null);
+      alert('عذراً، الفني الميداني ليس لديه صلاحية حذف البيانات.');
+      return;
+    }
     setIsDeletingProcess(true);
     try {
       if (deleteConfirmTarget.type === 'batch_bookings') {
@@ -4831,6 +4899,24 @@ const AdminDashboard = ({
 
   const handleUpdateStatus = (id: string, newStatus: MaintenanceRecord['status']) => {
     const target = records.find(r => r.id === id);
+
+    // Strictly ensure technicians can only change status of tasks assigned to them
+    if (isTechnician && currentStaffUser) {
+      const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
+      const isAssigned = target?.assignedStaffId === currentStaffUser.id ||
+        Boolean(target?.assignedStaffName && staffName && target.assignedStaffName.trim().toLowerCase() === staffName);
+      if (!isAssigned) {
+        alert('عذراً، لا تملك صلاحية تغيير حالة هذا الحجز لأنه غير مسند إليك.');
+        return;
+      }
+    }
+
+    // Immediate optimistic state update for instant UI feedback & smoothness
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r));
+    if (selectedBookingDetails && selectedBookingDetails.id === id) {
+      setSelectedBookingDetails(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+
     let waUrl = '';
     let statusLabelAr = 'تحديث الحالة';
     if (newStatus === 'accepted') statusLabelAr = 'تم القبول ✅';
@@ -5328,7 +5414,24 @@ const AdminDashboard = ({
 
   const COLORS = ['#E31837', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#3B82F6', '#10B981'];
 
-  const userPermissions: StaffPermissions = currentStaffUser?.permissions || DEFAULT_SUPER_ADMIN_PERMISSIONS;
+  // Strict technician permissions enforcement:
+  const userPermissions: StaffPermissions = isTechnician
+    ? {
+        ...ROLE_PRESETS.technician.permissions,
+        ...(currentStaffUser?.permissions || {}),
+        canManageSettings: false,
+        canManageStaff: false,
+        canManageContent: false,
+        canManageContracts: false,
+        canManageCustomers: false,
+        canViewAnalytics: false,
+        canManageTestimonials: false,
+        canManageNotifications: false,
+        canViewDashboard: false,
+        canViewReports: false,
+        canDeleteBookings: false,
+      }
+    : (currentStaffUser?.permissions || DEFAULT_SUPER_ADMIN_PERMISSIONS);
 
   // Strictly filter records for technicians: they can ONLY see tasks assigned to them
   const accessibleRecords = useMemo(() => {
@@ -5342,7 +5445,12 @@ const AdminDashboard = ({
     return records;
   }, [records, isTechnician, currentStaffUser]);
 
-  const allowedNavTabs = [
+  // Strictly restrict navigation tabs for technicians to eliminate clutter & permission leaks
+  const allowedNavTabs = isTechnician ? [
+    { id: 'bookings', label: lang === 'ar' ? 'مهامي الميدانية 🔧' : 'My Field Tasks', icon: Wrench, allowed: true },
+    { id: 'calendar', label: lang === 'ar' ? 'جدول مواعيدي 📅' : 'My Schedule', icon: CalendarCheck, allowed: true },
+    { id: 'manual', label: lang === 'ar' ? 'دليل الفني الميداني 📖' : 'Field Manual', icon: BookOpen, allowed: true },
+  ] : [
     { id: 'dashboard', label: lang === 'ar' ? 'الإحصائيات ونظرة عامة' : 'Dashboard & Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
     { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
     { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
@@ -5359,11 +5467,16 @@ const AdminDashboard = ({
     { id: 'manual', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
   ].filter(tab => tab.allowed);
 
+  // Enforce auto-redirect: technicians can NEVER land on unauthorized admin tabs
   useEffect(() => {
-    if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
+    if (isTechnician) {
+      if (activeTab !== 'bookings' && activeTab !== 'calendar' && activeTab !== 'manual') {
+        setActiveTab('bookings');
+      }
+    } else if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
       setActiveTab(allowedNavTabs[0].id as any);
     }
-  }, [currentStaffUser]);
+  }, [currentStaffUser, isTechnician, activeTab]);
 
   if (!isAdmin) {
     return <Navigate to="/login" replace />;
@@ -5375,14 +5488,24 @@ const AdminDashboard = ({
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 sm:gap-6 mb-6 sm:mb-8 w-full max-w-full box-border">
           <div>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-display font-black italic mb-1.5">
-              {lang === 'ar' ? (
+              {isTechnician ? (
+                lang === 'ar' ? (
+                  <>لوحة <span className="text-brand-red">الفني الميداني</span> 🔧</>
+                ) : (
+                  <>Field <span className="text-brand-red">Technician Hub</span> 🔧</>
+                )
+              ) : lang === 'ar' ? (
                 <>لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></>
               ) : (
                 <>Center & <span className="text-brand-red">Operations Hub</span></>
               )}
             </h2>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-400 text-xs sm:text-sm">
-              <span>{lang === 'ar' ? 'إدارة الحجوزات والمواعيد والعملاء' : 'Manage bookings, schedules & customers'}</span>
+              <span>
+                {isTechnician
+                  ? (lang === 'ar' ? 'متابعة المهام الميدانية وتوثيق الفحص المباشر' : 'Track field tasks & inspect vehicles')
+                  : (lang === 'ar' ? 'إدارة الحجوزات والمواعيد والعملاء' : 'Manage bookings, schedules & customers')}
+              </span>
               <span className="w-1.5 h-1.5 bg-brand-red rounded-full hidden sm:inline-block" />
               <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold text-[11px] sm:text-xs">
                 {isTechnician 
@@ -5468,7 +5591,7 @@ const AdminDashboard = ({
               <span>{isPWAInstalled ? (lang === 'ar' ? "مثبت ✓" : "Installed ✓") : (lang === 'ar' ? "تثبيت تطبيق (PWA)" : "Install App")}</span>
             </button>
 
-            {typeof Notification !== 'undefined' && (
+            {!isTechnician && typeof Notification !== 'undefined' && (
               <button 
                 onClick={() => {
                   if (notificationPermission === 'default') {
@@ -5494,7 +5617,7 @@ const AdminDashboard = ({
               </button>
             )}
 
-            {userPermissions.canManageBookings !== false && (
+            {!isTechnician && userPermissions.canManageBookings !== false && (
               <button 
                 onClick={() => setIsAdding(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
@@ -5565,7 +5688,7 @@ const AdminDashboard = ({
         </div>
 
         <AnimatePresence mode="wait">
-          {activeTab === 'dashboard' && (
+          {!isTechnician && activeTab === 'dashboard' && (
             <motion.div 
               key="dashboard"
               initial={{ opacity: 0, y: 20 }}
@@ -5757,7 +5880,22 @@ const AdminDashboard = ({
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              {/* WhatsApp Live Status Notice Banner */}
+              {isTechnician ? (
+                <TechnicianWorkspace 
+                  records={accessibleRecords}
+                  currentStaffUser={currentStaffUser}
+                  onUpdateStatus={handleUpdateStatus}
+                  onOpenTimeline={handleOpenTimeline}
+                  onSelectDetails={handleSelectBookingDetails}
+                  onOpenWorkflowGuide={() => {
+                    setWorkflowGuideDefaultRole('technician');
+                    setShowWorkflowGuideModal(true);
+                  }}
+                  lang={lang}
+                />
+              ) : (
+                <>
+                  {/* WhatsApp Live Status Notice Banner */}
               {waBanner && waBanner.show && (
                 <motion.div
                   initial={{ opacity: 0, y: -15, scale: 0.98 }}
@@ -6520,6 +6658,8 @@ const AdminDashboard = ({
                   </div>
                 );
               })()}
+                </>
+              )}
             </motion.div>
           )}
 
@@ -6823,7 +6963,7 @@ const AdminDashboard = ({
           )}
 
           {/* Analytics & Business Intelligence Tab */}
-          {activeTab === 'analytics' && (
+          {!isTechnician && activeTab === 'analytics' && (
             <motion.div 
               key="analytics"
               initial={{ opacity: 0, y: 15 }}
@@ -6992,7 +7132,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'reports' && (
+          {!isTechnician && activeTab === 'reports' && (
             <motion.div 
               key="reports"
               initial={{ opacity: 0, y: 15 }}
@@ -7003,7 +7143,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'content' && (
+          {!isTechnician && activeTab === 'content' && (
             <motion.div 
               key="content"
               initial={{ opacity: 0 }}
@@ -7299,7 +7439,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'customers' && (
+          {!isTechnician && activeTab === 'customers' && (
             <motion.div 
               key="customers"
               initial={{ opacity: 0 }}
@@ -7310,7 +7450,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'testimonials' && (
+          {!isTechnician && activeTab === 'testimonials' && (
             <motion.div 
               key="testimonials"
               initial={{ opacity: 0 }}
@@ -7519,7 +7659,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'notifications' && (
+          {!isTechnician && activeTab === 'notifications' && (
             <motion.div
               key="notifications"
               initial={{ opacity: 0, y: 20 }}
@@ -7830,7 +7970,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'settings' && (
+          {!isTechnician && activeTab === 'settings' && (
             <motion.div
               key="settings"
               initial={{ opacity: 0, x: 20 }}
@@ -9247,7 +9387,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'staff' && (
+          {!isTechnician && activeTab === 'staff' && (
             <motion.div
               key="staff"
               initial={{ opacity: 0, y: 20 }}
@@ -9263,7 +9403,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'partners' && (
+          {!isTechnician && activeTab === 'partners' && (
             <motion.div
               key="partners"
               initial={{ opacity: 0, y: 20 }}
@@ -9281,7 +9421,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'contracts' && (
+          {!isTechnician && activeTab === 'contracts' && (
             <motion.div
               key="contracts"
               initial={{ opacity: 0, y: 20 }}
@@ -9778,6 +9918,15 @@ const AdminDashboard = ({
               }
               setTimelineBookingRecord(updatedRecord);
             }}
+          />
+        )}
+
+        {/* Service Workflow Guide Modal */}
+        {showWorkflowGuideModal && (
+          <ServiceWorkflowGuideModal
+            isOpen={showWorkflowGuideModal}
+            onClose={() => setShowWorkflowGuideModal(false)}
+            defaultRole={workflowGuideDefaultRole}
           />
         )}
 
