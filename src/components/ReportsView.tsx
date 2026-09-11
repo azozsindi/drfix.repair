@@ -19,6 +19,7 @@ import {
 import { MaintenanceRecord, sortBookingsNewestFirst } from '../types';
 import { exportBookingsToWord, exportSingleBookingWord, ReportSummary } from '../lib/reportUtils';
 import { phoneMatchesSearch } from '../lib/phoneUtils';
+import { useScrollLock } from '../lib/scrollLock';
 
 function formatDisplayDate(val: any, fallback = 'اليوم'): string {
   if (!val) return fallback;
@@ -56,6 +57,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBookingForPrint, setSelectedBookingForPrint] = useState<MaintenanceRecord | null>(null);
+
+  // Lock background scrolling when print modal is open
+  useScrollLock(!!selectedBookingForPrint);
 
   // Filter records based on period, status, and search
   const filteredRecords = useMemo(() => {
@@ -558,8 +562,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ records }) => {
 
       {/* Booking Details Print Modal */}
       {selectedBookingForPrint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="glass-card max-w-2xl w-full p-6 border-brand-red/30 rounded-3xl bg-[#0f0f12] shadow-2xl space-y-6 my-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+          <div className="glass-card max-w-2xl w-full p-4 sm:p-6 border-brand-red/30 rounded-2xl sm:rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 sm:space-y-6 my-auto max-h-[94dvh] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-brand-red/20 text-brand-red flex items-center justify-center font-bold">

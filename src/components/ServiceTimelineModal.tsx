@@ -2703,7 +2703,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               setAssignedWhatsAppDialog(prev => ({ ...prev, isOpen: false }));
               setActiveTab('workflow');
             }}
-            className="fixed inset-0 z-70 bg-black/85 flex items-center justify-center p-4 backdrop-blur-md"
+            className="fixed inset-0 z-70 bg-black/85 flex items-center justify-center p-2.5 sm:p-4 backdrop-blur-md overscroll-contain"
           >
             <motion.div 
               initial={{ scale: 0.92, opacity: 0, y: 15 }}
@@ -2711,7 +2711,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-neutral-900 border border-emerald-500/40 rounded-3xl p-5 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 text-center relative overflow-hidden"
+              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 text-center relative overflow-hidden my-auto max-h-[94dvh] overflow-y-auto overscroll-contain"
             >
               <div className="absolute -top-16 -right-16 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
               

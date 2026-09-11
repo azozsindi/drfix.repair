@@ -38,6 +38,7 @@ import {
   StaffPermissions, 
   ROLE_PRESETS 
 } from '../types';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface StaffManagementProps {
   staffList: StaffUser[];
@@ -52,6 +53,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffUser | null>(null);
+
+  // Prevent background scrolling when staff modal is open
+  useScrollLock(isModalOpen);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -546,12 +550,12 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
       {/* Add / Edit Staff Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="glass-card w-full max-w-3xl border-brand-red/30 p-6 md:p-8 rounded-3xl my-8 max-h-[90vh] overflow-y-auto"
+              className="glass-card w-full max-w-3xl border-brand-red/30 p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl my-auto max-h-[94dvh] sm:max-h-[90vh] overflow-y-auto overscroll-contain"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-4 mb-6 border-b border-white/10">

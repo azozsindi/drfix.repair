@@ -147,6 +147,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from './lib/phoneUtils';
+import { useScrollLock } from './lib/scrollLock';
 import { 
   BarChart, 
   Bar, 
@@ -1347,18 +1348,19 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
   const location = useLocation();
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
-  // Close modal on Escape key and prevent background scrolling
+  // Lock background scrolling when image zoom modal is open
+  useScrollLock(isImageModalOpen);
+
+  // Close modal on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsImageModalOpen(false);
     };
     if (isImageModalOpen) {
       window.addEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'hidden';
     }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
     };
   }, [isImageModalOpen]);
 
@@ -1524,7 +1526,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={() => setIsImageModalOpen(false)}
-            className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-3 sm:p-6 cursor-zoom-out"
+            className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-2.5 sm:p-6 cursor-zoom-out overscroll-contain"
           >
             {/* Top action bar */}
             <div className="absolute top-4 sm:top-6 left-4 sm:left-6 right-4 sm:right-6 flex justify-between items-center z-20 pointer-events-auto">
@@ -3669,6 +3671,9 @@ const AdminDashboard = ({
   const [pricingBreakdownRecord, setPricingBreakdownRecord] = useState<MaintenanceRecord | null>(null);
   const [statusChangeModalData, setStatusChangeModalData] = useState<{ record: MaintenanceRecord; targetStatus: BookingStatus } | null>(null);
   const [techReviewRecord, setTechReviewRecord] = useState<MaintenanceRecord | null>(null);
+
+  // Lock background scrolling when any modal in AdminDashboard is open
+  useScrollLock(isAdding || !!selectedBookingDetails || !!deleteConfirmTarget);
 
   const handleSelectBookingDetails = (record: MaintenanceRecord) => {
     if (isTechnician) {
@@ -9483,7 +9488,7 @@ const AdminDashboard = ({
         {/* Add New Modal */}
         <AnimatePresence>
           {isAdding && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -9495,7 +9500,7 @@ const AdminDashboard = ({
                 initial={{ scale: 0.95, opacity: 0, y: 15 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.95, opacity: 0, y: 15 }}
-                className="relative w-full max-w-2xl bg-[#0f0f12] border border-white/15 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] my-auto overflow-hidden z-10"
+                className="relative w-full max-w-2xl bg-[#0f0f12] border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[94dvh] sm:max-h-[88vh] my-auto overflow-hidden overscroll-contain z-10"
               >
                 {/* Sticky Header with Title and Close Button */}
                 <div className="px-5 sm:px-7 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex justify-between items-center shrink-0 z-20">
@@ -9512,7 +9517,7 @@ const AdminDashboard = ({
                   </button>
                 </div>
 
-                <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1">
+                <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1 overscroll-contain">
 
                 {(activeTab === 'dashboard' || activeTab === 'bookings' || activeTab === 'calendar') && (
                   <form onSubmit={handleAddRecord} className="grid md:grid-cols-2 gap-6">
@@ -9711,12 +9716,12 @@ const AdminDashboard = ({
         {/* Full Booking Details Modal */}
         <AnimatePresence>
           {selectedBookingDetails && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
               <motion.div 
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.95, opacity: 0 }}
-                className="glass-card max-w-lg w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col border-brand-red/30 rounded-3xl overflow-hidden shadow-2xl relative my-auto"
+                className="glass-card max-w-lg w-full max-h-[94dvh] sm:max-h-[88vh] flex flex-col border-brand-red/30 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl relative my-auto overscroll-contain"
               >
                 {/* Sticky Header with Title and Close Button */}
                 <div className="px-5 sm:px-6 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
@@ -9738,7 +9743,7 @@ const AdminDashboard = ({
                   </button>
                 </div>
 
-                <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-4 text-sm">
+                <div className="p-4 sm:p-7 overflow-y-auto flex-1 space-y-4 text-sm overscroll-contain">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white/5 p-4 rounded-xl space-y-1">
                       <div className="text-xs text-gray-400">رقم جوال العميل</div>
@@ -9960,12 +9965,12 @@ const AdminDashboard = ({
         {/* Delete Confirmation Modal (In-App Dialog - Safe for sandboxed iframes) */}
         <AnimatePresence>
           {deleteConfirmTarget && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
-                className="glass-card max-w-md w-full p-5 sm:p-6 border-brand-red/40 relative space-y-5 bg-[#0f0f12] shadow-2xl rounded-3xl my-auto"
+                className="glass-card max-w-md w-full p-4 sm:p-6 border-brand-red/40 relative space-y-4 sm:space-y-5 bg-[#0f0f12] shadow-2xl rounded-2xl sm:rounded-3xl my-auto max-h-[94dvh] overflow-y-auto overscroll-contain"
               >
                 <button 
                   type="button"

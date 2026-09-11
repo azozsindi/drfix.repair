@@ -48,6 +48,7 @@ import {
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
 import { exportSingleBookingWord } from '../lib/reportUtils';
+import { useScrollLock } from '../lib/scrollLock';
 
 export interface CustomerVehicle {
   make?: string;
@@ -95,6 +96,9 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
   const [customerToDelete, setCustomerToDelete] = useState<CustomerProfile | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+
+  // Lock background scroll when any modal in CustomerManager is open
+  useScrollLock(!!selectedCustomerForDetail || isAddModalOpen || isDeleteBatchModalOpen || !!customerToDelete);
 
   // Form State for New / Edit Customer
   const [formName, setFormName] = useState('');
@@ -1128,8 +1132,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       {/* 📂 COMPREHENSIVE CUSTOMER FILE MODAL (الملف الخاص المتكامل للعميل) */}
       {/* ========================================================================= */}
       {selectedCustomerForDetail && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-          <div className="bg-brand-card border border-white/10 rounded-3xl max-w-4xl w-full p-6 sm:p-8 md:p-10 space-y-8 max-h-[92vh] overflow-y-auto shadow-2xl relative my-auto">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
+          <div className="bg-brand-card border border-white/10 rounded-2xl sm:rounded-3xl max-w-4xl w-full p-4 sm:p-8 md:p-10 space-y-6 sm:space-y-8 max-h-[94dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain shadow-2xl relative my-auto">
             
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-6">
@@ -1578,8 +1582,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       {/* ✏️ ADD / EDIT CUSTOMER MODAL */}
       {/* ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-brand-card border border-white/10 rounded-3xl max-w-lg w-full p-6 space-y-6 max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto overscroll-contain">
+          <div className="bg-brand-card border border-white/10 rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-5 max-h-[94dvh] sm:max-h-[90vh] overflow-y-auto overscroll-contain shadow-2xl my-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <User className="w-5 h-5 text-brand-red" />
@@ -1746,8 +1750,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       {/* ⚠️ BATCH DELETE CONFIRMATION MODAL */}
       {/* ========================================================================= */}
       {isDeleteBatchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-brand-card border border-red-500/30 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 overscroll-contain">
+          <div className="bg-brand-card border border-red-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl text-center max-h-[94dvh] overflow-y-auto overscroll-contain my-auto">
             <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center mx-auto">
               <Trash2 className="w-7 h-7" />
             </div>
@@ -1777,8 +1781,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       {/* ⚠️ SINGLE DELETE CONFIRMATION MODAL */}
       {/* ========================================================================= */}
       {customerToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-brand-card border border-red-500/30 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl text-center">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-4 overscroll-contain">
+          <div className="bg-brand-card border border-red-500/30 rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl text-center max-h-[94dvh] overflow-y-auto overscroll-contain my-auto">
             <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center mx-auto">
               <Trash2 className="w-7 h-7" />
             </div>

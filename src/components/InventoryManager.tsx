@@ -25,6 +25,7 @@ import {
 import { InventoryItem, InventoryCategory, InventoryTransaction, StaffUser } from '../types';
 import { db } from '../firebase';
 import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface InventoryManagerProps {
   currentStaffUser?: StaffUser | null;
@@ -226,6 +227,9 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
 
   // History Log Modal
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  // Lock background scrolling when any modal in InventoryManager is open
+  useScrollLock(isModalOpen || !!quickAdjustItem || isHistoryModalOpen);
 
   // Load from Firestore / LocalStorage
   useEffect(() => {
@@ -1019,8 +1023,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
 
       {/* Item Add / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="glass-card max-w-xl w-full p-5 sm:p-6 border-brand-red/30 rounded-3xl bg-[#0f0f12] shadow-2xl space-y-5 my-auto max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+          <div className="glass-card max-w-xl w-full p-4 sm:p-6 border-brand-red/30 rounded-2xl sm:rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 sm:space-y-5 my-auto max-h-[94dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-brand-red/15 border border-brand-red/30 flex items-center justify-center text-brand-red">
@@ -1215,8 +1219,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
 
       {/* Quick Stock Movement Modal (+ / -) */}
       {quickAdjustItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md">
-          <div className="glass-card max-w-md w-full p-5 sm:p-6 border-white/10 rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/80 backdrop-blur-md overscroll-contain">
+          <div className="glass-card max-w-md w-full p-4 sm:p-6 border-white/10 rounded-2xl sm:rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 my-auto max-h-[94dvh] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg ${
@@ -1320,8 +1324,8 @@ export const InventoryManager: React.FC<InventoryManagerProps> = ({ currentStaff
 
       {/* Transaction History Log Modal */}
       {isHistoryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="glass-card max-w-2xl w-full p-5 sm:p-6 border-white/10 rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 my-auto max-h-[88vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/80 backdrop-blur-md overflow-y-auto overscroll-contain">
+          <div className="glass-card max-w-2xl w-full p-4 sm:p-6 border-white/10 rounded-2xl sm:rounded-3xl bg-[#0f0f12] shadow-2xl space-y-4 my-auto max-h-[94dvh] sm:max-h-[88vh] flex flex-col overscroll-contain">
             <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red">

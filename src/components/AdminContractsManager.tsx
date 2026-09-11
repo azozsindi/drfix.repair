@@ -36,6 +36,7 @@ import {
 import { Contract, ContractType, ContractStatus, ContractVehicle, ContractVehicleStatus, DEFAULT_SAMPLE_CONTRACTS } from '../types';
 import { cn } from '../lib/utils';
 import { formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface AdminContractsManagerProps {
   contracts: Contract[];
@@ -105,6 +106,9 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
 
   // Quick action to add a vehicle from the contract card
   const [quickAddVehicleContractId, setQuickAddVehicleContractId] = useState<string | null>(null);
+
+  // Lock background scroll when any modal in AdminContractsManager is open
+  useScrollLock(isFormModalOpen || !!deleteConfirmContract || !!vehiclesModalContract || !!printContract || !!quickAddVehicleContractId);
 
   // Form inputs state
   const [formType, setFormType] = useState<ContractType>('workshop_outbound');
@@ -815,12 +819,12 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
       {/* ========================================================================= */}
       <AnimatePresence>
         {isFormModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="glass-card w-full max-w-2xl bg-brand-dark border-brand-red/30 rounded-3xl p-5 sm:p-7 shadow-2xl my-auto text-right max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="glass-card w-full max-w-2xl bg-brand-dark border-brand-red/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-2xl my-auto text-right max-h-[94dvh] sm:max-h-[90vh] overflow-y-auto overscroll-contain custom-scrollbar"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
@@ -1243,12 +1247,12 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
       {/* ========================================================================= */}
       <AnimatePresence>
         {vehiclesModalContract && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="glass-card w-full max-w-4xl bg-brand-dark border-brand-red/30 rounded-3xl p-5 sm:p-7 shadow-2xl my-auto text-right max-h-[92vh] overflow-y-auto custom-scrollbar flex flex-col"
+              className="glass-card w-full max-w-4xl bg-brand-dark border-brand-red/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-2xl my-auto text-right max-h-[94dvh] sm:max-h-[92vh] overflow-y-auto overscroll-contain custom-scrollbar flex flex-col"
             >
               {/* Header */}
               <div className="flex items-start justify-between pb-4 border-b border-white/10 mb-5">
@@ -1589,12 +1593,12 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
       {/* ========================================================================= */}
       <AnimatePresence>
         {printContract && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 bg-black/90 backdrop-blur-md overflow-y-auto overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white text-gray-900 rounded-3xl p-6 sm:p-10 shadow-2xl w-full max-w-3xl my-auto text-right print-area"
+              className="bg-white text-gray-900 rounded-2xl sm:rounded-3xl p-4 sm:p-10 shadow-2xl w-full max-w-3xl my-auto text-right print-area max-h-[94dvh] overflow-y-auto overscroll-contain"
               id="official-contract-print"
             >
               {/* Top Controls (Hidden during print) */}
@@ -1779,12 +1783,12 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {deleteConfirmContract && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="glass-card w-full max-w-md bg-brand-dark border-brand-red/40 rounded-3xl p-6 text-center text-white"
+              className="glass-card w-full max-w-md bg-brand-dark border-brand-red/40 rounded-2xl sm:rounded-3xl p-5 sm:p-6 text-center text-white my-auto max-h-[94dvh] overflow-y-auto overscroll-contain"
             >
               <div className="w-12 h-12 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-3">
                 <Trash2 className="w-6 h-6" />

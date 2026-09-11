@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Partner } from '../types';
 import { cn } from '../lib/utils';
+import { useScrollLock } from '../lib/scrollLock';
 
 interface AdminPartnersManagerProps {
   partners: Partner[];
@@ -70,6 +71,9 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
   const [deleteConfirmPartner, setDeleteConfirmPartner] = useState<Partner | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Lock background scrolling when modal or delete confirmation is open
+  useScrollLock(isModalOpen || !!deleteConfirmPartner);
 
   // Form State
   const [formData, setFormData] = useState<Omit<Partner, 'id'>>({
@@ -425,15 +429,15 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
       {/* Add / Edit Partner Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-neutral-900 border border-white/15 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto max-h-[92vh] flex flex-col"
+              className="bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto max-h-[94dvh] sm:max-h-[92vh] flex flex-col"
             >
               {/* Modal Header */}
-              <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-black/40 shrink-0">
+              <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between bg-black/40 shrink-0">
                 <div className="flex items-center gap-2">
                   <Handshake className="w-5 h-5 text-brand-red" />
                   <h3 className="font-bold text-white text-base sm:text-lg">
@@ -449,7 +453,7 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
               </div>
 
               {/* Modal Body */}
-              <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 custom-tabs-scrollbar">
+              <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto overscroll-contain flex-1 custom-tabs-scrollbar">
                 {/* Name & Category */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -718,12 +722,12 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {deleteConfirmPartner && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-neutral-900 border border-white/15 rounded-3xl p-6 max-w-md w-full space-y-5 shadow-2xl"
+              className="bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl p-5 sm:p-6 max-w-md w-full space-y-5 shadow-2xl max-h-[94dvh] overflow-y-auto overscroll-contain"
             >
               <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
                 <AlertTriangle className="w-6 h-6" />
