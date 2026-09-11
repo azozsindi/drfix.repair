@@ -230,7 +230,7 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
                       <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded">بنقرة واحدة</span>
                     </h5>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      يدخل الفني بحسابه، فتظهر له فوراً بطاقة <b>المهمة ذات الأولوية الحالية (Active Spotlight Job)</b> في أعلى الشاشة بكامل بيانات السيارة وموقع العميل ورقم جواله.
+                      يدخل الفني بحسابه، فتظهر له فوراً بطاقة <b>المهمة الحالية ذات الأولوية</b> في أعلى الشاشة بكامل بيانات السيارة وموقع العميل ورقم جواله، دون أي لوحات معقدة.
                     </p>
                   </div>
                 </div>
@@ -243,10 +243,10 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
                   <div className="space-y-1">
                     <h5 className="font-bold text-white text-sm flex items-center gap-2">
                       <span>نقرة واحدة: "🚗 أنا في الطريق للعميل" + فتح الخريطة</span>
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-mono">1-Tap</span>
+                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">بلمسة واحدة</span>
                     </h5>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      يضغط الفني زر <b>"أنا في الطريق"</b>، فيتم إشعار العميل فوراً. ويضغط زر <b>"ملاحة GPS 🗺️"</b> ليفتح له تطبيق Google Maps ويوجهه مباشرة لموقع السيارة بأسرع طريق.
+                      يضغط الفني زر <b>"أنا في الطريق"</b>، فيتم إشعار العميل فوراً. ويضغط زر <b>"ملاحة GPS 🗺️"</b> ليفتح له تطبيق خرائط جوجل ويوجهه مباشرة لموقع السيارة بأسرع طريق.
                     </p>
                   </div>
                 </div>
@@ -273,7 +273,7 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
                         🎥 تصوير فيديو فحص واستلام السيارة عند الوصول
                       </span>
                       <br />
-                      يصور الفني جولة فيديو سريعة (10 إلى 20 ثانية) حول السيارة توثق: حالة البودي الخارجية، أي خدوش أو صدمات سابقة، وعداد المسافة (Odometer). يتم رفع الفيديو وحفظه تلقائياً لحماية الفني والمركز والعميل.
+                      يصور الفني جولة فيديو سريعة (10 إلى 20 ثانية) حول السيارة توثق: حالة البودي الخارجية، أي خدوش أو صدمات سابقة، وعداد المسافة (كيلومترات السيارة). يتم رفع الفيديو وحفظه تلقائياً لحماية الفني والمركز والعميل.
                     </p>
                   </div>
                 </div>

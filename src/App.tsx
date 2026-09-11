@@ -119,6 +119,7 @@ import { AdminContractsManager } from './components/AdminContractsManager';
 import { SystemManual } from './components/SystemManual';
 import { TechnicianWorkspace } from './components/TechnicianWorkspace';
 import { BookingTimeSlotPicker } from './components/BookingTimeSlotPicker';
+import { InteractiveLocationPicker } from './components/InteractiveLocationPicker';
 import { ServiceWorkflowGuideModal } from './components/ServiceWorkflowGuideModal';
 import { LegalModal, DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { generateTechnicianAssignmentWhatsAppUrl } from './lib/whatsappUtils';
@@ -1811,7 +1812,7 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
           <div className={cn("w-20 md:w-24 h-1.5 bg-brand-red mx-auto rounded-full", lang === 'en' && "md:mr-0 md:ml-auto")} />
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
           {allOffers.map((offer) => (
             <motion.div 
               key={offer.id}
@@ -1825,7 +1826,7 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-50px" }}
-              className="glass-card p-8 border-brand-red/20 relative overflow-hidden group h-full flex flex-col"
+              className="glass-card p-5 sm:p-6 md:p-8 border-brand-red/20 relative overflow-hidden group h-full flex flex-col"
               style={{ transformStyle: 'preserve-3d', perspective: '1000px' }}
             >
               <div className="absolute top-0 left-0 w-full h-1.5 bg-brand-red shadow-[0_0_15px_rgba(255,51,51,0.5)]" />
@@ -1981,7 +1982,7 @@ const BookingForm = ({
 
   // Booking Date & Time Slot Selection States
   const [selectedServiceDate, setSelectedServiceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('09:00 AM - 11:00 AM');
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('09:00 ص - 11:00 ص');
   const [isImmediateBooking, setIsImmediateBooking] = useState<boolean>(false);
   
   const { t, lang } = useLanguage();
@@ -2181,12 +2182,15 @@ const BookingForm = ({
   const onSubmit = async (data: BookingFormData) => {
     if (isLoading) return;
 
-    // Strict Enforcement: Mandatory Google Registration & Sign-In
-    if (!isGoogleUser || !customer) {
+    const rawPhone = data.phone || customer?.phone || '';
+    const cleanPhone = unifySaudiPhone(normalizeCredentialsInput(rawPhone)) || normalizeCredentialsInput(rawPhone);
+
+    // Validate phone number
+    if (!cleanPhone || cleanPhone.length < 8) {
       setBookingError(
         lang === 'ar'
-          ? 'عذراً، يجب تسجيل الدخول بحساب Google أولاً لتتمكن من إتمام الحجز وتوثيق بيانات سيارتك.'
-          : 'Google sign-in is required to complete your booking.'
+          ? 'يرجى إدخال رقم جوال صحيح للتواصل وتأكيد موعد استلام السيارة.'
+          : 'Please enter a valid mobile number.'
       );
       return;
     }
@@ -2211,12 +2215,14 @@ const BookingForm = ({
     };
 
     const serviceTitle = serviceLabels[data.serviceType] || data.serviceType || 'صيانة متنقلة';
-    const cleanPhone = unifySaudiPhone(normalizeCredentialsInput(data.phone)) || normalizeCredentialsInput(data.phone);
     const uniqueBookingId = `DRF-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
       // 1. Write strictly to Firebase Firestore first
-      const resolvedCustomerName = customer.name || data.customerName?.trim() || cleanPhone;
+      const resolvedCustomerId = customer?.id || customer?.googleUid || `cust_${cleanPhone.replace(/\D/g, '') || Date.now()}`;
+      const resolvedCustomerName = customer?.name || data.customerName?.trim() || 'عميل كريم';
+      const resolvedCustomerEmail = customer?.email || '';
+      const resolvedGoogleUid = customer?.googleUid || '';
       const normalizedMake = cleanCarMake(data.carMake, data.carModel);
       const normalizedYear = cleanCarYear(data.carYear, data.carModel) || (data.carYear || '').toString().trim() || new Date().getFullYear().toString();
       const normalizedPlate = ((data as any).plateNumber || '').trim();
@@ -2224,9 +2230,9 @@ const BookingForm = ({
 
       const bookingDocData = {
         bookingId: uniqueBookingId,
-        customerId: customer.id,
-        customerEmail: customer.email || '',
-        customerGoogleUid: customer.googleUid || '',
+        customerId: resolvedCustomerId,
+        customerEmail: resolvedCustomerEmail,
+        customerGoogleUid: resolvedGoogleUid,
         customerPhone: cleanPhone,
         customerName: resolvedCustomerName,
         carMake: normalizedMake,
@@ -2592,7 +2598,7 @@ const BookingForm = ({
         <motion.div 
           whileHover={{ rotateX: 1, rotateY: -1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="glass-card p-6 md:p-12 border-brand-red/20 shadow-2xl relative"
+          className="glass-card p-4 sm:p-6 md:p-10 lg:p-12 border-brand-red/20 shadow-2xl relative"
           style={{ transformStyle: 'preserve-3d' }}
         >
           <div className={cn("text-center mb-10 md:mb-12", lang === 'en' && "md:text-left")}>
@@ -2620,159 +2626,83 @@ const BookingForm = ({
             </div>
           )}
 
-          {!isGoogleUser ? (
-            <div className="space-y-6 animate-fadeIn">
-              {/* Mandatory Google Requirement Card */}
-              <div className="bg-neutral-900/90 border-2 border-brand-red/30 rounded-3xl p-6 sm:p-8 md:p-10 shadow-2xl relative overflow-hidden text-center">
-                {/* Ambient glow */}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-red/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none -ml-20 -mb-20" />
-
-                <div className="relative z-10 max-w-xl mx-auto space-y-6">
-                  {/* Google Icon Badge */}
-                  <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto shadow-inner">
-                    <svg className="w-8 h-8" viewBox="0 0 24 24">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 animate-fadeIn">
+            {/* Google Authentication Status / Optional Quick Login Bar */}
+            {isGoogleUser && customer ? (
+              <div className="p-4 rounded-2xl bg-black/60 border border-brand-red/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  {customer?.photoURL ? (
+                    <img src={customer.photoURL} alt={customer.name} className="w-11 h-11 rounded-full border-2 border-brand-red/40 object-cover shadow-sm shrink-0" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-brand-red/20 border-2 border-brand-red/40 flex items-center justify-center text-brand-red font-black text-base shrink-0">
+                      {customer?.name?.charAt(0) || 'G'}
+                    </div>
+                  )}
+                  <div className="text-right flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-white truncate">{customer?.name}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/30 text-[10px] font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-brand-red" />
+                        {lang === 'ar' ? 'مسجل وموثق بحساب Google' : 'Verified Google Account'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-400 font-mono block truncate">{customer?.email || customer?.phone}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full sm:w-auto text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>{lang === 'ar' ? 'تبديل الحساب' : 'Switch Account'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-neutral-900/90 via-black/80 to-neutral-900/90 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3 text-right">
+                  <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                       <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                       <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                     </svg>
                   </div>
-
-                  <div className="space-y-2">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-red/20 border border-brand-red/40 text-brand-red text-xs font-bold">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>{lang === 'ar' ? 'التسجيل الإلزامي لحجز موعد' : 'Mandatory to Book'}</span>
+                  <div>
+                    <div className="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+                      <span>{lang === 'ar' ? 'تسجيل وتوثيق سريع بحساب Google' : 'Sign in with Google'}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-red/20 text-brand-red font-bold">
+                        {lang === 'ar' ? 'اختياري وموصى به' : 'Optional'}
+                      </span>
                     </div>
-                    <h3 className="text-xl sm:text-2xl font-black text-white font-display">
-                      {lang === 'ar' ? 'سجّل الدخول بحساب Google لحجز الموعد' : 'Sign in with Google to Book'}
-                    </h3>
-                    <p className="text-gray-300 text-xs sm:text-sm leading-relaxed max-w-lg mx-auto">
-                      {lang === 'ar'
-                        ? 'يشترط النظام التسجيل بحساب Google المعتمد قبل ملء بيانات الحجز، وذلك لتوثيق ملفك وتتبع الفني الميداني على الخريطة فوراً وحفظ سجل فواتير وضمانات سيارتك.'
-                        : 'Google registration is required prior to booking to secure your service history and enable live GPS technician tracking.'}
+                    <p className="text-[11px] text-gray-400">
+                      {lang === 'ar' 
+                        ? 'لحفظ سجل سياراتك وتتبع الفني المباشر بالخريطة، أو عَبّئ بيانات الموعد مباشرة بالأسفل.' 
+                        : 'Enables live tracking & vehicle history, or fill form directly below.'}
                     </p>
                   </div>
-
-                  {/* Account state info if customer exists without googleUid */}
-                  {customer && !customer.googleUid && (
-                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
-                      {lang === 'ar'
-                        ? `أنت مسجل حالياً بالهاتف (${customer.phone || customer.name}). لإتمام الحجز، يرجى التوثيق بحساب Google للمتابعة.`
-                        : 'Please link your Google account to confirm this booking.'}
-                    </div>
-                  )}
-
-                  {/* Error display */}
-                  {googleAuthError && (
-                    <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs text-right space-y-1">
-                      <div className="font-bold flex items-center gap-1.5 text-red-200">
-                        <AlertCircle className="w-4 h-4 text-brand-red shrink-0" />
-                        <span>{googleAuthError}</span>
-                      </div>
-                      <div className="text-[11px] text-gray-400">
-                        {lang === 'ar' 
-                          ? 'يرجى السماح بالنوافذ المنبثقة (Pop-ups) في إعدادات المتصفح إذا تم إغلاقها تلقائياً.' 
-                          : 'Please allow pop-ups in your browser settings.'}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Google Primary CTA Button */}
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      id="google-booking-gate-btn"
-                      onClick={handleGoogleSignIn}
-                      disabled={isGoogleSigningIn}
-                      className="w-full max-w-md mx-auto py-4 px-6 rounded-2xl bg-white hover:bg-gray-100 text-black font-black text-sm sm:text-base transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-[0.99] cursor-pointer disabled:opacity-60 group border border-white/20"
-                    >
-                      {isGoogleSigningIn ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin text-black" />
-                          <span>{lang === 'ar' ? 'جارٍ التحقق وتسجيل الدخول عبر Google...' : 'Signing in with Google...'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                          </svg>
-                          <span className="group-hover:tracking-wide transition-all">
-                            {lang === 'ar' ? 'التسجيل والمتابعة بحساب Google' : 'Sign In with Google to Continue'}
-                          </span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Benefits Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-white/10 text-right">
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span className="text-brand-red">⚡</span>
-                        <span>{lang === 'ar' ? 'توثيق الحجز الفوري' : 'Instant Verification'}</span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        {lang === 'ar' ? 'تأكيد الموعد وربطه بحسابك وتنبيه الإدارة فوراً.' : 'Direct booking confirmation.'}
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span className="text-brand-red">📍</span>
-                        <span>{lang === 'ar' ? 'تتبع الفني الميداني' : 'Live GPS Tracking'}</span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        {lang === 'ar' ? 'متابعة مسار الفني على الخريطة ولحظة وصوله.' : 'Real-time technician tracking.'}
-                      </p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-1">
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <span className="text-brand-red">🛡️</span>
-                        <span>{lang === 'ar' ? 'سجل وضمانات السيارة' : 'Digital Car History'}</span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        {lang === 'ar' ? 'حفظ فواتير وتقارير الفحص وضمانات القطع.' : 'Keep invoices and guarantees.'}
-                      </p>
-                    </div>
-                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleSigningIn}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white hover:bg-gray-100 text-black text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-md active:scale-95"
+                >
+                  {isGoogleSigningIn ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                      <span>{lang === 'ar' ? 'جارٍ التحقق...' : 'Signing in...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{lang === 'ar' ? 'دخول سريع بـ Google' : 'Quick Sign in'}</span>
+                    </>
+                  )}
+                </button>
               </div>
-            </div>
-          ) : (
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 md:space-y-8 animate-fadeIn">
-            {/* Logged in Customer Header Card */}
-            <div className="p-4 rounded-2xl bg-black/60 border border-brand-red/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                {customer?.photoURL ? (
-                  <img src={customer.photoURL} alt={customer.name} className="w-11 h-11 rounded-full border-2 border-brand-red/40 object-cover shadow-sm shrink-0" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-11 h-11 rounded-full bg-brand-red/20 border-2 border-brand-red/40 flex items-center justify-center text-brand-red font-black text-base shrink-0">
-                    {customer?.name?.charAt(0) || 'G'}
-                  </div>
-                )}
-                <div className="text-right flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-white truncate">{customer?.name}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/30 text-[10px] font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-brand-red" />
-                      {lang === 'ar' ? 'مسجل وموثق بحساب Google' : 'Verified Google Account'}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400 font-mono block truncate">{customer?.email || customer?.phone}</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={logout}
-                className="w-full sm:w-auto text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>{lang === 'ar' ? 'تبديل الحساب' : 'Switch Account'}</span>
-              </button>
-            </div>
+            )}
 
             {customer && customer.cars && customer.cars.length > 0 && (
               <div className="p-3.5 bg-brand-red/10 border border-brand-red/25 rounded-2xl animate-fadeIn">
@@ -2868,131 +2798,39 @@ const BookingForm = ({
               />
             </div>
 
-            {/* GPS Location Selector & District Input */}
-            <div className="space-y-3">
-              <div className={cn(
-                "p-4 rounded-xl border transition-all flex flex-col gap-3",
-                coords 
-                  ? "bg-green-500/10 border-green-500/30 shadow-[0_0_15px_rgba(34,197,94,0.1)]" 
-                  : "bg-white/5 border-white/10"
-              )}>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-start sm:items-center gap-3 text-right">
-                    <span className="text-2xl mt-0.5 sm:mt-0">📍</span>
-                    <div>
-                      <div className="text-sm font-bold text-white flex items-center gap-2">
-                        {coords ? (
-                          <span className="text-green-400 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                            {lang === 'ar' ? 'تم تحديد موقعك بدقة (GPS)' : 'GPS Location Captured'}
-                          </span>
-                        ) : (
-                          <span>{lang === 'ar' ? 'تحديد موقع السيارة عند المنزل أو العمل' : 'Car location at home or work'}</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {coords ? (
-                          <span>{locationName || `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`}</span>
-                        ) : (
-                          <span>{lang === 'ar' ? 'اضغط لتوجيه الفني إليك مباشرة عبر Google Maps' : 'Click to send your pin to the mobile mechanic'}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                    {coords ? (
-                      <>
-                        <a
-                          href={`https://www.google.com/maps?q=${coords.latitude},${coords.longitude}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 sm:flex-none px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all text-center"
-                        >
-                          🗺️ {lang === 'ar' ? 'عرض على الخريطة' : 'View on Map'}
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCoords(null);
-                            setLocationName('');
-                            setLocationError(null);
-                          }}
-                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs transition-all"
-                        >
-                          {lang === 'ar' ? 'تغيير' : 'Reset'}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleGetLocation}
-                        disabled={locating}
-                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer bg-brand-red/20 text-brand-red border border-brand-red/30 hover:bg-brand-red hover:text-white disabled:opacity-50"
-                      >
-                        {locating ? (
-                          <>
-                            <span className="w-3.5 h-3.5 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
-                            <span>{lang === 'ar' ? 'جارٍ تحديد الموقع...' : 'Detecting GPS...'}</span>
-                          </>
-                        ) : (
-                          <span>{lang === 'ar' ? '📍 تحديد موقعي الحالي' : '📍 Detect My Location'}</span>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* iPhone / Browser Location Guidance Banner */}
-                {locationError && (
-                  <div className="mt-1 p-3 rounded-xl bg-brand-red/10 border border-brand-red/30 text-xs text-red-200 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <span className="text-base shrink-0">⚠️</span>
-                      <div className="space-y-1">
-                        <div className="font-bold">{locationError}</div>
-                        <div className="text-gray-300 text-[11px] leading-relaxed">
-                          {lang === 'ar' 
-                            ? 'إذا كنت تستخدم الآيفون (iPhone Safari): اضغط على رمز (aA) أو القفل يسار شريط العنوان > اختر "إعدادات موقع الويب" > "الموقع" واجعله "السماح".' 
-                            : 'On iPhone Safari: Tap the (aA) icon in the address bar > Website Settings > Location > choose "Allow".'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleGetLocation}
-                        className="px-3 py-1.5 bg-brand-red hover:bg-red-700 text-white font-bold rounded-lg text-xs transition-all cursor-pointer"
-                      >
-                        🔄 {lang === 'ar' ? 'إعادة المحاولة' : 'Try Again'}
-                      </button>
-                      <span className="text-gray-400 text-[11px]">
-                        {lang === 'ar' ? 'أو يمكنك كتابة الحي أو العنوان بالأسفل دون الحاجة للـ GPS' : 'Or simply enter your district below'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Manual Address / District input as reliable alternative or complement */}
-                <div className="pt-2 border-t border-white/5">
-                  <input
-                    type="text"
-                    value={locationName}
-                    onChange={(e) => setLocationName(e.target.value)}
-                    placeholder={lang === 'ar' ? 'الحي / الشارع / معلم قريب (مثال: جدة، حي الروضة - شارع الكيال)' : 'District / Street / Landmark (e.g. Jeddah, Al-Rawdah)'}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs md:text-sm text-white focus:border-brand-red focus:outline-none transition-all placeholder:text-gray-500"
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Interactive Location Picker with GPS, District selector and Map */}
+            <InteractiveLocationPicker
+              coords={coords}
+              locationName={locationName}
+              locating={locating}
+              locationError={locationError}
+              onGetLocation={handleGetLocation}
+              onClearLocation={() => {
+                setCoords(null);
+                setLocationName('');
+                setLocationError(null);
+              }}
+              onLocationNameChange={(val) => setLocationName(val)}
+              onSelectDistrict={(district) => {
+                setCoords({ latitude: district.lat, longitude: district.lng });
+                setLocationName(lang === 'ar' ? `جدة - حي ${district.nameAr}` : `Jeddah - ${district.nameEn} District`);
+                setLocationError(null);
+              }}
+              lang={lang}
+            />
 
             {/* Booking Date & Time Slots with Available Slots indicator */}
             <BookingTimeSlotPicker
               selectedDate={selectedServiceDate}
+              selectedTimeSlot={selectedTimeSlot}
               selectedSlot={selectedTimeSlot}
               isImmediate={isImmediateBooking}
               existingBookings={existingBookings}
+              onDateChange={(date) => setSelectedServiceDate(date)}
               onSelectDate={(date) => setSelectedServiceDate(date)}
+              onTimeSlotChange={(slot) => setSelectedTimeSlot(slot)}
               onSelectSlot={(slot) => setSelectedTimeSlot(slot)}
+              onImmediateChange={(immediate) => setIsImmediateBooking(immediate)}
               onToggleImmediate={(immediate) => setIsImmediateBooking(immediate)}
               lang={lang}
             />
@@ -3036,7 +2874,6 @@ const BookingForm = ({
               <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </form>
-          )}
 
           <AnimatePresence>
             {isLoading && (
@@ -10448,7 +10285,7 @@ const Process = () => {
           <p className="text-gray-400 max-w-2xl mx-auto">{t.process.description}</p>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-8" style={{ perspective: '2000px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8" style={{ perspective: '2000px' }}>
           <ProcessStep 
             number="01" 
             title={t.process.step1Title} 
@@ -10480,15 +10317,15 @@ const Stats = React.memo(() => {
   return (
     <section className="py-8 sm:py-12 bg-brand-black border-y border-white/5">
       <div className="max-w-7xl mx-auto px-4 md:px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
+        <div className="grid grid-cols-3 gap-2 sm:gap-6 md:gap-12">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             className="text-center"
           >
-            <div className="text-3xl md:text-4xl font-display font-black text-brand-red mb-2">+5000</div>
-            <div className="text-gray-400 font-bold uppercase tracking-wider text-sm">{t.stats.cars}</div>
+            <div className="text-2xl sm:text-3xl md:text-4xl font-display font-black text-brand-red mb-1 sm:mb-2">+5000</div>
+            <div className="text-gray-400 font-bold uppercase tracking-wider text-[11px] sm:text-xs md:text-sm">{t.stats.cars}</div>
           </motion.div>
           
           <motion.div 
@@ -10498,8 +10335,8 @@ const Stats = React.memo(() => {
             transition={{ delay: 0.1 }}
             className="text-center"
           >
-            <div className="text-3xl md:text-4xl font-display font-black text-brand-red mb-2">100%</div>
-            <div className="text-gray-400 font-bold uppercase tracking-wider text-sm">{t.stats.wash}</div>
+            <div className="text-2xl sm:text-3xl md:text-4xl font-display font-black text-brand-red mb-1 sm:mb-2">100%</div>
+            <div className="text-gray-400 font-bold uppercase tracking-wider text-[11px] sm:text-xs md:text-sm">{t.stats.wash}</div>
           </motion.div>
           
           <motion.div 
@@ -10509,8 +10346,8 @@ const Stats = React.memo(() => {
             transition={{ delay: 0.2 }}
             className="text-center"
           >
-            <div className="text-3xl md:text-4xl font-display font-black text-brand-red mb-2">+10</div>
-            <div className="text-gray-400 font-bold uppercase tracking-wider text-sm">{t.stats.experience}</div>
+            <div className="text-2xl sm:text-3xl md:text-4xl font-display font-black text-brand-red mb-1 sm:mb-2">+10</div>
+            <div className="text-gray-400 font-bold uppercase tracking-wider text-[11px] sm:text-xs md:text-sm">{t.stats.experience}</div>
           </motion.div>
         </div>
       </div>

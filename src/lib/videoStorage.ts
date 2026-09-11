@@ -114,9 +114,9 @@ export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> 
 
         try {
           const canvas = document.createElement('canvas');
-          const maxDim = 640;
-          let width = video.videoWidth || 640;
-          let height = video.videoHeight || 360;
+          const maxDim = 480;
+          let width = video.videoWidth || 480;
+          let height = video.videoHeight || 270;
 
           if (width > maxDim || height > maxDim) {
             if (width > height) {
@@ -134,7 +134,7 @@ export function generateVideoThumbnail(videoFile: Blob | File): Promise<string> 
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(video, 0, 0, width, height);
-            const thumbBase64 = canvas.toDataURL('image/jpeg', 0.8);
+            const thumbBase64 = canvas.toDataURL('image/jpeg', 0.65);
             URL.revokeObjectURL(url);
             resolve(thumbBase64);
           } else {
@@ -217,9 +217,40 @@ export async function storeInspectionVideo(
   // 1. Cache immediately in IndexedDB so the recording user never has to wait to view their video
   await cacheVideoLocally(cleanId, videoBlob, mimeType, thumbnailUrl);
 
-  // 2. Upload in chunks to Firestore so it is permanently stored in the cloud
-  onProgress?.(25, 'جاري تجهيز مقطع الفيديو للرفع السحابي...');
-  
+  // 2. First try fast direct upload to server endpoint (/api/upload-video)
+  let serverVideoUrl = '';
+  onProgress?.(30, 'جاري رفع الفيديو إلى السيرفر السحابي...');
+  try {
+    const formData = new FormData();
+    const originalName = (videoBlob as File).name || `${cleanId}.mp4`;
+    const fileToUpload = videoBlob instanceof File 
+      ? videoBlob 
+      : new File([videoBlob], originalName, { type: mimeType });
+
+    formData.append('video', fileToUpload);
+
+    const response = await fetch('/api/upload-video', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.videoUrl) {
+        serverVideoUrl = data.videoUrl;
+        onProgress?.(100, 'تم حفظ الفيديو بنجاح!');
+        return {
+          videoUrl: serverVideoUrl,
+          thumbnailUrl: thumbnailUrl || ''
+        };
+      }
+    }
+  } catch (serverErr) {
+    console.warn('Direct server video upload skipped or unavailable, falling back to cloud chunks:', serverErr);
+  }
+
+  // 3. Fallback: Upload in chunks to Firestore if server upload is not available
+  onProgress?.(45, 'جاري تجهيز مقطع الفيديو للرفع السحابي...');
   try {
     const totalBytes = videoBlob.size;
     const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
@@ -243,43 +274,16 @@ export async function storeInspectionVideo(
         createdAt: new Date().toISOString()
       });
 
-      const currentProgress = 25 + Math.round(((i + 1) / totalChunks) * 65);
+      const currentProgress = 45 + Math.round(((i + 1) / totalChunks) * 50);
       onProgress?.(currentProgress, `جاري رفع أجزاء الفيديو إلى السحابة (${i + 1}/${totalChunks})...`);
     }
 
-    onProgress?.(95, 'اكتمل الحفظ السحابي للفيديو بنجاح!');
+    onProgress?.(100, 'اكتمل الحفظ السحابي للفيديو بنجاح!');
   } catch (cloudErr) {
     console.warn('Firestore video chunks upload failed, relying on local and server backup:', cloudErr);
   }
 
-  // 3. Optional server upload attempt (if backend runs on Node/Express with disk access)
-  let serverVideoUrl = '';
-  try {
-    const formData = new FormData();
-    const originalName = (videoBlob as File).name || `${cleanId}.mp4`;
-    const fileToUpload = videoBlob instanceof File 
-      ? videoBlob 
-      : new File([videoBlob], originalName, { type: mimeType });
-
-    formData.append('video', fileToUpload);
-
-    const response = await fetch('/api/upload-video', {
-      method: 'POST',
-      body: formData
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success && data.videoUrl) {
-        serverVideoUrl = data.videoUrl;
-      }
-    }
-  } catch {
-    // Expected on Vercel serverless functions without write permissions
-  }
-
-  // Use the cloud firestore-video protocol identifier as the durable master URL
-  const masterVideoUrl = `firestore-video://${cleanId}`;
+  const masterVideoUrl = serverVideoUrl || `firestore-video://${cleanId}`;
 
   return {
     videoUrl: masterVideoUrl,

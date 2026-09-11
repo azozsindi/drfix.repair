@@ -61,8 +61,8 @@ interface ServiceTimelineModalProps {
   onUpdateRecord: (updatedRecord: MaintenanceRecord) => void;
 }
 
-// Browser Canvas Image Compressor (compresses to max 1000px, JPEG ~60KB)
-export const compressImage = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
+// Browser Canvas Image Compressor (compresses to max 800px, JPEG ~35-45KB for fast, safe Firestore storage)
+export const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.65): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -102,6 +102,32 @@ export const compressImage = (file: File, maxWidth = 1000, maxHeight = 1000, qua
     reader.onerror = (err) => reject(err);
   });
 };
+
+/**
+ * Deep sanitization for Firestore payloads.
+ * Strips out any `undefined` values that cause Firestore to reject updateDoc
+ * with "Unsupported field value: undefined".
+ */
+export function cleanFirestorePayload<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter(item => item !== undefined)
+      .map(item => cleanFirestorePayload(item)) as any;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanFirestorePayload(value);
+      }
+    }
+    return cleaned as any;
+  }
+  return data;
+}
 
 // Preset categories for continuous in-progress updates
 const IN_PROGRESS_CATEGORIES = [
@@ -359,7 +385,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!file.type.startsWith('image/')) continue;
-        const compressedBase64 = await compressImage(file, 900, 900, 0.75);
+        const compressedBase64 = await compressImage(file, 800, 800, 0.65);
         newPhotos.push({
           url: compressedBase64,
           caption: '',
@@ -458,15 +484,16 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
       // Update record in Firestore
       const recordRef = doc(db, 'maintenance', record.id);
+      const cleanedSteps = cleanFirestorePayload(updatedSteps);
       await updateDoc(recordRef, {
-        serviceSteps: updatedSteps,
+        serviceSteps: cleanedSteps,
         updatedAt: new Date().toISOString()
       });
 
       // Notify parent state
       onUpdateRecord({
         ...record,
-        serviceSteps: updatedSteps
+        serviceSteps: cleanedSteps
       });
 
       // Update lightbox player view
@@ -541,7 +568,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
           `📸 <b>عدد الصور الموثقة:</b> ${totalPhotosCount}\n` +
           `⏰ <b>توقيت الإنجاز:</b> ${saudiTime}\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `✨ <i>يمكن للإدارة مراجعة الـ Timeline والصور بالكامل من لوحة التحكم.</i>`;
+          `✨ <i>يمكن للإدارة مراجعة سجل الصيانة الميدانية والصور بالكامل من لوحة التحكم.</i>`;
 
         fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
@@ -668,18 +695,24 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     setIsInProgressSaving(true);
 
     try {
-      const photosPayload: ServiceStepPhoto[] = inProgressPhotos.map(p => ({
-        id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        url: p.url,
-        caption: p.caption.trim() || inProgressCategory.title,
-        isInternalOnly: !isCustomerVisible ? true : p.isInternalOnly,
-        isCustomerVisible: isCustomerVisible && !p.isInternalOnly,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: currentTechName,
-        mediaType: p.mediaType || 'image',
-        videoUrl: p.videoUrl,
-        thumbnailUrl: p.url
-      }));
+      const photosPayload: ServiceStepPhoto[] = inProgressPhotos.map(p => {
+        const item: ServiceStepPhoto = {
+          id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: p.url || '',
+          caption: (p.caption || '').trim() || inProgressCategory.title,
+          isInternalOnly: !isCustomerVisible ? true : Boolean(p.isInternalOnly),
+          isCustomerVisible: isCustomerVisible && !p.isInternalOnly,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentTechName || 'فني الصيانة',
+          mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
+        };
+        // ONLY attach videoUrl if this is a video!
+        // Never pass undefined, and never duplicate large base64 image as thumbnailUrl!
+        if (p.videoUrl) {
+          item.videoUrl = p.videoUrl;
+        }
+        return item;
+      });
 
       const newStep: ServiceStepLog = {
         id: `step_progress_${Date.now()}`,
@@ -689,13 +722,15 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         isInternalOnly: !isCustomerVisible,
         isCustomerVisible: isCustomerVisible,
         photos: photosPayload,
-        recordedBy: currentTechName,
+        recordedBy: currentTechName || 'فني الصيانة',
         recordedByStaffId: currentStaffUser?.id || '',
         recordedAt: new Date().toISOString(),
         statusChangeTo: 'in-progress'
       };
 
-      const updatedSteps = [...steps, newStep];
+      const rawUpdatedSteps = [...steps, newStep];
+      const updatedSteps = cleanFirestorePayload(rawUpdatedSteps);
+
       const docRef = doc(db, 'maintenance', record.id);
       await updateDoc(docRef, {
         serviceSteps: updatedSteps,
@@ -714,11 +749,16 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       // Reset in-progress form so technician can record subsequent steps immediately!
       setInProgressNote('');
       setInProgressPhotos([]);
-      setInProgressSuccessMsg(`تم حفظ تحديث "${inProgressCategory.title}" في الـ Timeline بنجاح! 📸`);
+      setInProgressSuccessMsg(`تم حفظ تحديث "${inProgressCategory.title}" في سجل الصيانة بنجاح! 📸`);
       setTimeout(() => setInProgressSuccessMsg(''), 3500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving in-progress step:', err);
-      alert('تعذر حفظ التحديث، يرجى المحاولة ثانية.');
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes('exceeds maximum allowed size') || errMsg.includes('too large')) {
+        alert('حجم التحديث كبير جداً بسبب عدد أو حجم الصور المرفقة. يرجى إرفاق عدد أقل من الصور والمحاولة ثانية.');
+      } else {
+        alert('تعذر حفظ التحديث، يرجى المحاولة ثانية.');
+      }
     } finally {
       setIsInProgressSaving(false);
     }
@@ -739,15 +779,22 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
     setIsCompleting(true);
     try {
-      const photosPayload: ServiceStepPhoto[] = completedPhotos.map(p => ({
-        id: `photo_final_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        url: p.url,
-        caption: p.caption.trim() || 'صورة النتيجة النهائية بعد الصيانة',
-        isInternalOnly: p.isInternalOnly,
-        isCustomerVisible: !p.isInternalOnly,
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: currentTechName
-      }));
+      const photosPayload: ServiceStepPhoto[] = completedPhotos.map(p => {
+        const item: ServiceStepPhoto = {
+          id: `photo_final_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: p.url || '',
+          caption: (p.caption || '').trim() || 'صورة النتيجة النهائية بعد الصيانة',
+          isInternalOnly: Boolean(p.isInternalOnly),
+          isCustomerVisible: !p.isInternalOnly,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentTechName || 'فني الصيانة',
+          mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
+        };
+        if (p.videoUrl) {
+          item.videoUrl = p.videoUrl;
+        }
+        return item;
+      });
 
       const finalStep: ServiceStepLog = {
         id: `step_completed_${Date.now()}`,
@@ -757,13 +804,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         isCustomerVisible: true,
         isInternalOnly: false,
         photos: photosPayload,
-        recordedBy: currentTechName,
+        recordedBy: currentTechName || 'فني الصيانة',
         recordedByStaffId: currentStaffUser?.id || '',
         recordedAt: new Date().toISOString(),
         statusChangeTo: 'completed'
       };
 
-      const updatedSteps = [...steps, finalStep];
+      const rawUpdatedSteps = [...steps, finalStep];
+      const updatedSteps = cleanFirestorePayload(rawUpdatedSteps);
       const nowIso = new Date().toISOString();
 
       const docRef = doc(db, 'maintenance', record.id);
@@ -788,9 +836,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       await notifyOwnerServiceCompleted(completedNote.trim(), totalAllPhotos);
 
       setCompletionSuccess(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error completing service:', err);
-      alert('تعذر إكمال المهمة، يرجى المحاولة ثانية.');
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes('exceeds maximum allowed size') || errMsg.includes('too large')) {
+        alert('حجم التحديث كبير جداً بسبب حجم الصور. يرجى إرفاق صور أقل والمحاولة ثانية.');
+      } else {
+        alert('تعذر إكمال المهمة، يرجى المحاولة ثانية.');
+      }
     } finally {
       setIsCompleting(false);
     }
@@ -922,7 +975,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
   // Delete a step
   const handleDeleteStep = async (stepId: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا التحديث من الـ Timeline؟')) return;
+    if (!window.confirm('هل أنت متأكد من حذف هذا التحديث من سجل خطوات الصيانة؟')) return;
 
     try {
       const updatedSteps = steps.filter(s => s.id !== stepId);
@@ -1176,7 +1229,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
             <div className="h-4 w-[1px] bg-white/15 mx-1 shrink-0" />
 
-            {/* Tab: سجل الـ Timeline */}
+            {/* Tab: سجل خطوات الصيانة */}
             <button
               type="button"
               onClick={() => setActiveTab('timeline')}
@@ -1188,7 +1241,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               )}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>الـ Timeline ({steps.length})</span>
+              <span>سجل الخطوات ({steps.length})</span>
             </button>
 
             {/* Tab: بيانات الطلب والسيارة */}
@@ -1712,7 +1765,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   {/* Save Update Button */}
                   <div className="pt-2 flex items-center justify-between border-t border-white/10">
                     <span className="text-[11px] text-gray-400">
-                      التحديث يحفظ في Timeline مع الوقت والتاريخ واسم الفني
+                      التحديث يُحفظ في سجل خطوات الصيانة مع الوقت والتاريخ واسم الفني
                     </span>
 
                     <button
@@ -1729,7 +1782,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       ) : (
                         <>
                           <Plus className="w-4 h-4" />
-                          <span>+ حفظ هذا التحديث في الـ Timeline 📸</span>
+                          <span>+ حفظ هذا التحديث في سجل الصيانة 📸</span>
                         </>
                       )}
                     </button>
@@ -1786,7 +1839,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                           className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
                         >
                           <Clock className="w-4 h-4 text-brand-red" />
-                          <span>استعراض سجل الـ Timeline ({steps.length})</span>
+                          <span>استعراض سجل خطوات الصيانة ({steps.length})</span>
                         </button>
                       </div>
 
@@ -1863,7 +1916,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                             className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-all"
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>حفظ التوثيق الإضافي في الـ Timeline</span>
+                            <span>حفظ التوثيق الإضافي في سجل الصيانة</span>
                           </button>
                         </div>
                       )}
@@ -1989,7 +2042,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                   <div className="w-12 h-12 rounded-full bg-brand-red/10 border border-brand-red/20 flex items-center justify-center mx-auto text-brand-red">
                     <Clock className="w-6 h-6" />
                   </div>
-                  <h4 className="text-sm font-bold text-white">لا توجد تحديثات مسجلة في الـ Timeline بعد</h4>
+                  <h4 className="text-sm font-bold text-white">لا توجد تحديثات مسجلة في سجل الصيانة بعد</h4>
                   <p className="text-xs text-gray-400 max-w-sm mx-auto leading-relaxed">
                     ابدأ الآن بتنفيذ خطوات السند الفني: قبول المهمة، تسجيل الفني بالطريق، وتوثيق الصور أثناء العمل.
                   </p>

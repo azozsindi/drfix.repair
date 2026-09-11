@@ -695,6 +695,18 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
                       );
                     })}
                   </div>
+
+                  {role === 'technician' && (
+                    <div className="p-3.5 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-start gap-2.5 text-xs text-gray-200">
+                      <Wrench className="w-5 h-5 text-brand-red shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <b className="text-white block">واجهة الفني مبسطة ومجهزة بالكامل للجوال 📱 (بدون أي تعقيد):</b>
+                        <p className="text-gray-300 leading-relaxed text-[11px]">
+                          عند تسجيل دخول الفني، لن تظهر له أي لوحات تحكم معقدة أو إعدادات برمجية. ستظهر له مباشرة <b>مهامه الميدانية المسندة إليه فقط</b> بأزرار لمس سريعة وكبيرة: (الاتصال بالعميل 📞، ملاحة خرائط جوجل 🗺️، فيديو فحص واستلام السيارة 🎥، وتحديث الحالة بنقرة واحدة).
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 3. Detailed Granular Permissions */}

@@ -27,7 +27,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '09:00 AM - 11:00 AM',
     startHour: 9,
     endHour: 11,
-    periodAr: 'فترة الصباح الأولى'
+    periodAr: 'الصباح'
   },
   {
     id: 'slot_11_13',
@@ -35,7 +35,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '11:00 AM - 01:00 PM',
     startHour: 11,
     endHour: 13,
-    periodAr: 'فترة الصباح الثانية'
+    periodAr: 'قبل الظهر'
   },
   {
     id: 'slot_13_15',
@@ -43,7 +43,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '01:00 PM - 03:00 PM',
     startHour: 13,
     endHour: 15,
-    periodAr: 'فترة الظهيرة'
+    periodAr: 'الظهيرة'
   },
   {
     id: 'slot_15_17',
@@ -51,7 +51,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '03:00 PM - 05:00 PM',
     startHour: 15,
     endHour: 17,
-    periodAr: 'فترة العصر'
+    periodAr: 'العصر'
   },
   {
     id: 'slot_17_19',
@@ -59,7 +59,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '05:00 PM - 07:00 PM',
     startHour: 17,
     endHour: 19,
-    periodAr: 'فترة المغرب'
+    periodAr: 'المغرب'
   },
   {
     id: 'slot_19_21',
@@ -67,7 +67,7 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '07:00 PM - 09:00 PM',
     startHour: 19,
     endHour: 21,
-    periodAr: 'فترة المساء الأولى'
+    periodAr: 'المساء'
   },
   {
     id: 'slot_21_23',
@@ -75,18 +75,40 @@ export const STANDARD_TIME_SLOTS: TimeSlotConfig[] = [
     labelEn: '09:00 PM - 11:00 PM',
     startHour: 21,
     endHour: 23,
-    periodAr: 'فترة المساء المتأخر'
+    periodAr: 'المساء المتأخر'
+  },
+  {
+    id: 'slot_23_01',
+    labelAr: '11:00 م - 01:00 ص',
+    labelEn: '11:00 PM - 01:00 AM',
+    startHour: 23,
+    endHour: 25,
+    periodAr: 'طوارئ ليلية'
   }
 ];
 
 // Maximum simultaneous bookings per time slot across Jeddah service fleet
-export const MAX_CAPACITY_PER_SLOT = 3;
+export const MAX_CAPACITY_PER_SLOT = 4;
+
+/**
+ * Gets current Date in Saudi Arabia timezone (Asia/Riyadh - UTC+3)
+ */
+export function getSaudiNow(): Date {
+  try {
+    const s = new Date().toLocaleString('en-US', { timeZone: 'Asia/Riyadh' });
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  } catch (e) {
+    // fallback to local date
+  }
+  return new Date();
+}
 
 /**
  * Normalizes any date to YYYY-MM-DD
  */
 export function formatSlotDateKey(date: Date | string | any): string {
-  if (!date) return new Date().toISOString().split('T')[0];
+  if (!date) return getSaudiNow().toISOString().split('T')[0];
   if (typeof date === 'string') {
     return date.split('T')[0];
   }
@@ -102,7 +124,7 @@ export function formatSlotDateKey(date: Date | string | any): string {
   if (date?.seconds) {
     return formatSlotDateKey(new Date(date.seconds * 1000));
   }
-  return new Date().toISOString().split('T')[0];
+  return getSaudiNow().toISOString().split('T')[0];
 }
 
 /**
@@ -113,10 +135,10 @@ export function calculateSlotAvailabilities(
   existingBookings: any[],
   maxCapacity = MAX_CAPACITY_PER_SLOT
 ): SlotAvailability[] {
-  const targetDateKey = selectedDateStr || formatSlotDateKey(new Date());
+  const targetDateKey = selectedDateStr || formatSlotDateKey(getSaudiNow());
   
   // Current time in Saudi Arabia
-  const now = new Date();
+  const now = getSaudiNow();
   const todayKey = formatSlotDateKey(now);
   const isToday = targetDateKey === todayKey;
   const currentHour = now.getHours();
@@ -147,7 +169,7 @@ export function calculateSlotAvailabilities(
         status: 'passed',
         bookedCount,
         remainingCount: 0,
-        badgeText: 'انتهى الوقت اليوم',
+        badgeText: 'انتهى الوقت',
         badgeColor: 'bg-white/5 text-gray-500 border-white/10',
         isSelectable: false
       };
@@ -159,7 +181,7 @@ export function calculateSlotAvailabilities(
         status: 'full',
         bookedCount,
         remainingCount: 0,
-        badgeText: 'محجوز بالكامل',
+        badgeText: 'مكتمل',
         badgeColor: 'bg-red-500/15 text-red-400 border-red-500/30',
         isSelectable: false
       };
@@ -171,7 +193,7 @@ export function calculateSlotAvailabilities(
         status: 'limited',
         bookedCount,
         remainingCount,
-        badgeText: 'متبقي موعد أخير ⚡',
+        badgeText: 'متبقي فني 1 ⚡',
         badgeColor: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
         isSelectable: true
       };
@@ -182,7 +204,7 @@ export function calculateSlotAvailabilities(
       status: 'available',
       bookedCount,
       remainingCount,
-      badgeText: `متاح (${remainingCount} فنيين متاحين)`,
+      badgeText: `متاح (${remainingCount} فنيين)`,
       badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
       isSelectable: true
     };
@@ -190,37 +212,70 @@ export function calculateSlotAvailabilities(
 }
 
 /**
- * Returns date presets for the next 7 days
+ * Arabic months list
+ */
+export const ARABIC_MONTHS = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+];
+
+/**
+ * Returns date presets for the next 7 days in a clean, consistent format
  */
 export function getUpcomingDatePresets() {
   const presets = [];
-  const today = new Date();
+  const today = getSaudiNow();
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     const dateStr = formatSlotDateKey(d);
+    const dayNum = d.getDate();
+    const monthName = ARABIC_MONTHS[d.getMonth()] || '';
+    const dayOfWeek = d.toLocaleDateString('ar-SA', { weekday: 'long' });
 
     let label = '';
-    let sublabel = d.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' });
-
     if (i === 0) {
-      label = 'اليوم (فوري ومجدول)';
+      label = 'اليوم';
     } else if (i === 1) {
       label = 'غداً';
     } else if (i === 2) {
       label = 'بعد غد';
     } else {
-      label = d.toLocaleDateString('ar-SA', { weekday: 'long' });
+      label = dayOfWeek;
     }
 
     presets.push({
       dateStr,
       label,
-      sublabel,
+      sublabel: `${dayNum} ${monthName}`,
+      dayOfWeek,
       isToday: i === 0
     });
   }
 
   return presets;
+}
+
+/**
+ * Formats YYYY-MM-DD to a high-end, human-readable Arabic string
+ * e.g. "2026-09-11" -> "الجمعة، 11 سبتمبر 2026"
+ */
+export function formatArabicDateFriendly(dateStr: string): string {
+  if (!dateStr) return '';
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      const dateObj = new Date(y, m - 1, d);
+      const dayName = dateObj.toLocaleDateString('ar-SA', { weekday: 'long' });
+      const monthName = ARABIC_MONTHS[m - 1] || '';
+      return `${dayName}، ${d} ${monthName} ${y}`;
+    }
+  } catch (e) {
+    // fallback
+  }
+  return dateStr;
 }

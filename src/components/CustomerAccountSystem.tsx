@@ -1730,36 +1730,39 @@ export const CustomerPortalModal: React.FC = () => {
         <div className="grid grid-cols-3 border-b border-white/10 bg-black/30 text-xs font-bold">
           <button
             onClick={() => setActiveTab('bookings')}
-            className={`py-3 sm:py-3.5 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'bookings' 
                 ? 'border-brand-red text-white bg-brand-red/10' 
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            <FileText className="w-4 h-4 text-brand-red" />
-            <span>كرت الصيانة والتتبع ({myBookings.length})</span>
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
+            <span className="hidden sm:inline">كرت الصيانة والتتبع ({myBookings.length})</span>
+            <span className="sm:hidden text-[11px] whitespace-nowrap">الكرت ({myBookings.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('cars')}
-            className={`py-3 sm:py-3.5 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'cars' 
                 ? 'border-brand-red text-white bg-brand-red/10' 
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            <Car className="w-4 h-4 text-brand-red" />
-            <span>سياراتي ({customer.cars?.length || 0})</span>
+            <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
+            <span className="hidden sm:inline">سياراتي ({customer.cars?.length || 0})</span>
+            <span className="sm:hidden text-[11px] whitespace-nowrap">سياراتي ({customer.cars?.length || 0})</span>
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            className={`py-3 sm:py-3.5 flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'profile' 
                 ? 'border-brand-red text-white bg-brand-red/10' 
                 : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            <User className="w-4 h-4 text-brand-red" />
-            <span>بياناتي الشخصية</span>
+            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
+            <span className="hidden sm:inline">بياناتي الشخصية</span>
+            <span className="sm:hidden text-[11px] whitespace-nowrap">بياناتي</span>
           </button>
         </div>
 
