@@ -352,7 +352,7 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
                 if (activeSpotlightJob.status !== 'in-progress') {
                   handleQuickStatusTransition(activeSpotlightJob, 'in-progress');
                 }
-                onOpenTimeline(activeSpotlightJob, 'timeline');
+                onOpenTimeline(activeSpotlightJob, 'add_step');
               }}
               className="flex-1 min-w-[170px] py-3 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/40 ring-1 ring-white/10"
             >

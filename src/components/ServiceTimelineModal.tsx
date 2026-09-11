@@ -36,7 +36,9 @@ import {
   Film,
   MessageCircle,
   ExternalLink,
-  Copy
+  Copy,
+  UploadCloud,
+  Zap
 } from 'lucide-react';
 import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -44,6 +46,7 @@ import { MaintenanceRecord, ServiceStepLog, ServiceStepPhoto, ServiceStepKey, St
 import { generateVideoThumbnail, storeInspectionVideo } from '../lib/videoStorage';
 import { generateTechnicianAssignmentWhatsAppUrl, getTechnicianAssignmentMessage } from '../lib/whatsappUtils';
 import { InspectionVideoPlayer } from './InspectionVideoPlayer';
+import { FastVideoRecorderModal } from './FastVideoRecorderModal';
 import { useScrollLock } from '../lib/scrollLock';
 import { cn } from '../lib/utils';
 
@@ -313,6 +316,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
   const arrivalVideoInputRef = useRef<HTMLInputElement>(null);
+  const [showFastCameraModal, setShowFastCameraModal] = useState(false);
 
   // Real-time calculation of technician availability and active workloads
   const techWorkloadMap = useMemo(() => {
@@ -401,17 +405,24 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     }
   };
 
-  // Video Uploader Handler for Arrival Inspection
-  const handleProcessVideoFile = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    if (!file.type.startsWith('video/')) {
+  // Video Uploader Handler for Arrival Inspection (Supports Direct Fast Camera Blob or FileList)
+  const handleProcessVideoFile = async (input: FileList | File | Blob | null) => {
+    if (!input) return;
+    let file: File | Blob;
+    if (input instanceof FileList) {
+      if (input.length === 0) return;
+      file = input[0];
+    } else {
+      file = input;
+    }
+
+    if (file.type && !file.type.startsWith('video/')) {
       alert('يرجى اختيار ملف فيديو صالح.');
       return;
     }
 
     setIsProcessingVideo(true);
-    setVideoProgressStatus('جاري بدء معالجة الفيديو...');
+    setVideoProgressStatus('جاري فحص وتجهيز الفيديو...');
     try {
       const videoKey = `video_${record.id}_${Date.now()}`;
       const { videoUrl, thumbnailUrl } = await storeInspectionVideo(
@@ -1643,24 +1654,42 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       className="hidden"
                     />
 
-                    <button
-                      type="button"
-                      onClick={() => arrivalVideoInputRef.current?.click()}
-                      disabled={isProcessingVideo}
-                      className="w-full py-3 px-4 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer disabled:opacity-50 active:scale-98"
-                    >
-                      {isProcessingVideo ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>{videoProgressStatus || 'جاري معالجة وحفظ فيديو الفحص...'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Video className="w-4 h-4 animate-pulse" />
-                          <span>🎥 بدء تسجيل / رفع فيديو فحص واستلام السيارة</span>
-                        </>
-                      )}
-                    </button>
+                    {isProcessingVideo ? (
+                      <div className="p-3.5 bg-black/50 border border-brand-red/40 rounded-xl space-y-2">
+                        <div className="flex items-center gap-2.5 text-xs text-white font-bold">
+                          <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span>{videoProgressStatus || 'جاري معالجة ورفع الفيديو بسرعة فائقة...'}</span>
+                        </div>
+                        <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-gradient-to-r from-brand-red to-emerald-400 h-full transition-all duration-300 animate-pulse w-3/4" />
+                        </div>
+                        <p className="text-[10px] text-gray-400">
+                          ⚡ يتم تحسين وضغط المقطع تلقائياً ليرتفع فوراً دون أي تأخير أو استهلاك لباقة الجوال.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {/* 1. Primary Direct Fast Camera */}
+                        <button
+                          type="button"
+                          onClick={() => setShowFastCameraModal(true)}
+                          className="w-full py-3.5 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/30"
+                        >
+                          <Video className="w-4 h-4 text-amber-300 animate-pulse" />
+                          <span>🎥 الكاميرا المباشرة السريعة (سريعة جداً - ثانيتين فقط) ⚡</span>
+                        </button>
+
+                        {/* 2. Secondary Native File Picker */}
+                        <button
+                          type="button"
+                          onClick={() => arrivalVideoInputRef.current?.click()}
+                          className="w-full py-2 px-3 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
+                        >
+                          <UploadCloud className="w-3.5 h-3.5 text-brand-red" />
+                          <span>أو التقاط/اختيار فيديو من كاميرا الجوال العادية (مع ضغط ذكي فوري)</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Photo Upload Zone */}
@@ -2852,6 +2881,20 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Fast Direct Camera Video Recorder Modal for Instant Low-Latency Capture */}
+      <FastVideoRecorderModal
+        isOpen={showFastCameraModal}
+        onClose={() => setShowFastCameraModal(false)}
+        onVideoCaptured={async (videoBlob) => {
+          await handleProcessVideoFile(videoBlob);
+        }}
+        onFallbackToFilePicker={() => {
+          arrivalVideoInputRef.current?.click();
+        }}
+        title="فيديو فحص واستلام السيارة عند الوصول 🚗"
+        maxSeconds={25}
+      />
     </div>
   );
 };

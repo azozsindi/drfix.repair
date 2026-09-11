@@ -1,11 +1,12 @@
 // Dedicated Video & Media Handler for Vehicle Inspection at Arrival & Service Documentation
 import { db } from '../firebase';
 import { collection, doc, setDoc, getDocs, query, where, writeBatch } from 'firebase/firestore';
+import { compressVideoFile, formatFileSize } from './videoCompressor';
 
 const DB_NAME = 'drfix_media_cache';
 const DB_VERSION = 2;
 const STORE_NAME = 'inspection_videos';
-const CHUNK_SIZE = 450 * 1024; // 450 KB binary per chunk (~600 KB base64, safe for Firestore 1MB doc limit)
+const CHUNK_SIZE = 650 * 1024; // 650 KB binary per chunk (~870 KB base64, safe under Firestore 1MB doc limit)
 
 /**
  * Open local IndexedDB for instant offline-safe video caching
@@ -209,36 +210,47 @@ export async function storeInspectionVideo(
   onProgress?: (percent: number, statusText: string) => void
 ): Promise<{ videoUrl: string; thumbnailUrl: string }> {
   const cleanId = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const mimeType = videoBlob.type || 'video/mp4';
 
-  onProgress?.(10, 'جاري توليد الصورة المصغرة للفيديو...');
-  const thumbnailUrl = await generateVideoThumbnail(videoBlob);
+  // 1. Fast client-side optimization: compress bulky mobile phone 4K/1080p recordings to ~2-3MB
+  onProgress?.(5, 'جاري فحص حجم الفيديو والتحسين التلقائي...');
+  const optimizedBlob = await compressVideoFile(videoBlob, 6, onProgress);
+  const mimeType = optimizedBlob.type || videoBlob.type || 'video/mp4';
+  const sizeFormatted = formatFileSize(optimizedBlob.size);
 
-  // 1. Cache immediately in IndexedDB so the recording user never has to wait to view their video
-  await cacheVideoLocally(cleanId, videoBlob, mimeType, thumbnailUrl);
+  // 2. Generate crisp thumbnail for instant UI display
+  onProgress?.(25, 'جاري توليد الصورة المصغرة للفيديو...');
+  const thumbnailUrl = await generateVideoThumbnail(optimizedBlob);
 
-  // 2. First try fast direct upload to server endpoint (/api/upload-video)
+  // 3. Cache immediately in IndexedDB for 0ms replay on this device
+  await cacheVideoLocally(cleanId, optimizedBlob, mimeType, thumbnailUrl);
+
+  // 4. Ultra-fast direct upload to server endpoint (/api/upload-video)
   let serverVideoUrl = '';
-  onProgress?.(30, 'جاري رفع الفيديو إلى السيرفر السحابي...');
+  onProgress?.(40, `جاري رفع المقطع السريع (${sizeFormatted})...`);
   try {
     const formData = new FormData();
     const originalName = (videoBlob as File).name || `${cleanId}.mp4`;
-    const fileToUpload = videoBlob instanceof File 
-      ? videoBlob 
-      : new File([videoBlob], originalName, { type: mimeType });
+    const fileToUpload = optimizedBlob instanceof File 
+      ? optimizedBlob 
+      : new File([optimizedBlob], originalName, { type: mimeType });
 
     formData.append('video', fileToUpload);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     const response = await fetch('/api/upload-video', {
       method: 'POST',
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
 
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.videoUrl) {
         serverVideoUrl = data.videoUrl;
-        onProgress?.(100, 'تم حفظ الفيديو بنجاح!');
+        onProgress?.(100, 'تم حفظ ورفع الفيديو بنجاح! ⚡');
         return {
           videoUrl: serverVideoUrl,
           thumbnailUrl: thumbnailUrl || ''
@@ -246,39 +258,51 @@ export async function storeInspectionVideo(
       }
     }
   } catch (serverErr) {
-    console.warn('Direct server video upload skipped or unavailable, falling back to cloud chunks:', serverErr);
+    console.warn('Direct server video upload skipped, falling back to parallel cloud chunks:', serverErr);
   }
 
-  // 3. Fallback: Upload in chunks to Firestore if server upload is not available
-  onProgress?.(45, 'جاري تجهيز مقطع الفيديو للرفع السحابي...');
+  // 5. Cloud Firestore Parallel Chunk Fallback (if server endpoint is unavailable or blocked)
+  onProgress?.(50, 'جاري المزامنة السحابية السريعة...');
   try {
-    const totalBytes = videoBlob.size;
+    const totalBytes = optimizedBlob.size;
     const totalChunks = Math.ceil(totalBytes / CHUNK_SIZE);
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, totalBytes);
-      const chunkBlob = videoBlob.slice(start, end, mimeType);
-      const chunkBase64 = await blobToBase64(chunkBlob);
+    // Parallel batch upload (5 chunks concurrently) instead of slow sequential loop
+    const batchSize = 5;
+    for (let i = 0; i < totalChunks; i += batchSize) {
+      const batchIndices = Array.from(
+        { length: Math.min(batchSize, totalChunks - i) },
+        (_, idx) => i + idx
+      );
 
-      const chunkDocId = `${cleanId}_c${i}`;
-      const chunkRef = doc(db, 'inspection_videos', chunkDocId);
+      await Promise.all(
+        batchIndices.map(async (chunkIdx) => {
+          const start = chunkIdx * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, totalBytes);
+          const chunkBlob = optimizedBlob.slice(start, end, mimeType);
+          const chunkBase64 = await blobToBase64(chunkBlob);
 
-      await setDoc(chunkRef, {
-        videoId: cleanId,
-        chunkIndex: i,
-        totalChunks,
-        data: chunkBase64,
-        mimeType,
-        size: totalBytes,
-        createdAt: new Date().toISOString()
-      });
+          const chunkDocId = `${cleanId}_c${chunkIdx}`;
+          const chunkRef = doc(db, 'inspection_videos', chunkDocId);
 
-      const currentProgress = 45 + Math.round(((i + 1) / totalChunks) * 50);
-      onProgress?.(currentProgress, `جاري رفع أجزاء الفيديو إلى السحابة (${i + 1}/${totalChunks})...`);
+          return setDoc(chunkRef, {
+            videoId: cleanId,
+            chunkIndex: chunkIdx,
+            totalChunks,
+            data: chunkBase64,
+            mimeType,
+            size: totalBytes,
+            createdAt: new Date().toISOString()
+          });
+        })
+      );
+
+      const uploadedCount = Math.min(i + batchSize, totalChunks);
+      const currentProgress = 50 + Math.round((uploadedCount / totalChunks) * 48);
+      onProgress?.(currentProgress, `جاري رفع أجزاء الفيديو إلى السحابة (${uploadedCount}/${totalChunks})...`);
     }
 
-    onProgress?.(100, 'اكتمل الحفظ السحابي للفيديو بنجاح!');
+    onProgress?.(100, 'اكتمل الحفظ السحابي للفيديو بنجاح! 🚀');
   } catch (cloudErr) {
     console.warn('Firestore video chunks upload failed, relying on local and server backup:', cloudErr);
   }

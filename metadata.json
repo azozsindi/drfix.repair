@@ -3,7 +3,9 @@
   "description": "DR.FIX ميكانيكي متنقل في جدة يقدم خدمات صيانة وإصلاح السيارات عند موقعك. احجز خدمة ميكانيكي متنقل بسرعة وسهولة.",
   "requestFramePermissions": [
     "notifications",
-    "geolocation"
+    "geolocation",
+    "camera",
+    "microphone"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
