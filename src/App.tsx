@@ -668,41 +668,18 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   termsOfServiceText: ""
 };
 
-// Audio synthesized notification chime for bookings
-export const playNotificationSound = () => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    
-    // High-pitched pleasant dual chime
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); // D5
-    osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
-
-    osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(880, now + 0.12);
-    osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.3); // D6
-
-    gainNode.gain.setValueAtTime(0.25, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-
-    osc1.connect(gainNode);
-    osc2.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    osc1.start(now);
-    osc1.stop(now + 0.15);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.4);
-  } catch (e) {
-    console.log('Audio notification chime not supported or allowed yet', e);
-  }
+// Audio synthesized notification chimes for bookings and technician assignments
+import { 
+  playNewBookingSound, 
+  playTaskAssignedSound, 
+  playNotificationSound,
+  initAudioUnlocker 
+} from './lib/audioAlerts';
+export { 
+  playNewBookingSound, 
+  playTaskAssignedSound, 
+  playNotificationSound,
+  initAudioUnlocker 
 };
 
 // Permanent Fixed Telegram Bot Configuration
@@ -3449,8 +3426,10 @@ const AdminDashboard = ({
   const isTechnician = currentStaffUser?.role === 'technician';
   const dashboardMountTime = useRef<number>(Date.now());
   const knownBookingIds = useRef<Set<string>>(new Set());
+  const knownAssignmentMap = useRef<Map<string, string | undefined>>(new Map());
   const isSyncStabilized = useRef<boolean>(false);
   const lastChimeTime = useRef<number>(0);
+  const lastAssignmentChimeTime = useRef<number>(0);
 
   const [records, setRecords] = useState<MaintenanceRecord[]>([]);
   const [testimonials, setTestimonials] = useState<TestimonialData[]>([]);
@@ -3928,15 +3907,16 @@ const AdminDashboard = ({
           // 5. Booking creation timestamp is genuinely new (after or within 10s before opening dashboard)
           if (change.type === "added" && isSyncStabilized.current && !wasAlreadyKnown && !change.doc.metadata.hasPendingWrites) {
             const newBooking = change.doc.data() as MaintenanceRecord;
+            knownAssignmentMap.current.set(docId, newBooking.assignedStaffId);
             const bTimestamp = getBookingTimestamp(newBooking);
             const isFresh = bTimestamp === 0 || bTimestamp >= (dashboardMountTime.current - 10000);
 
             if (isFresh) {
               const now = Date.now();
-              // Throttled sound alert (max 1 sound chime every 4 seconds)
-              if (settings.enableSoundAlerts !== false && now - lastChimeTime.current > 4000) {
+              // Throttled sound alert (max 1 sound chime every 3 seconds)
+              if (settings.enableSoundAlerts !== false && now - lastChimeTime.current > 3000) {
                 lastChimeTime.current = now;
-                playNotificationSound();
+                playNewBookingSound();
               }
 
               // Desktop browser notification
@@ -3952,11 +3932,46 @@ const AdminDashboard = ({
               }
             }
           }
+
+          // Trigger technician assignment alert when assignedStaffId changes or is freshly assigned
+          if (change.type === "modified" && isSyncStabilized.current && !change.doc.metadata.hasPendingWrites) {
+            const updatedBooking = change.doc.data() as MaintenanceRecord;
+            const prevAssignedId = knownAssignmentMap.current.get(docId);
+            const currAssignedId = updatedBooking.assignedStaffId;
+
+            if (currAssignedId && currAssignedId !== prevAssignedId) {
+              const now = Date.now();
+              if (settings.enableSoundAlerts !== false && now - lastAssignmentChimeTime.current > 2000) {
+                lastAssignmentChimeTime.current = now;
+                playTaskAssignedSound();
+              }
+
+              const isMyAssignment = currentStaffUser?.id === currAssignedId || 
+                Boolean(currentStaffUser?.fullName && updatedBooking.assignedStaffName && currentStaffUser.fullName.trim().toLowerCase() === updatedBooking.assignedStaffName.trim().toLowerCase());
+
+              if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+                try {
+                  const alertTitle = isMyAssignment 
+                    ? "تم إسناد مهمة صيانة جديدة إليك! 🔧" 
+                    : `تم إسناد الطلب للفني ${updatedBooking.assignedStaffName || ''} 🔧`;
+                  new Notification(alertTitle, {
+                    body: `${updatedBooking.carModel || 'سيارة'} - ${updatedBooking.serviceType || 'صيانة'} (${updatedBooking.customerName || ''})`,
+                    icon: settings.logoUrl || "/favicon.ico"
+                  });
+                } catch {}
+              }
+            }
+            knownAssignmentMap.current.set(docId, currAssignedId);
+          }
         });
 
         snapshot.forEach((doc) => {
           knownBookingIds.current.add(doc.id);
-          results.push({ id: doc.id, ...(doc.data() as any) } as MaintenanceRecord);
+          const recData = doc.data() as MaintenanceRecord;
+          if (!knownAssignmentMap.current.has(doc.id)) {
+            knownAssignmentMap.current.set(doc.id, recData.assignedStaffId);
+          }
+          results.push({ id: doc.id, ...recData } as MaintenanceRecord);
         });
         results.sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
         setRecords(results);
@@ -7722,8 +7737,8 @@ const AdminDashboard = ({
                           <Volume2 className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="text-lg font-bold text-white">التنبيهات الصوتية الحية</h4>
-                          <p className="text-xs text-gray-400">تشغيل نغمة عند وصول حجز جديد وأنت داخل اللوحة</p>
+                          <h4 className="text-lg font-bold text-white">التنبيهات الصوتية الحية (طلبات جديدة + إسناد الفنيين)</h4>
+                          <p className="text-xs text-gray-400">تشغيل نغمات تنبيهية ذكية ومميزة عند وصول حجز جديد وعند إسناد مهمة لأي فني</p>
                         </div>
                       </div>
 
@@ -7732,7 +7747,7 @@ const AdminDashboard = ({
                         onClick={() => {
                           const nextVal = !(settingsForm.enableSoundAlerts ?? true);
                           setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
-                          if (nextVal) playNotificationSound();
+                          if (nextVal) playNewBookingSound();
                         }}
                         className={cn(
                           "w-12 h-6 rounded-full relative transition-all cursor-pointer",
@@ -7746,18 +7761,32 @@ const AdminDashboard = ({
                       </button>
                     </div>
 
-                    <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <span className="text-xs text-gray-400">
-                        {settingsForm.enableSoundAlerts !== false ? "الصوت مفعل - ستسمع رنة تنبيه فورية عند إضافة حجز جديد." : "الصوت معطل حالياً."}
+                        {settingsForm.enableSoundAlerts !== false 
+                          ? "الصوت مفعل - ستسمع نغمة صاعدة عند وصول طلب جديد، ونغمة تنبيهية مميزة عند إسناد الطلب للفني." 
+                          : "الصوت معطل حالياً."}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => playNotificationSound()}
-                        className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
-                      >
-                        <Volume2 className="w-3.5 h-3.5 text-brand-red" />
-                        تجربة النغمة
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => playNewBookingSound()}
+                          className="px-3.5 py-2 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                          title="تجربة نغمة وصول طلب حجز جديد"
+                        >
+                          <Volume2 className="w-3.5 h-3.5 text-brand-red" />
+                          <span>تجربة نغمة طلب جديد 🚗</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => playTaskAssignedSound()}
+                          className="px-3.5 py-2 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 rounded-xl text-xs font-bold border border-indigo-500/30 flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+                          title="تجربة نغمة إسناد طلب لفني"
+                        >
+                          <Wrench className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>تجربة نغمة إسناد للفني 🔧</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -8125,16 +8154,16 @@ const AdminDashboard = ({
                             <div>
                               <h4 className="font-bold text-base flex items-center gap-2">
                                 <Volume2 className="w-4 h-4 text-brand-red" />
-                                التنبيهات الصوتية الحية
+                                التنبيهات الصوتية الحية (طلبات جديدة + إسناد الفنيين)
                               </h4>
-                              <p className="text-xs text-gray-400">إصدار صوت رنة عند وصول حجز جديد أثناء فتح اللوحة</p>
+                              <p className="text-xs text-gray-400">إصدار صوت رنة مميزة عند وصول حجز جديد وعند إسناد مهمة لفني</p>
                             </div>
                             <button
                               type="button"
                               onClick={() => {
                                 const nextVal = !(settingsForm.enableSoundAlerts ?? true);
                                 setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
-                                if (nextVal) playNotificationSound();
+                                if (nextVal) playNewBookingSound();
                               }}
                               className={cn(
                                 "w-12 h-6 rounded-full relative transition-all cursor-pointer",
@@ -8145,6 +8174,25 @@ const AdminDashboard = ({
                                 "absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all",
                                 settingsForm.enableSoundAlerts !== false ? "right-0.5" : "left-0.5"
                               )} />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-white/5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => playNewBookingSound()}
+                              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-xl text-xs font-bold border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Volume2 className="w-3.5 h-3.5 text-brand-red" />
+                              <span>تجربة نغمة طلب جديد 🚗</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => playTaskAssignedSound()}
+                              className="px-3 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 rounded-xl text-xs font-bold border border-indigo-500/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Wrench className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>تجربة نغمة إسناد للفني 🔧</span>
                             </button>
                           </div>
                         </div>
@@ -10663,6 +10711,8 @@ function MainContent() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   useEffect(() => {
+    initAudioUnlocker();
+
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);

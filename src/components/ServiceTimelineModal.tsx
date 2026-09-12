@@ -49,6 +49,7 @@ import { InspectionVideoPlayer } from './InspectionVideoPlayer';
 import { FastVideoRecorderModal } from './FastVideoRecorderModal';
 import { useScrollLock } from '../lib/scrollLock';
 import { cn } from '../lib/utils';
+import { playTaskAssignedSound } from '../lib/audioAlerts';
 
 interface ServiceTimelineModalProps {
   record: MaintenanceRecord;
@@ -1322,6 +1323,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       };
 
       await updateDoc(docRef, payload);
+      playTaskAssignedSound();
 
       const updatedRecord: MaintenanceRecord = {
         ...record,

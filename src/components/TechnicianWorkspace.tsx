@@ -298,54 +298,56 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Quick Contact & Navigation Bar (Large 46px touch targets) */}
-          <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-white/10">
+          {/* Quick Contact & Navigation Bar (Optimized for Mobile & Touch) */}
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 sm:gap-2.5 pt-2 border-t border-white/10">
             {/* 1. Phone Call */}
-            <a
-              href={`tel:${activeSpotlightJob.customerPhone}`}
-              className="flex-1 min-w-[130px] py-3 px-4 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer active:scale-98"
-            >
-              <Phone className="w-4 h-4" />
-              <span>اتصال مباشر</span>
-            </a>
+            {activeSpotlightJob.customerPhone && (
+              <a
+                href={`tel:${activeSpotlightJob.customerPhone}`}
+                className="col-span-1 sm:flex-1 min-h-[44px] py-2.5 px-3 sm:py-3 sm:px-4 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer active:scale-98"
+              >
+                <Phone className="w-4 h-4 shrink-0" />
+                <span>اتصال مباشر</span>
+              </a>
+            )}
 
-            {/* 2. Google Maps Navigation */}
+            {/* 2. WhatsApp Direct */}
+            {activeSpotlightJob.customerPhone && (
+              <a
+                href={`https://api.whatsapp.com/send?phone=${getWaPhone(activeSpotlightJob.customerPhone)}&text=${getWhatsAppMessage(activeSpotlightJob)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="col-span-1 sm:flex-1 min-h-[44px] py-2.5 px-3 sm:py-3 sm:px-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition-all cursor-pointer active:scale-98"
+              >
+                <MessageCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>واتساب العميل</span>
+              </a>
+            )}
+
+            {/* 3. Google Maps Navigation */}
             {activeSpotlightJob.coordinates?.latitude && activeSpotlightJob.coordinates?.longitude ? (
               <a
                 href={`https://www.google.com/maps/dir/?api=1&destination=${activeSpotlightJob.coordinates.latitude},${activeSpotlightJob.coordinates.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 min-w-[130px] py-3 px-4 bg-blue-600/90 hover:bg-blue-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-98"
+                className="col-span-2 sm:flex-1 min-h-[44px] py-2.5 px-3 sm:py-3 sm:px-4 bg-blue-600/90 hover:bg-blue-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-98"
               >
-                <Navigation className="w-4 h-4" />
-                <span>ملاحة GPS 🗺️</span>
+                <Navigation className="w-4 h-4 shrink-0" />
+                <span>ملاحة GPS على الخريطة 🗺️</span>
               </a>
             ) : activeSpotlightJob.location ? (
               <a
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activeSpotlightJob.location + ' جدة')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 min-w-[130px] py-3 px-4 bg-blue-600/90 hover:bg-blue-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-98"
+                className="col-span-2 sm:flex-1 min-h-[44px] py-2.5 px-3 sm:py-3 sm:px-4 bg-blue-600/90 hover:bg-blue-600 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer active:scale-98"
               >
-                <Navigation className="w-4 h-4" />
-                <span>فتح الخريطة 🗺️</span>
+                <Navigation className="w-4 h-4 shrink-0" />
+                <span>ملاحة GPS على الخريطة 🗺️</span>
               </a>
             ) : null}
 
-            {/* 3. WhatsApp Direct */}
-            {activeSpotlightJob.customerPhone && (
-              <a
-                href={`https://api.whatsapp.com/send?phone=${getWaPhone(activeSpotlightJob.customerPhone)}&text=${getWhatsAppMessage(activeSpotlightJob)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 min-w-[130px] py-3 px-4 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>واتساب العميل</span>
-              </a>
-            )}
-
-            {/* 4. Car & Odometer Video 1-Tap */}
+            {/* 4. Car & Odometer Video 1-Tap (Prominent on Mobile) */}
             <button
               type="button"
               onClick={() => {
@@ -354,9 +356,9 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
                 }
                 onOpenTimeline(activeSpotlightJob, 'add_step', 2);
               }}
-              className="flex-1 min-w-[170px] py-3 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/40 ring-1 ring-white/10"
+              className="col-span-2 sm:flex-1 min-h-[48px] py-3 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/40 ring-1 ring-white/10"
             >
-              <Video className="w-4 h-4 text-amber-300 animate-pulse" />
+              <Video className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
               <span>🎥 تصوير فيديو السيارة والعداد (الخطوة 2)</span>
             </button>
 
@@ -364,9 +366,9 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
             <button
               type="button"
               onClick={() => onOpenTimeline(activeSpotlightJob, 'timeline')}
-              className="flex-1 min-w-[140px] py-3 px-4 bg-white/10 hover:bg-white/15 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer active:scale-98"
+              className="col-span-2 sm:flex-1 min-h-[44px] py-2.5 px-3 sm:py-3 sm:px-4 bg-white/10 hover:bg-white/15 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer active:scale-98"
             >
-              <Camera className="w-4 h-4 text-brand-red" />
+              <Camera className="w-4 h-4 text-brand-red shrink-0" />
               <span>مراحل وسند الصيانة ({activeSpotlightJob.serviceSteps?.length || 0})</span>
             </button>
           </div>
@@ -560,17 +562,17 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
               )}
 
               {/* Fast 1-Tap Workflow Transition Buttons for Each Card */}
-              <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
+              <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] text-gray-400 font-bold ml-1">تحديث الحالة:</span>
+                  <span className="text-[11px] text-gray-400 font-bold ml-1">الحالة:</span>
                   
                   <button
                     type="button"
                     onClick={() => handleQuickStatusTransition(record, 'on_the_way')}
                     className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                      "px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[36px] flex items-center justify-center active:scale-95",
                       record.status === 'on_the_way'
-                        ? "bg-indigo-600 text-white"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
                         : "bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
                     )}
                   >
@@ -581,9 +583,9 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
                     type="button"
                     onClick={() => handleQuickStatusTransition(record, 'in-progress')}
                     className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                      "px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[36px] flex items-center justify-center active:scale-95",
                       record.status === 'in-progress'
-                        ? "bg-blue-600 text-white"
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/30"
                         : "bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
                     )}
                   >
@@ -594,9 +596,9 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
                     type="button"
                     onClick={() => handleQuickStatusTransition(record, 'completed')}
                     className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                      "px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[36px] flex items-center justify-center active:scale-95",
                       record.status === 'completed'
-                        ? "bg-emerald-600 text-white"
+                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
                         : "bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white"
                     )}
                   >
