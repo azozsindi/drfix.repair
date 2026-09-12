@@ -60,6 +60,7 @@ interface ServiceTimelineModalProps {
     chatId?: string;
   };
   initialTab?: 'workflow' | 'timeline' | 'details' | 'add_step' | 'assign';
+  initialStage?: 1 | 2 | 3 | 4 | 5;
   onClose: () => void;
   onUpdateRecord: (updatedRecord: MaintenanceRecord) => void;
 }
@@ -132,6 +133,65 @@ export function cleanFirestorePayload<T>(data: T): T {
   return data;
 }
 
+// 5-Step Streamlined Technician Workflow
+export const STANDARD_WORKFLOW_STEPS = [
+  {
+    step: 1,
+    id: 'arrival',
+    stepKey: 'arrival',
+    title: 'المرحلة 1: وصول الفني للموقع 📍',
+    shortTitle: '1. وصول الفني 📍',
+    badge: 'المرحلة الأولى',
+    icon: '📍',
+    color: 'emerald',
+    desc: 'تأكيد وصول الفني لموقع العميل بالوقت الفعلي وبدء الاستعداد.'
+  },
+  {
+    step: 2,
+    id: 'car_and_odometer_video',
+    stepKey: 'car_and_odometer_video',
+    title: 'المرحلة 2: تصوير فيديو للسيارة كامل والعداد 🎥',
+    shortTitle: '2. فيديو السيارة والعداد 🎥',
+    badge: 'المرحلة الثانية',
+    icon: '🎥',
+    color: 'purple',
+    desc: 'فيديو سريع (15-20 ثانية) يوثق محيط البودي والخدوش السابقة وقراءة العداد بدقة.'
+  },
+  {
+    step: 3,
+    id: 'fault_documentation',
+    stepKey: 'fault_documentation',
+    title: 'المرحلة 3: تصوير الخراب أو شرح العطل ⚠️',
+    shortTitle: '3. تصوير الخراب / الشرح ⚠️',
+    badge: 'المرحلة الثالثة',
+    icon: '⚠️',
+    color: 'amber',
+    desc: 'صورة واضحة أو تسجيل فيديو شرح فني للقطعة المتضررة وتوضيح أسباب الإصلاح.'
+  },
+  {
+    step: 4,
+    id: 'new_part_after_repair',
+    stepKey: 'new_part_after_repair',
+    title: 'المرحلة 4: تصوير القطعة الجديدة أو بعد الإصلاح 📦',
+    shortTitle: '4. القطعة الجديدة / بعد الإصلاح 📦',
+    badge: 'المرحلة الرابعة',
+    icon: '📦',
+    color: 'blue',
+    desc: 'توثيق القطعة الجديدة الأصلية أو بعد إتمام التجميع والإصلاح لضمان الجودة.'
+  },
+  {
+    step: 5,
+    id: 'completion_and_delivery',
+    stepKey: 'completion_and_delivery',
+    title: 'المرحلة 5: تصوير إتمام العمل والانتهاء 🏁',
+    shortTitle: '5. إتمام العمل والانتهاء 🏁',
+    badge: 'المرحلة الخامسة',
+    icon: '🏁',
+    color: 'emerald',
+    desc: 'توثيق نهائي لاختبار تشغيل السيارة واكتمال السند وإشعار الإدارة والتسليم.'
+  }
+];
+
 // Preset categories for continuous in-progress updates
 const IN_PROGRESS_CATEGORIES = [
   {
@@ -179,6 +239,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   currentStaffUser,
   telegramConfig,
   initialTab,
+  initialStage,
   onClose,
   onUpdateRecord
 }) => {
@@ -197,42 +258,129 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const [showCompletedExtraForm, setShowCompletedExtraForm] = useState(false);
   const [techAvailabilityFilter, setTechAvailabilityFilter] = useState<'all' | 'free' | 'busy'>('all');
 
-  // Determine active workflow stage based on record status
-  const getInitialWorkflowStage = (): 1 | 2 | 3 | 4 => {
-    if (record.status === 'completed') return 4;
-    if (record.status === 'in-progress') return 3;
-    if (record.status === 'on_the_way') return 2;
-    if (record.status === 'accepted') return 2; // accepted, ready to go on the way
-    return 1; // new or pending, ready to accept
+  const steps: ServiceStepLog[] = record.serviceSteps || [];
+  const totalPhotosCount = useMemo(() => steps.reduce((sum, s) => sum + (s.photos?.length || 0), 0), [steps]);
+
+  // Existing inspection video if present in any step
+  const existingInspectionVideo = useMemo(() => {
+    for (const step of steps) {
+      for (const p of step.photos || []) {
+        if (p.mediaType === 'video' || p.videoUrl) {
+          return {
+            videoUrl: p.videoUrl || p.url,
+            thumbnailUrl: p.url,
+            caption: p.caption || step.title,
+            recordedAt: step.recordedAt || Date.now()
+          };
+        }
+      }
+    }
+    return null;
+  }, [steps]);
+
+  // Check completion for each of the 5 standard steps
+  const isStepCompleted = (stepNumber: number): boolean => {
+    if (record.status === 'completed') return true;
+    if (stepNumber === 1) {
+      return (
+        record.status === 'in-progress' ||
+        record.status === 'completed' ||
+        steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول') || s.stepKey === 'accepted' || s.stepKey === 'on_the_way')
+      );
+    }
+    if (stepNumber === 2) {
+      return steps.some(
+        s => (s.photos || []).some(p => p.mediaType === 'video' || !!p.videoUrl) ||
+             s.stepKey === 'car_and_odometer_video' ||
+             s.title?.includes('فيديو') ||
+             s.title?.includes('العداد')
+      );
+    }
+    if (stepNumber === 3) {
+      return steps.some(
+        s => s.stepKey === 'fault_documentation' ||
+             s.title?.includes('الخراب') ||
+             s.title?.includes('العطل') ||
+             (s.stepKey as string) === 'fault_part'
+      );
+    }
+    if (stepNumber === 4) {
+      return steps.some(
+        s => s.stepKey === 'new_part_after_repair' ||
+             s.title?.includes('الجديدة') ||
+             s.title?.includes('بعد الإصلاح') ||
+             (s.stepKey as string) === 'spare_parts' ||
+             (s.stepKey as string) === 'installation'
+      );
+    }
+    if (stepNumber === 5) {
+      return (
+        record.status === 'completed' ||
+        steps.some(s => s.stepKey === 'completed' || s.stepKey === 'completion_and_delivery' || s.title?.includes('اكتمال') || s.title?.includes('إتمام'))
+      );
+    }
+    return false;
   };
 
-  const [workflowStage, setWorkflowStage] = useState<1 | 2 | 3 | 4>(getInitialWorkflowStage());
+  // Determine active workflow stage based on record status & step completions
+  const getInitialWorkflowStage = (): 1 | 2 | 3 | 4 | 5 => {
+    if (initialStage) return initialStage;
+    if (record.status === 'completed') return 5;
+    if (isStepCompleted(4)) return 5;
+    if (isStepCompleted(3)) return 4;
+    if (isStepCompleted(2)) return 3;
+    if (isStepCompleted(1)) return 2;
+    return 1;
+  };
 
-  // Stage 1 State (تم القبول)
+  const [workflowStage, setWorkflowStage] = useState<1 | 2 | 3 | 4 | 5>(getInitialWorkflowStage);
+
+  // Stage 1 State: وصول الفني للموقع 📍
+  const [stage1Note, setStage1Note] = useState('');
+  const [isSavingStage1, setIsSavingStage1] = useState(false);
   const [acceptedNote, setAcceptedNote] = useState('');
   const [isAccepting, setIsAccepting] = useState(false);
-
-  // Stage 2 State (الفني بالطريق)
   const [etaTime, setEtaTime] = useState(record.estimatedArrival || 'متوقع الوصول خلال 30 دقيقة');
   const [onTheWayNote, setOnTheWayNote] = useState('');
   const [isOnTheWaySaving, setIsOnTheWaySaving] = useState(false);
 
-  // Stage 3 State (قيد العمل - التحديثات المستمرة)
-  const [inProgressCategory, setInProgressCategory] = useState(IN_PROGRESS_CATEGORIES[0]);
-  const [inProgressNote, setInProgressNote] = useState('');
-  const [inProgressPhotos, setInProgressPhotos] = useState<{ 
+  // Stage 2 State: تصوير فيديو للسيارة كامل والعداد 🎥
+  const [stage2Photos, setStage2Photos] = useState<{ 
     url: string; 
     caption: string; 
     isInternalOnly: boolean;
     mediaType?: 'image' | 'video';
     videoUrl?: string;
   }[]>([]);
-  const [isCustomerVisible, setIsCustomerVisible] = useState<boolean>(true); // true: Customer Visible, false: Private
-  const [isInProgressSaving, setIsInProgressSaving] = useState(false);
-  const [inProgressSuccessMsg, setInProgressSuccessMsg] = useState('');
+  const [stage2Note, setStage2Note] = useState('فيديو توثيق فحص واستلام السيارة ومحيط البودي وقراءة العداد عند الوصول 🎥');
+  const [isSavingStage2, setIsSavingStage2] = useState(false);
 
-  // Stage 4 State (مكتمل)
-  const [completedNote, setCompletedNote] = useState('');
+  // Stage 3 State: تصوير الخراب أو شرح العطل ⚠️
+  const [stage3Photos, setStage3Photos] = useState<{ 
+    url: string; 
+    caption: string; 
+    isInternalOnly: boolean;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  }[]>([]);
+  const [stage3Note, setStage3Note] = useState('توثيق وتشخيص العطل / الخراب في القطعة المتضررة وتوضيح أسباب الصيانة ⚠️');
+  const [stage3CustomerVisible, setStage3CustomerVisible] = useState(true);
+  const [isSavingStage3, setIsSavingStage3] = useState(false);
+
+  // Stage 4 State: تصوير القطعة الجديدة أو بعد الإصلاح 📦
+  const [stage4Photos, setStage4Photos] = useState<{ 
+    url: string; 
+    caption: string; 
+    isInternalOnly: boolean;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  }[]>([]);
+  const [stage4Note, setStage4Note] = useState('توثيق القطعة الجديدة الأصلية والتأكد من مطابقتها وسلامة التركيب بعد الإصلاح 📦');
+  const [stage4CustomerVisible, setStage4CustomerVisible] = useState(true);
+  const [isSavingStage4, setIsSavingStage4] = useState(false);
+
+  // Stage 5 State: تصوير إتمام العمل والانتهاء 🏁
+  const [completedNote, setCompletedNote] = useState('تم إتمام الصيانة بنجاح واختبار تشغيل السيارة وجاهزيتها التامة للتسليم للعميل 🏁');
   const [completedPhotos, setCompletedPhotos] = useState<{ 
     url: string; 
     caption: string; 
@@ -242,6 +390,21 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   }[]>([]);
   const [isCompleting, setIsCompleting] = useState(false);
   const [completionSuccess, setCompletionSuccess] = useState(false);
+
+  // Legacy in-progress category support for custom step addition
+  const [inProgressCategory, setInProgressCategory] = useState(IN_PROGRESS_CATEGORIES[0]);
+  const [inProgressNote, setInProgressNote] = useState('');
+  const [inProgressPhotos, setInProgressPhotos] = useState<{ 
+    url: string; 
+    caption: string; 
+    isInternalOnly: boolean;
+    mediaType?: 'image' | 'video';
+    videoUrl?: string;
+  }[]>([]);
+  const [isCustomerVisible, setIsCustomerVisible] = useState<boolean>(true);
+  const [isInProgressSaving, setIsInProgressSaving] = useState(false);
+  const [stageSuccessMsg, setStageSuccessMsg] = useState('');
+  const [fastVideoTargetStage, setFastVideoTargetStage] = useState<2 | 3 | 4 | 5>(2);
 
   // Lock body scrolling while modal is open so background never moves
   useScrollLock(true);
@@ -257,9 +420,6 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     mediaType?: 'image' | 'video';
     videoUrl?: string;
   } | null>(null);
-
-  const steps: ServiceStepLog[] = record.serviceSteps || [];
-  const totalPhotosCount = useMemo(() => steps.reduce((sum, s) => sum + (s.photos?.length || 0), 0), [steps]);
 
   // Strictly filter technicians: ONLY active staff with technician role or 'فني' in their title
   const technicians = useMemo(() => {
@@ -316,6 +476,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
   const arrivalVideoInputRef = useRef<HTMLInputElement>(null);
+  const stage3FileInputRef = useRef<HTMLInputElement>(null);
+  const stage3VideoInputRef = useRef<HTMLInputElement>(null);
+  const stage4FileInputRef = useRef<HTMLInputElement>(null);
+  const stage4VideoInputRef = useRef<HTMLInputElement>(null);
   const [showFastCameraModal, setShowFastCameraModal] = useState(false);
 
   // Real-time calculation of technician availability and active workloads
@@ -405,8 +569,11 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     }
   };
 
-  // Video Uploader Handler for Arrival Inspection (Supports Direct Fast Camera Blob or FileList)
-  const handleProcessVideoFile = async (input: FileList | File | Blob | null) => {
+  // Video Uploader Handler for Inspection / Stages (Supports Direct Fast Camera Blob or FileList)
+  const handleProcessVideoFile = async (
+    input: FileList | File | Blob | null,
+    targetStage: 2 | 3 | 4 | 5 = fastVideoTargetStage
+  ) => {
     if (!input) return;
     let file: File | Blob;
     if (input instanceof FileList) {
@@ -422,33 +589,40 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     }
 
     setIsProcessingVideo(true);
-    setVideoProgressStatus('جاري فحص وتجهيز الفيديو...');
+    setVideoProgressStatus('جاري ضغط وتجهيز الفيديو السريع...');
     try {
-      const videoKey = `video_${record.id}_${Date.now()}`;
+      const videoKey = `video_${record.id}_stage${targetStage}_${Date.now()}`;
       const { videoUrl, thumbnailUrl } = await storeInspectionVideo(
         videoKey, 
         file, 
         (pct, text) => setVideoProgressStatus(`${text} (${pct}%)`)
       );
 
-      // Select the arrival video inspection category automatically
-      const arrivalCat = IN_PROGRESS_CATEGORIES.find(c => c.id === 'arrival_video_inspection') || IN_PROGRESS_CATEGORIES[0];
-      setInProgressCategory(arrivalCat);
+      const stageCaption = 
+        targetStage === 2 ? 'فيديو توثيق فحص واستلام السيارة ومحيط البودي والعداد عند الوصول 🎥' :
+        targetStage === 3 ? 'فيديو توثيق وتشخيص العطل والخراب ⚠️' :
+        targetStage === 4 ? 'فيديو توثيق القطعة الجديدة أو بعد الإصلاح 📦' :
+        'فيديو اختبار تشغيل السيارة وإتمام الصيانة 🏁';
 
-      if (!inProgressNote) {
-        setInProgressNote('تم الوصول وتصوير السيارة فيديو لمعاينة البودي الخارجي والعداد قبل بدء الصيانة.');
+      const newMediaItem = {
+        url: thumbnailUrl,
+        videoUrl: videoUrl,
+        mediaType: 'video' as const,
+        caption: stageCaption,
+        isInternalOnly: false
+      };
+
+      if (targetStage === 2) {
+        setStage2Photos(prev => [...prev, newMediaItem]);
+      } else if (targetStage === 3) {
+        setStage3Photos(prev => [...prev, newMediaItem]);
+      } else if (targetStage === 4) {
+        setStage4Photos(prev => [...prev, newMediaItem]);
+      } else if (targetStage === 5) {
+        setCompletedPhotos(prev => [...prev, newMediaItem]);
       }
 
-      setInProgressPhotos(prev => [
-        ...prev,
-        {
-          url: thumbnailUrl,
-          videoUrl: videoUrl,
-          mediaType: 'video',
-          caption: 'فيديو توثيق فحص واستلام السيارة عند الوصول 🎥',
-          isInternalOnly: false
-        }
-      ]);
+      setInProgressPhotos(prev => [...prev, newMediaItem]);
     } catch (err) {
       console.error('Error processing inspection video:', err);
       alert('حدث خطأ أثناء معالجة وحفظ الفيديو، يرجى المحاولة مجدداً.');
@@ -608,117 +782,71 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     } catch {}
   };
 
-  // --- STAGE 1: SUBMIT ACCEPTANCE (تم القبول - ملاحظات فقط، بدون صور) ---
-  const handleAcceptTask = async () => {
-    setIsAccepting(true);
+  // --- STAGE 1: CONFIRM ARRIVAL (المرحلة 1: وصول الفني للموقع 📍) ---
+  const handleConfirmArrival = async () => {
+    setIsSavingStage1(true);
     try {
+      const noteText = stage1Note.trim() || 'تم تأكيد وصول الفني لموقع العميل بالوقت الفعلي وبدء الاستعداد للمعانية والفحص.';
       const newStep: ServiceStepLog = {
-        id: `step_accept_${Date.now()}`,
-        stepKey: 'accepted',
-        title: 'تم قبول المهمة ✅',
-        note: acceptedNote.trim() || 'تم قبول المهمة الفنية وجاري التجهيز للانطلاق.',
+        id: `step_arrival_${Date.now()}`,
+        stepKey: 'arrival',
+        title: 'وصول الفني للموقع 📍',
+        note: noteText,
         isCustomerVisible: true,
         isInternalOnly: false,
         photos: [],
         recordedBy: currentTechName,
         recordedByStaffId: currentStaffUser?.id || '',
         recordedAt: new Date().toISOString(),
-        statusChangeTo: 'accepted'
+        statusChangeTo: 'in-progress'
       };
 
-      const updatedSteps = [...steps, newStep];
+      const updatedSteps = cleanFirestorePayload([...steps, newStep]);
       const docRef = doc(db, 'maintenance', record.id);
       await updateDoc(docRef, {
         serviceSteps: updatedSteps,
-        status: 'accepted',
+        status: 'in-progress',
         updatedAt: serverTimestamp()
       });
 
       const updatedRecord: MaintenanceRecord = {
         ...record,
         serviceSteps: updatedSteps,
-        status: 'accepted'
+        status: 'in-progress'
       };
 
       onUpdateRecord(updatedRecord);
-      setWorkflowStage(2); // Automatically advance to Stage 2: On the Way
+      setStageSuccessMsg('تم تأكيد وصول الفني بنجاح! انتقل للمرحلة 2 لتصوير الفيديو 🎥');
+      setTimeout(() => setStageSuccessMsg(''), 4000);
+      setWorkflowStage(2); // Automatically advance to Stage 2: Video of car and odometer
     } catch (err) {
-      console.error('Error accepting task:', err);
-      alert('تعذر تحديث الحالة إلى تم القبول، يرجى المحاولة مرة أخرى.');
+      console.error('Error confirming arrival:', err);
+      alert('تعذر تأكيد الوصول، يرجى المحاولة مرة أخرى.');
     } finally {
-      setIsAccepting(false);
+      setIsSavingStage1(false);
     }
   };
 
-  // --- STAGE 2: SUBMIT ON THE WAY (الفني بالطريق - ملاحظات + الوقت المتوقع، بدون صور) ---
-  const handleOnTheWay = async () => {
-    if (!etaTime.trim()) {
-      alert('يرجى تحديد المدة أو الوقت المتوقع للوصول');
-      return;
+  // --- STAGE 2: CAR & ODOMETER VIDEO (المرحلة 2: تصوير فيديو للسيارة كامل والعداد 🎥) ---
+  const handleSaveStage2Video = async () => {
+    if (stage2Photos.length === 0) {
+      const proceed = window.confirm('لم يتم التقاط فيديو للسيارة والعداد بعد. يفضل بشدة توثيق حالة السيارة بالفيديو لحفظ الحقوق. هل تود المتابعة بدون فيديو؟');
+      if (!proceed) return;
     }
 
-    setIsOnTheWaySaving(true);
+    setIsSavingStage2(true);
     try {
-      const newStep: ServiceStepLog = {
-        id: `step_ontheway_${Date.now()}`,
-        stepKey: 'on_the_way',
-        title: 'الفني بالطريق 🚗',
-        estimatedArrival: etaTime.trim(),
-        note: onTheWayNote.trim() || `الفني بالطريق إلى موقع العميل. ${etaTime.trim()}`,
-        isCustomerVisible: true,
-        isInternalOnly: false,
-        photos: [],
-        recordedBy: currentTechName,
-        recordedByStaffId: currentStaffUser?.id || '',
-        recordedAt: new Date().toISOString(),
-        statusChangeTo: 'on_the_way'
-      };
-
-      const updatedSteps = [...steps, newStep];
-      const docRef = doc(db, 'maintenance', record.id);
-      await updateDoc(docRef, {
-        serviceSteps: updatedSteps,
-        status: 'on_the_way',
-        estimatedArrival: etaTime.trim(),
-        updatedAt: serverTimestamp()
-      });
-
-      const updatedRecord: MaintenanceRecord = {
-        ...record,
-        serviceSteps: updatedSteps,
-        status: 'on_the_way',
-        estimatedArrival: etaTime.trim()
-      };
-
-      onUpdateRecord(updatedRecord);
-      setWorkflowStage(3); // Advance to Stage 3: In Progress (Continuous updates)
-    } catch (err) {
-      console.error('Error setting on the way:', err);
-      alert('تعذر تحديث الحالة إلى الفني بالطريق.');
-    } finally {
-      setIsOnTheWaySaving(false);
-    }
-  };
-
-  // --- STAGE 3: SUBMIT RECURRING IN-PROGRESS UPDATE (قيد العمل - صور + ملاحظات متكررة) ---
-  const handleAddInProgressUpdate = async () => {
-    const noteText = inProgressNote.trim() || inProgressCategory.defaultNote;
-    setIsInProgressSaving(true);
-
-    try {
-      const photosPayload: ServiceStepPhoto[] = inProgressPhotos.map(p => {
+      const photosPayload: ServiceStepPhoto[] = stage2Photos.map(p => {
         const item: ServiceStepPhoto = {
-          id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          id: `photo_st2_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
           url: p.url || '',
-          caption: (p.caption || '').trim() || inProgressCategory.title,
-          isInternalOnly: !isCustomerVisible ? true : Boolean(p.isInternalOnly),
-          isCustomerVisible: isCustomerVisible && !p.isInternalOnly,
+          caption: (p.caption || '').trim() || 'فيديو توثيق فحص واستلام السيارة ومحيط البودي وقراءة العداد عند الوصول 🎥',
+          isInternalOnly: false,
+          isCustomerVisible: true,
           uploadedAt: new Date().toISOString(),
           uploadedBy: currentTechName || 'فني الصيانة',
           mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
         };
-        // ONLY attach videoUrl if this is a video!
-        // Never pass undefined, and never duplicate large base64 image as thumbnailUrl!
         if (p.videoUrl) {
           item.videoUrl = p.videoUrl;
         }
@@ -726,12 +854,12 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       });
 
       const newStep: ServiceStepLog = {
-        id: `step_progress_${Date.now()}`,
-        stepKey: 'in_progress',
-        title: inProgressCategory.title,
-        note: noteText,
-        isInternalOnly: !isCustomerVisible,
-        isCustomerVisible: isCustomerVisible,
+        id: `step_video_${Date.now()}`,
+        stepKey: 'car_and_odometer_video',
+        title: 'تصوير فيديو للسيارة كامل والعداد 🎥',
+        note: stage2Note.trim() || 'فيديو توثيق فحص واستلام السيارة ومحيط البودي وقراءة العداد عند الوصول 🎥',
+        isInternalOnly: false,
+        isCustomerVisible: true,
         photos: photosPayload,
         recordedBy: currentTechName || 'فني الصيانة',
         recordedByStaffId: currentStaffUser?.id || '',
@@ -756,26 +884,154 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       };
 
       onUpdateRecord(updatedRecord);
-
-      // Reset in-progress form so technician can record subsequent steps immediately!
-      setInProgressNote('');
-      setInProgressPhotos([]);
-      setInProgressSuccessMsg(`تم حفظ تحديث "${inProgressCategory.title}" في سجل الصيانة بنجاح! 📸`);
-      setTimeout(() => setInProgressSuccessMsg(''), 3500);
+      setStageSuccessMsg('تم حفظ فيديو فحص السيارة والعداد بنجاح! انتقل للمرحلة 3 ⚠️');
+      setTimeout(() => setStageSuccessMsg(''), 4000);
+      setWorkflowStage(3); // Advance to Stage 3: Fault documentation
     } catch (err: any) {
-      console.error('Error saving in-progress step:', err);
-      const errMsg = err?.message || String(err);
-      if (errMsg.includes('exceeds maximum allowed size') || errMsg.includes('too large')) {
-        alert('حجم التحديث كبير جداً بسبب عدد أو حجم الصور المرفقة. يرجى إرفاق عدد أقل من الصور والمحاولة ثانية.');
-      } else {
-        alert('تعذر حفظ التحديث، يرجى المحاولة ثانية.');
-      }
+      console.error('Error saving stage 2 video:', err);
+      alert('تعذر حفظ فيديو المرحلة 2، يرجى المحاولة مرة أخرى.');
     } finally {
-      setIsInProgressSaving(false);
+      setIsSavingStage2(false);
     }
   };
 
-  // --- STAGE 4: SUBMIT COMPLETION (مكتمل - صورة نهائية + ملاحظات ختامية + إشعار الإدارة) ---
+  // --- STAGE 3: FAULT DOCUMENTATION (المرحلة 3: تصوير الخراب أو شرح العطل ⚠️) ---
+  const handleSaveStage3Fault = async () => {
+    if (stage3Photos.length === 0 && !stage3Note.trim()) {
+      alert('يرجى التقاط صورة أو تسجيل فيديو أو كتابة شرح للعطل والخراب.');
+      return;
+    }
+
+    setIsSavingStage3(true);
+    try {
+      const photosPayload: ServiceStepPhoto[] = stage3Photos.map(p => {
+        const item: ServiceStepPhoto = {
+          id: `photo_st3_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: p.url || '',
+          caption: (p.caption || '').trim() || 'توثيق العطل / الخراب في القطعة المتضررة ⚠️',
+          isInternalOnly: !stage3CustomerVisible ? true : Boolean(p.isInternalOnly),
+          isCustomerVisible: stage3CustomerVisible && !p.isInternalOnly,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentTechName || 'فني الصيانة',
+          mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
+        };
+        if (p.videoUrl) {
+          item.videoUrl = p.videoUrl;
+        }
+        return item;
+      });
+
+      const newStep: ServiceStepLog = {
+        id: `step_fault_${Date.now()}`,
+        stepKey: 'fault_documentation',
+        title: 'تصوير الخراب وشرح العطل ⚠️',
+        note: stage3Note.trim() || 'توثيق وتشخيص العطل / الخراب في القطعة المتضررة وتوضيح أسباب الصيانة ⚠️',
+        isInternalOnly: !stage3CustomerVisible,
+        isCustomerVisible: stage3CustomerVisible,
+        photos: photosPayload,
+        recordedBy: currentTechName || 'فني الصيانة',
+        recordedByStaffId: currentStaffUser?.id || '',
+        recordedAt: new Date().toISOString(),
+        statusChangeTo: 'in-progress'
+      };
+
+      const rawUpdatedSteps = [...steps, newStep];
+      const updatedSteps = cleanFirestorePayload(rawUpdatedSteps);
+
+      const docRef = doc(db, 'maintenance', record.id);
+      await updateDoc(docRef, {
+        serviceSteps: updatedSteps,
+        status: 'in-progress',
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedRecord: MaintenanceRecord = {
+        ...record,
+        serviceSteps: updatedSteps,
+        status: 'in-progress'
+      };
+
+      onUpdateRecord(updatedRecord);
+      setStageSuccessMsg('تم حفظ توثيق الخراب بنجاح! انتقل للمرحلة 4 (القطعة الجديدة) 📦');
+      setTimeout(() => setStageSuccessMsg(''), 4000);
+      setWorkflowStage(4); // Advance to Stage 4: New part / after repair
+    } catch (err: any) {
+      console.error('Error saving stage 3 fault:', err);
+      alert('تعذر حفظ توثيق الخراب، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingStage3(false);
+    }
+  };
+
+  // --- STAGE 4: NEW PART / AFTER REPAIR (المرحلة 4: تصوير القطعة الجديدة أو بعد الإصلاح 📦) ---
+  const handleSaveStage4NewPart = async () => {
+    if (stage4Photos.length === 0 && !stage4Note.trim()) {
+      alert('يرجى التقاط صورة أو فيديو للقطعة الجديدة أو بعد إتمام الإصلاح.');
+      return;
+    }
+
+    setIsSavingStage4(true);
+    try {
+      const photosPayload: ServiceStepPhoto[] = stage4Photos.map(p => {
+        const item: ServiceStepPhoto = {
+          id: `photo_st4_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: p.url || '',
+          caption: (p.caption || '').trim() || 'توثيق القطعة الجديدة ومطابقتها وسلامة التركيب بعد الإصلاح 📦',
+          isInternalOnly: !stage4CustomerVisible ? true : Boolean(p.isInternalOnly),
+          isCustomerVisible: stage4CustomerVisible && !p.isInternalOnly,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentTechName || 'فني الصيانة',
+          mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
+        };
+        if (p.videoUrl) {
+          item.videoUrl = p.videoUrl;
+        }
+        return item;
+      });
+
+      const newStep: ServiceStepLog = {
+        id: `step_newpart_${Date.now()}`,
+        stepKey: 'new_part_after_repair',
+        title: 'تصوير القطعة الجديدة أو بعد الإصلاح 📦',
+        note: stage4Note.trim() || 'توثيق القطعة الجديدة الأصلية والتأكد من مطابقتها وسلامة التركيب بعد الإصلاح 📦',
+        isInternalOnly: !stage4CustomerVisible,
+        isCustomerVisible: stage4CustomerVisible,
+        photos: photosPayload,
+        recordedBy: currentTechName || 'فني الصيانة',
+        recordedByStaffId: currentStaffUser?.id || '',
+        recordedAt: new Date().toISOString(),
+        statusChangeTo: 'in-progress'
+      };
+
+      const rawUpdatedSteps = [...steps, newStep];
+      const updatedSteps = cleanFirestorePayload(rawUpdatedSteps);
+
+      const docRef = doc(db, 'maintenance', record.id);
+      await updateDoc(docRef, {
+        serviceSteps: updatedSteps,
+        status: 'in-progress',
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedRecord: MaintenanceRecord = {
+        ...record,
+        serviceSteps: updatedSteps,
+        status: 'in-progress'
+      };
+
+      onUpdateRecord(updatedRecord);
+      setStageSuccessMsg('تم حفظ توثيق القطعة الجديدة بنجاح! انتقل للمرحلة الأخيرة (إتمام العمل) 🏁');
+      setTimeout(() => setStageSuccessMsg(''), 4000);
+      setWorkflowStage(5); // Advance to Stage 5: Completion
+    } catch (err: any) {
+      console.error('Error saving stage 4 new part:', err);
+      alert('تعذر حفظ توثيق القطعة الجديدة، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingStage4(false);
+    }
+  };
+
+  // --- STAGE 5: SUBMIT COMPLETION (المرحلة 5: تصوير إتمام العمل والانتهاء 🏁) ---
   const handleCompleteService = async () => {
     if (!completedNote.trim()) {
       alert('يرجى كتابة ملاحظات ختامية حول إنجاز الصيانة.');
@@ -783,7 +1039,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     }
 
     if (completedPhotos.length === 0) {
-      if (!window.confirm('يفضل بشدة رفع صورة نهائية توثق إنجاز الصيانة. هل تود الاستمرار والإكمال بدون صورة؟')) {
+      if (!window.confirm('يفضل بشدة رفع صورة أو فيديو نهائي يوثق إنجاز الصيانة واختبار التشغيل. هل تود الاستمرار والإكمال بدون وسائط؟')) {
         return;
       }
     }
@@ -794,7 +1050,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         const item: ServiceStepPhoto = {
           id: `photo_final_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
           url: p.url || '',
-          caption: (p.caption || '').trim() || 'صورة النتيجة النهائية بعد الصيانة',
+          caption: (p.caption || '').trim() || 'صورة إتمام العمل والجاهزية بعد الصيانة 🏁',
           isInternalOnly: Boolean(p.isInternalOnly),
           isCustomerVisible: !p.isInternalOnly,
           uploadedAt: new Date().toISOString(),
@@ -809,8 +1065,8 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
       const finalStep: ServiceStepLog = {
         id: `step_completed_${Date.now()}`,
-        stepKey: 'completed',
-        title: 'اكتمال الصيانة والفحص النهائي 🏁',
+        stepKey: 'completion_and_delivery',
+        title: 'إتمام العمل والانتهاء والتسليم 🏁',
         note: completedNote.trim(),
         isCustomerVisible: true,
         isInternalOnly: false,
@@ -857,6 +1113,166 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       }
     } finally {
       setIsCompleting(false);
+    }
+  };
+
+  // Helper actions: Accept task & On the way
+  const handleAcceptTask = async () => {
+    setIsAccepting(true);
+    try {
+      const newStep: ServiceStepLog = {
+        id: `step_accept_${Date.now()}`,
+        stepKey: 'accepted',
+        title: 'تم قبول المهمة ✅',
+        note: acceptedNote.trim() || 'تم قبول المهمة الفنية وجاري التجهيز للانطلاق.',
+        isCustomerVisible: true,
+        isInternalOnly: false,
+        photos: [],
+        recordedBy: currentTechName,
+        recordedByStaffId: currentStaffUser?.id || '',
+        recordedAt: new Date().toISOString(),
+        statusChangeTo: 'accepted'
+      };
+
+      const updatedSteps = [...steps, newStep];
+      const docRef = doc(db, 'maintenance', record.id);
+      await updateDoc(docRef, {
+        serviceSteps: updatedSteps,
+        status: 'accepted',
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedRecord: MaintenanceRecord = {
+        ...record,
+        serviceSteps: updatedSteps,
+        status: 'accepted'
+      };
+
+      onUpdateRecord(updatedRecord);
+      setStageSuccessMsg('تم قبول المهمة الفنية بنجاح!');
+      setTimeout(() => setStageSuccessMsg(''), 3500);
+    } catch (err) {
+      console.error('Error accepting task:', err);
+      alert('تعذر تحديث الحالة إلى تم القبول، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
+  const handleOnTheWay = async () => {
+    if (!etaTime.trim()) {
+      alert('يرجى تحديد المدة أو الوقت المتوقع للوصول');
+      return;
+    }
+
+    setIsOnTheWaySaving(true);
+    try {
+      const newStep: ServiceStepLog = {
+        id: `step_ontheway_${Date.now()}`,
+        stepKey: 'on_the_way',
+        title: 'الفني بالطريق 🚗',
+        estimatedArrival: etaTime.trim(),
+        note: onTheWayNote.trim() || `الفني بالطريق إلى موقع العميل. ${etaTime.trim()}`,
+        isCustomerVisible: true,
+        isInternalOnly: false,
+        photos: [],
+        recordedBy: currentTechName,
+        recordedByStaffId: currentStaffUser?.id || '',
+        recordedAt: new Date().toISOString(),
+        statusChangeTo: 'on_the_way'
+      };
+
+      const updatedSteps = [...steps, newStep];
+      const docRef = doc(db, 'maintenance', record.id);
+      await updateDoc(docRef, {
+        serviceSteps: updatedSteps,
+        status: 'on_the_way',
+        estimatedArrival: etaTime.trim(),
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedRecord: MaintenanceRecord = {
+        ...record,
+        serviceSteps: updatedSteps,
+        status: 'on_the_way',
+        estimatedArrival: etaTime.trim()
+      };
+
+      onUpdateRecord(updatedRecord);
+      setStageSuccessMsg('تم تحديث الحالة إلى الفني بالطريق وإشعار العميل.');
+      setTimeout(() => setStageSuccessMsg(''), 3500);
+    } catch (err) {
+      console.error('Error setting on the way:', err);
+      alert('تعذر تحديث الحالة إلى الفني بالطريق.');
+    } finally {
+      setIsOnTheWaySaving(false);
+    }
+  };
+
+  // Legacy/Custom In-progress update step
+  const handleAddInProgressUpdate = async () => {
+    const noteText = inProgressNote.trim() || inProgressCategory.defaultNote;
+    setIsInProgressSaving(true);
+
+    try {
+      const photosPayload: ServiceStepPhoto[] = inProgressPhotos.map(p => {
+        const item: ServiceStepPhoto = {
+          id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: p.url || '',
+          caption: (p.caption || '').trim() || inProgressCategory.title,
+          isInternalOnly: !isCustomerVisible ? true : Boolean(p.isInternalOnly),
+          isCustomerVisible: isCustomerVisible && !p.isInternalOnly,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: currentTechName || 'فني الصيانة',
+          mediaType: p.mediaType || (p.videoUrl ? 'video' : 'image')
+        };
+        if (p.videoUrl) {
+          item.videoUrl = p.videoUrl;
+        }
+        return item;
+      });
+
+      const newStep: ServiceStepLog = {
+        id: `step_progress_${Date.now()}`,
+        stepKey: 'in_progress',
+        title: inProgressCategory.title,
+        note: noteText,
+        isInternalOnly: !isCustomerVisible,
+        isCustomerVisible: isCustomerVisible,
+        photos: photosPayload,
+        recordedBy: currentTechName || 'فني الصيانة',
+        recordedByStaffId: currentStaffUser?.id || '',
+        recordedAt: new Date().toISOString(),
+        statusChangeTo: 'in-progress'
+      };
+
+      const rawUpdatedSteps = [...steps, newStep];
+      const updatedSteps = cleanFirestorePayload(rawUpdatedSteps);
+
+      const docRef = doc(db, 'maintenance', record.id);
+      await updateDoc(docRef, {
+        serviceSteps: updatedSteps,
+        status: 'in-progress',
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedRecord: MaintenanceRecord = {
+        ...record,
+        serviceSteps: updatedSteps,
+        status: 'in-progress'
+      };
+
+      onUpdateRecord(updatedRecord);
+
+      setInProgressNote('');
+      setInProgressPhotos([]);
+      setStageSuccessMsg(`تم حفظ تحديث "${inProgressCategory.title}" في سجل الصيانة بنجاح! 📸`);
+      setTimeout(() => setStageSuccessMsg(''), 3500);
+    } catch (err: any) {
+      console.error('Error saving in-progress step:', err);
+      alert('تعذر حفظ التحديث، يرجى المحاولة ثانية.');
+    } finally {
+      setIsInProgressSaving(false);
     }
   };
 
@@ -1161,10 +1577,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
           </div>
         </div>
 
-        {/* Single Unified Compact Navigation & Stepper Bar (شريط مدمج موحد وأنيق يوفر المساحة) */}
+        {/* Single Unified Compact Navigation & Stepper Bar (5 مراحل عمل الفني الميداني) */}
         <div className="px-3 sm:px-4 py-1.5 bg-black/40 border-b border-white/10 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar text-xs">
           <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-            {/* Step 1: تم القبول */}
+            {/* Step 1: وصول الفني */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(1); }}
@@ -1172,18 +1588,18 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 1 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
-                  : (record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed')
+                  : isStepCompleted(1)
                     ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>1. تم القبول</span>
-              {(record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed') && (
+              <span>1. وصول الفني 📍</span>
+              {isStepCompleted(1) && (
                 <Check className="w-3 h-3 text-emerald-400" />
               )}
             </button>
 
-            {/* Step 2: بالطريق */}
+            {/* Step 2: فيديو السيارة والعداد */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(2); }}
@@ -1191,18 +1607,18 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 2 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
-                  : (record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed')
+                  : isStepCompleted(2)
                     ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>2. بالطريق 🚗</span>
-              {(record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed') && (
+              <span>2. فيديو السيارة والعداد 🎥</span>
+              {isStepCompleted(2) && (
                 <Check className="w-3 h-3 text-emerald-400" />
               )}
             </button>
 
-            {/* Step 3: قيد العمل */}
+            {/* Step 3: تصوير الخراب او شرح */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(3); }}
@@ -1210,18 +1626,16 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 3 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
-                  : record.status === 'completed'
+                  : isStepCompleted(3)
                     ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
-                    : record.status === 'in-progress'
-                      ? "bg-brand-red/20 text-red-200 border border-brand-red/40 animate-pulse"
-                      : "bg-white/5 text-gray-400 hover:text-white"
+                    : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>3. قيد العمل 🔄</span>
-              {record.status === 'completed' && <Check className="w-3 h-3 text-emerald-400" />}
+              <span>3. تصوير الخراب أو شرح ⚠️</span>
+              {isStepCompleted(3) && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
-            {/* Step 4: مكتمل */}
+            {/* Step 4: القطعة الجديدة أو بعد الإصلاح */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(4); }}
@@ -1229,13 +1643,30 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 4 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
-                  : record.status === 'completed'
+                  : isStepCompleted(4)
+                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                    : "bg-white/5 text-gray-400 hover:text-white"
+              )}
+            >
+              <span>4. القطعة الجديدة / بعد الإصلاح 📦</span>
+              {isStepCompleted(4) && <Check className="w-3 h-3 text-emerald-400" />}
+            </button>
+
+            {/* Step 5: إتمام العمل والانتهاء */}
+            <button
+              type="button"
+              onClick={() => { setActiveTab('workflow'); setWorkflowStage(5); }}
+              className={cn(
+                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                workflowStage === 5 && activeTab === 'workflow'
+                  ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
+                  : isStepCompleted(5)
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>4. مكتمل 🏁</span>
-              {record.status === 'completed' && <Check className="w-3 h-3 text-emerald-400" />}
+              <span>5. إتمام العمل والانتهاء 🏁</span>
+              {isStepCompleted(5) && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
             <div className="h-4 w-[1px] bg-white/15 mx-1 shrink-0" />
@@ -1304,81 +1735,124 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
         {/* Content Area */}
         <div className="p-3.5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4 sm:space-y-6">
-          {/* TAB 1: WORKFLOW STAGES (1 -> 2 -> 3 -> 4) */}
+          {/* TAB 1: WORKFLOW STAGES (5 مراحل محددة ومباشرة للفني) */}
           {activeTab === 'workflow' && (
             <div className="space-y-6">
-              {/* STAGE 1: تم القبول */}
+              {/* Global Success Notification Banner */}
+              {stageSuccessMsg && (
+                <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-emerald-300 text-xs font-bold shadow-lg shadow-emerald-500/10">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{stageSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* STAGE 1: وصول الفني */}
+              {/* ========================================================================= */}
               {workflowStage === 1 && (
-                <div className="space-y-4 bg-white/5 p-5 rounded-3xl border border-white/10">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-black text-xs">
                         1
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white">المرحلة الأولى: تم القبول</h4>
-                        <p className="text-[11px] text-gray-400">يقبل الفني المهمة ويسجل ملاحظات القبول والاستعداد.</p>
+                        <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                          <span>المرحلة الأولى: وصول الفني</span>
+                          <span>📍</span>
+                        </h4>
+                        <p className="text-[11px] text-gray-400">تأكيد وصول الفني لموقع العميل وبدء فحص السيارة ميدانياً.</p>
                       </div>
                     </div>
 
-                    <div className="text-[11px] font-bold text-gray-400 bg-white/5 px-2.5 py-1 rounded-lg border border-white/5">
-                      لا يحتاج رفع صور في هذه المرحلة
-                    </div>
+                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      الخطوة 1 من 5
+                    </span>
                   </div>
 
-                  {record.status === 'accepted' || record.status === 'on_the_way' || record.status === 'in-progress' || record.status === 'completed' ? (
-                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl space-y-2">
+                  {isStepCompleted(1) || record.status === 'in-progress' || record.status === 'completed' ? (
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl space-y-3">
                       <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>تم قبول هذه المهمة بنجاح مسبقاً ✅</span>
+                        <span>تم تأكيد وصول الفني للموقع بنجاح ✅</span>
                       </div>
                       <p className="text-xs text-gray-300">
-                        يمكنك الآن الانتقال مباشرة للخطوة التالية لتسجيل انطلاق الفني وتحديد موعد الوصول المتوقع.
+                        تم تسجيل حالة الوصول وبدء الفحص. يمكنك الانتقال مباشرة للخطوة التالية لتصوير فيديو فحص السيارة والعداد.
                       </p>
                       <button
                         type="button"
                         onClick={() => setWorkflowStage(2)}
-                        className="mt-2 px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
+                        className="px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98"
                       >
-                        <span>الانتقال إلى: 2. الفني بالطريق 🚗</span>
+                        <span>الانتقال إلى: 2. تصوير فيديو للسيارة كامل والعداد 🎥</span>
                         <ChevronRight className="w-3.5 h-3.5 rotate-180" />
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
+                      {/* Optional ETA helper if technician is still on the way */}
+                      {record.status !== 'on_the_way' && (
+                        <div className="p-3 bg-black/30 border border-white/5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="text-gray-300 flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>هل ما زلت في الطريق للموقع؟</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={etaTime}
+                              onChange={(e) => setEtaTime(e.target.value)}
+                              className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px]"
+                            >
+                              <option value="15 دقيقة">15 دقيقة</option>
+                              <option value="30 دقيقة">30 دقيقة</option>
+                              <option value="45 دقيقة">45 دقيقة</option>
+                              <option value="ساعة">ساعة</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={handleOnTheWay}
+                              disabled={isOnTheWaySaving}
+                              className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-all"
+                            >
+                              {isOnTheWaySaving ? 'جاري التحديث...' : 'تسجيل أني بالطريق 🚗'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <div>
                         <label className="text-xs font-bold text-gray-300 block mb-1.5">
-                          خانة ملاحظات القبول والاستعداد:
+                          ملاحظات الوصول وبدء الفحص (اختياري):
                         </label>
                         <textarea
-                          value={acceptedNote}
-                          onChange={(e) => setAcceptedNote(e.target.value)}
-                          placeholder="مثال: تم تأكيد وقبول المهمة وجاري تجهيز المعدات والانطلاق لموقع العميل..."
+                          value={stage1Note}
+                          onChange={(e) => setStage1Note(e.target.value)}
+                          placeholder="مثال: تم الوصول لموقع العميل بنجاح، السيارة متوقفة في الموقع وجاري بدء الفحص..."
                           rows={3}
                           className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
                         />
                       </div>
 
-                      <div className="flex items-center justify-between pt-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
                         <span className="text-[11px] text-gray-400">
-                          بواسطة الفني: <b className="text-gray-200">{currentTechName}</b>
+                          الفني المسؤول: <b className="text-gray-200">{currentTechName}</b>
                         </span>
 
                         <button
                           type="button"
-                          onClick={handleAcceptTask}
-                          disabled={isAccepting}
-                          className="px-6 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all"
+                          onClick={handleConfirmArrival}
+                          disabled={isSavingStage1}
+                          className="px-6 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
                         >
-                          {isAccepting ? (
+                          {isSavingStage1 ? (
                             <>
                               <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>جاري التأكيد...</span>
+                              <span>جاري تأكيد الوصول...</span>
                             </>
                           ) : (
                             <>
                               <Check className="w-4 h-4" />
-                              <span>تأكيد قبول المهمة (تم القبول) ✅</span>
+                              <span>📍 تأكيد وصول الفني والبدء (الانتقال للخطوة 2)</span>
                             </>
                           )}
                         </button>
@@ -1388,453 +1862,615 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 </div>
               )}
 
-              {/* STAGE 2: الفني بالطريق */}
+              {/* ========================================================================= */}
+              {/* STAGE 2: تصوير فديو للسيارة كامل والعداد */}
+              {/* ========================================================================= */}
               {workflowStage === 2 && (
-                <div className="space-y-4 bg-white/5 p-5 rounded-3xl border border-white/10">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-black text-xs">
                         2
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white">المرحلة الثانية: الفني بالطريق</h4>
-                        <p className="text-[11px] text-gray-400">يسجل الفني المدة المتوقعة للوصول وملاحظات المسار.</p>
+                        <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                          <span>المرحلة الثانية: تصوير فيديو للسيارة كامل والعداد</span>
+                          <span>🎥</span>
+                        </h4>
+                        <p className="text-[11px] text-gray-400">فيديو سريع (15-20 ثانية) يوثق محيط السيارة، الخدوش السابقة، وقراءة العداد.</p>
                       </div>
                     </div>
 
-                    <div className="text-[11px] font-bold text-gray-400 bg-white/5 px-2.5 py-1 rounded-lg border border-white/5">
-                      لا يوجد رفع صور في هذه المرحلة
-                    </div>
+                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      الخطوة 2 من 5
+                    </span>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Expected Arrival Field */}
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-300 block">
-                        المدة أو الوقت المتوقع للوصول *
-                      </label>
-                      <input
-                        type="text"
-                        value={etaTime}
-                        onChange={(e) => setEtaTime(e.target.value)}
-                        placeholder="مثال: متوقع الوصول خلال 30 دقيقة. أو: متوقع الوصول الساعة 5:30 PM."
-                        className="w-full bg-black/40 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red font-medium"
-                      />
+                  {/* Hidden Input for Video File Picker */}
+                  <input
+                    type="file"
+                    ref={arrivalVideoInputRef}
+                    onChange={(e) => handleProcessVideoFile(e.target.files, 2)}
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                  />
 
-                      {/* Quick preset chips for instant one-click selection on mobile */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[10px] text-gray-400">خيارات سريعة:</span>
-                        {[
-                          'متوقع الوصول خلال 15 دقيقة',
-                          'متوقع الوصول خلال 30 دقيقة',
-                          'متوقع الوصول خلال 45 دقيقة',
-                          'متوقع الوصول خلال ساعة',
-                        ].map((presetText) => (
-                          <button
-                            key={presetText}
-                            type="button"
-                            onClick={() => setEtaTime(presetText)}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                              etaTime === presetText 
-                                ? 'bg-indigo-500/30 border-indigo-500 text-white' 
-                                : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
-                            }`}
-                          >
-                            {presetText}
-                          </button>
+                  {/* Video Processing State */}
+                  {isProcessingVideo && (
+                    <div className="p-4 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center gap-3">
+                      <div className="w-5 h-5 border-2 border-brand-red border-t-transparent rounded-full animate-spin shrink-0" />
+                      <div className="text-xs">
+                        <div className="font-bold text-white">جاري معالجة وضغط الفيديو...</div>
+                        <div className="text-gray-300 text-[11px]">{videoProgressStatus}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Direct Camera & File Upload Action Strip */}
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFastVideoTargetStage(2);
+                        setShowFastCameraModal(true);
+                      }}
+                      className="p-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-brand-red/25 border border-red-400/40 cursor-pointer active:scale-98 transition-all"
+                    >
+                      <Video className="w-5 h-5 text-amber-300 animate-pulse" />
+                      <span>🎥 الكاميرا المباشرة السريعة (فيديو 15-20 ث)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => arrivalVideoInputRef.current?.click()}
+                      className="p-4 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-98 transition-all"
+                    >
+                      <UploadCloud className="w-5 h-5 text-brand-red" />
+                      <span>أو اختيار مقطع فيديو من ألبوم الجوال 📁</span>
+                    </button>
+                  </div>
+
+                  {/* Existing Inspection Video Display if Available */}
+                  {existingInspectionVideo && stage2Photos.length === 0 && (
+                    <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">يوجد فيديو فحص سيارة وعداد محفوظ مسبقاً</div>
+                          <div className="text-[11px] text-gray-400">سجل بتاريخ {new Date(existingInspectionVideo.recordedAt).toLocaleTimeString('ar-SA')}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setLightboxImage({
+                          url: existingInspectionVideo.thumbnailUrl || existingInspectionVideo.videoUrl,
+                          videoUrl: existingInspectionVideo.videoUrl,
+                          mediaType: 'video',
+                          title: 'فيديو فحص السيارة والعداد'
+                        })}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>تشغيل الفيديو</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Captured Stage 2 Media Cards */}
+                  {stage2Photos.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>المقطع المسجل لهذه الخطوة ({stage2Photos.length}):</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {stage2Photos.map((item, idx) => (
+                          <div key={idx} className="relative bg-black/60 rounded-2xl border border-white/10 overflow-hidden group">
+                            <div className="aspect-video relative">
+                              <img
+                                src={item.thumbnailUrl || item.url}
+                                alt="فيديو السيارة والعداد"
+                                className="w-full h-full object-cover"
+                              />
+                              <div 
+                                onClick={() => setLightboxImage(item.url)}
+                                className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer group-hover:bg-black/20 transition-all"
+                              >
+                                <div className="w-9 h-9 rounded-full bg-brand-red text-white flex items-center justify-center shadow-lg">
+                                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setStage2Photos(prev => prev.filter((_, i) => i !== idx))}
+                              className="absolute top-1.5 left-1.5 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow cursor-pointer transition-all"
+                              title="حذف المقطع"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                            <div className="p-2 text-[10px] text-gray-300 truncate">
+                              {item.caption || 'فيديو فحص السيارة والعداد'}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
+                  )}
 
-                    {/* On the way notes field */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-300 block">
-                        حقل ملاحظات الفني (اختياري):
-                      </label>
-                      <textarea
-                        value={onTheWayNote}
-                        onChange={(e) => setOnTheWayNote(e.target.value)}
-                        placeholder="مثال: تم الانطلاق وفي المسار حالياً، جاري التوجه لموقع السيارة المحدد في GPS..."
-                        rows={2}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
-                      />
-                    </div>
+                  {/* Notes for Stage 2 */}
+                  <div>
+                    <label className="text-xs font-bold text-gray-300 block mb-1.5">
+                      ملاحظات حول حالة السيارة والعداد (اختياري):
+                    </label>
+                    <textarea
+                      value={stage2Note}
+                      onChange={(e) => setStage2Note(e.target.value)}
+                      placeholder="مثال: قراءة العداد 78,540 كم، وجود خدش بسيط في الرفرف الأيمن موثق بالفيديو..."
+                      rows={2}
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
+                    />
+                  </div>
 
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+                  {/* Stage 2 Action Footer */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowStage(1)}
+                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      ⬅️ العودة للخطوة 1 (وصول الفني)
+                    </button>
+
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setWorkflowStage(1)}
-                        className="px-3 py-1.5 rounded-xl text-xs text-gray-400 hover:text-white transition-colors"
+                        onClick={() => setWorkflowStage(3)}
+                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
                       >
-                        العودة للسابق
+                        تخطي للخطوة 3
                       </button>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setWorkflowStage(3)}
-                          className="px-3.5 py-2 rounded-xl text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 transition-colors"
-                        >
-                          تخطي إلى قيد العمل 🔧
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleOnTheWay}
-                          disabled={isOnTheWaySaving || !etaTime.trim()}
-                          className="px-6 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all"
-                        >
-                          {isOnTheWaySaving ? (
-                            <>
-                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>جاري التحديث...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Navigation className="w-4 h-4" />
-                              <span>تأكيد: الفني بالطريق 🚗</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveStage2Video}
+                        disabled={isSavingStage2}
+                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                      >
+                        {isSavingStage2 ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>جاري الحفظ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>حفظ فيديو السيارة ➡️ الانتقال للخطوة 3 (الخراب)</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* STAGE 3: قيد العمل (سجل تحديثات متكرر ومستمر أثناء العمل) */}
+              {/* ========================================================================= */}
+              {/* STAGE 3: تصوير الخراب او شرح */}
+              {/* ========================================================================= */}
               {workflowStage === 3 && (
-                <div className="space-y-5 bg-white/5 p-5 rounded-3xl border border-white/10">
-                  <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-3 gap-2">
+                <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-white font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xs">
                         3
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                          <span>المرحلة الثالثة: قيد العمل والصيانة الميدانية</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-brand-red/20 text-white border border-brand-red/30">
-                            تحديثات متكررة ومستمرة 🔄
-                          </span>
+                        <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                          <span>المرحلة الثالثة: تصوير الخراب أو شرح العطل</span>
+                          <span>⚠️</span>
                         </h4>
-                        <p className="text-[11px] text-gray-400">
-                          يمكن للفني إضافة عدة تحديثات وصور متكررة (بداية العمل، فحص، قطع غيار، أثناء التركيب) في أي وقت.
-                        </p>
+                        <p className="text-[11px] text-gray-400">توثيق وتصوير القطعة التالفة أو تسجيل فيديو قصير لشرح المشكلة للعميل.</p>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setWorkflowStage(4)}
-                      className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <span>انتهت الصيانة؟ الانتقال للمرحلة 4 (مكتمل) 🏁</span>
-                      <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-                    </button>
+                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      الخطوة 3 من 5
+                    </span>
                   </div>
 
-                  {/* Feedback Message */}
-                  {inProgressSuccessMsg && (
-                    <div className="p-3.5 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl flex items-center gap-2 text-emerald-300 text-xs font-bold animate-fadeIn">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>{inProgressSuccessMsg}</span>
+                  {/* Hidden inputs */}
+                  <input
+                    type="file"
+                    ref={stage3FileInputRef}
+                    onChange={(e) => handleProcessImageFiles(e.target.files, setStage3Photos, !stage3CustomerVisible)}
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    ref={stage3VideoInputRef}
+                    onChange={(e) => handleProcessVideoFile(e.target.files, 3)}
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                  />
+
+                  {/* Loading spinners */}
+                  {isProcessingImages && (
+                    <div className="p-3 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center gap-2 text-xs text-red-200">
+                      <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+                      <span>جاري معالجة وضغط الصور...</span>
+                    </div>
+                  )}
+                  {isProcessingVideo && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-2 text-xs text-amber-200">
+                      <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      <span>{videoProgressStatus || 'جاري معالجة الفيديو...'}</span>
                     </div>
                   )}
 
-                  {/* Category Preset Picker */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-300 block">
-                      اختر نوع هذا التحديث أثناء العمل:
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {IN_PROGRESS_CATEGORIES.map((cat) => (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            setInProgressCategory(cat);
-                            if (!inProgressNote) setInProgressNote(cat.defaultNote);
-                          }}
-                          className={`p-2.5 rounded-2xl border text-right transition-all flex items-center gap-2 cursor-pointer ${
-                            inProgressCategory.id === cat.id
-                              ? 'bg-brand-red/20 border-brand-red text-white shadow-md'
-                              : 'bg-black/30 border-white/10 text-gray-300 hover:bg-white/5'
-                          }`}
-                        >
-                          <span className="text-lg">{cat.icon}</span>
-                          <span className="text-xs font-bold truncate">{cat.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Note Field */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-300 block">
-                      ملاحظات الفني حول هذا التحديث:
-                    </label>
-                    <textarea
-                      value={inProgressNote}
-                      onChange={(e) => setInProgressNote(e.target.value)}
-                      placeholder="مثال: بدأت عملية الفحص / تم فك القطعة القديمة وتبين تلفها / جاري تركيب القطعة الجديدة..."
-                      rows={2}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
-                    />
-                  </div>
-
-                  {/* Visibility Requirement: Customer Visible vs Private */}
-                  <div className="bg-black/40 p-3.5 rounded-2xl border border-white/10 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
-                        {isCustomerVisible ? <Globe className="w-3.5 h-3.5 text-emerald-400" /> : <Lock className="w-3.5 h-3.5 text-gray-400" />}
-                        <span>ظهور هذا التحديث والصور للعميل:</span>
-                      </label>
-                      <span className="text-[10px] text-gray-400 font-mono">
-                        {isCustomerVisible ? 'يظهر للعميل في تقريره المصور' : 'سري وخاص بالإدارة فقط'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomerVisible(true)}
-                        className={`p-2.5 rounded-xl border text-center font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          isCustomerVisible
-                            ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                            : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>مرئية للعميل (Customer Visible)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomerVisible(false)}
-                        className={`p-2.5 rounded-xl border text-center font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                          !isCustomerVisible
-                            ? 'bg-white/10 border-white/20 text-white'
-                            : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        <EyeOff className="w-3.5 h-3.5" />
-                        <span>خاصة بالإدارة (Private)</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Arrival Inspection Video Recorder Card (Featured Action) */}
-                  <div className="bg-gradient-to-r from-brand-red/20 via-black/50 to-black/60 p-4 rounded-2xl border-2 border-brand-red/40 space-y-3 shadow-lg shadow-brand-red/10">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-brand-red text-white flex items-center justify-center shrink-0 shadow-md shadow-brand-red/30 mt-0.5">
-                          <Video className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5 flex-wrap">
-                            <span>🎥 تصوير فيديو فحص واستلام السيارة عند الوصول</span>
-                            <span className="text-[10px] bg-brand-red text-white px-2 py-0.5 rounded-full font-bold">
-                              أول خطوة عند الوصول
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-gray-300 mt-0.5 leading-relaxed">
-                            توثيق فيديو سريع (10-20 ثانية) لجسم السيارة الخارجي، الخدوش السابقة، ورقم العداد (Odometer) لحماية حقوق العميل والفني.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <input 
-                      type="file"
-                      ref={arrivalVideoInputRef}
-                      onChange={(e) => handleProcessVideoFile(e.target.files)}
-                      accept="video/*"
-                      capture="environment"
-                      className="hidden"
-                    />
-
-                    {isProcessingVideo ? (
-                      <div className="p-3.5 bg-black/50 border border-brand-red/40 rounded-xl space-y-2">
-                        <div className="flex items-center gap-2.5 text-xs text-white font-bold">
-                          <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin shrink-0" />
-                          <span>{videoProgressStatus || 'جاري معالجة ورفع الفيديو بسرعة فائقة...'}</span>
-                        </div>
-                        <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                          <div className="bg-gradient-to-r from-brand-red to-emerald-400 h-full transition-all duration-300 animate-pulse w-3/4" />
-                        </div>
-                        <p className="text-[10px] text-gray-400">
-                          ⚡ يتم تحسين وضغط المقطع تلقائياً ليرتفع فوراً دون أي تأخير أو استهلاك لباقة الجوال.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {/* 1. Primary Direct Fast Camera */}
-                        <button
-                          type="button"
-                          onClick={() => setShowFastCameraModal(true)}
-                          className="w-full py-3.5 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/30"
-                        >
-                          <Video className="w-4 h-4 text-amber-300 animate-pulse" />
-                          <span>🎥 الكاميرا المباشرة السريعة (سريعة جداً - ثانيتين فقط) ⚡</span>
-                        </button>
-
-                        {/* 2. Secondary Native File Picker */}
-                        <button
-                          type="button"
-                          onClick={() => arrivalVideoInputRef.current?.click()}
-                          className="w-full py-2 px-3 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
-                        >
-                          <UploadCloud className="w-3.5 h-3.5 text-brand-red" />
-                          <span>أو التقاط/اختيار فيديو من كاميرا الجوال العادية (مع ضغط ذكي فوري)</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Photo Upload Zone */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-gray-300">
-                        إرفاق صور إضافية للتحديث (كاميرا الجوال أو الألبوم):
-                      </label>
-                      <span className="text-[11px] text-gray-400">
-                        {inProgressPhotos.length} عناصر مرفقة
-                      </span>
-                    </div>
-
-                    <input 
-                      type="file"
-                      ref={inProgressFileInputRef}
-                      onChange={(e) => handleProcessImageFiles(e.target.files, setInProgressPhotos, !isCustomerVisible)}
-                      accept="image/*"
-                      multiple
-                      capture="environment"
-                      className="hidden"
-                    />
-
-                    <div 
-                      onClick={() => inProgressFileInputRef.current?.click()}
-                      className="border-2 border-dashed border-white/20 hover:border-brand-red/60 bg-black/30 hover:bg-white/5 rounded-2xl p-4 text-center cursor-pointer transition-all space-y-2 group"
+                  {/* Capture actions */}
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => stage3FileInputRef.current?.click()}
+                      className="p-4 bg-brand-red/15 hover:bg-brand-red/25 border-2 border-brand-red/30 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
                     >
-                      <div className="w-10 h-10 rounded-full bg-brand-red/10 group-hover:bg-brand-red/20 border border-brand-red/30 flex items-center justify-center mx-auto text-brand-red transition-all">
-                        {isProcessingImages ? (
-                          <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Camera className="w-5 h-5" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-bold text-xs text-white">
-                          {isProcessingImages ? 'جاري معالجة وضغط الصور...' : 'انقر لالتقاط صورة بكاميرا الجوال أو اختيار صور من الألبوم'}
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          يدعم رفع صور متعددة للقطعة التالفة أو قطع الغيار الجديدة أو أثناء التركيب
-                        </p>
-                      </div>
-                    </div>
+                      <Camera className="w-5 h-5 text-brand-red" />
+                      <span>📸 التقاط صور للخراب بالكاميرا</span>
+                    </button>
 
-                    {/* Previews of selected photos & videos */}
-                    {inProgressPhotos.length > 0 && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                        {inProgressPhotos.map((photo, idx) => (
-                          <div key={idx} className="bg-black/40 p-2 rounded-xl border border-white/10 space-y-1.5">
-                            <div 
-                              onClick={() => setLightboxImage({ 
-                                url: photo.url, 
-                                caption: photo.caption, 
-                                title: 'معاينة المرفق قبل الاعتماد', 
-                                mediaType: photo.mediaType || (photo.videoUrl ? 'video' : 'image'), 
-                                videoUrl: photo.videoUrl 
-                              })}
-                              className="relative aspect-video rounded-lg overflow-hidden bg-black group/preview cursor-pointer"
-                            >
-                              <img src={photo.url} alt="Uploaded preview" className="w-full h-full object-cover" />
-                              
-                              {/* Video indicator badge */}
-                              {photo.mediaType === 'video' && (
-                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                                  <div className="w-10 h-10 rounded-full bg-brand-red/90 text-white flex items-center justify-center shadow-lg group-hover/preview:scale-110 transition-transform">
-                                    <Play className="w-5 h-5 mr-0.5 fill-current" />
-                                  </div>
-                                  <span className="absolute top-1.5 right-1.5 text-[9px] font-bold px-2 py-0.5 rounded-full bg-black/80 text-white border border-white/20">
-                                    🎥 فيديو معاينة (انقر للتشغيل)
-                                  </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFastVideoTargetStage(3);
+                        setShowFastCameraModal(true);
+                      }}
+                      className="p-4 bg-amber-500/15 hover:bg-amber-500/25 border-2 border-amber-500/30 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                    >
+                      <Video className="w-5 h-5 text-amber-400" />
+                      <span>🎥 فيديو سريع لشرح الخراب (20 ث)</span>
+                    </button>
+                  </div>
+
+                  {/* Previews */}
+                  {stage3Photos.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300">توثيق الخراب المرفق ({stage3Photos.length}):</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {stage3Photos.map((item, idx) => (
+                          <div key={idx} className="relative bg-black/60 rounded-2xl border border-white/10 overflow-hidden group">
+                            <div className="aspect-square relative cursor-pointer" onClick={() => setLightboxImage(item.url)}>
+                              <img
+                                src={item.thumbnailUrl || item.url}
+                                alt="توثيق الخراب"
+                                className="w-full h-full object-cover"
+                              />
+                              {item.thumbnailUrl && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <Play className="w-5 h-5 text-white fill-current" />
                                 </div>
                               )}
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setInProgressPhotos(prev => prev.filter((_, i) => i !== idx));
-                                }}
-                                className="absolute top-1 left-1 p-1 bg-red-600/80 hover:bg-red-700 text-white rounded-md transition-colors cursor-pointer z-10"
-                                title="حذف المرفق"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
                             </div>
-                            <input 
+                            <button
+                              type="button"
+                              onClick={() => setStage3Photos(prev => prev.filter((_, i) => i !== idx))}
+                              className="absolute top-1.5 left-1.5 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow cursor-pointer transition-all"
+                              title="حذف"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                            <input
                               type="text"
-                              value={photo.caption}
+                              value={item.caption}
                               onChange={(e) => {
                                 const val = e.target.value;
-                                setInProgressPhotos(prev => prev.map((p, i) => i === idx ? { ...p, caption: val } : p));
+                                setStage3Photos(prev => prev.map((p, i) => i === idx ? { ...p, caption: val } : p));
                               }}
-                              placeholder={photo.mediaType === 'video' ? 'وصف فيديو المعاينة...' : 'وصف مختصر للصورة...'}
-                              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-red"
+                              placeholder="وصف الخراب..."
+                              className="w-full bg-black/80 text-[11px] text-white p-1.5 border-t border-white/10 focus:outline-none"
                             />
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
-                  {/* Save Update Button */}
-                  <div className="pt-2 flex items-center justify-between border-t border-white/10">
-                    <span className="text-[11px] text-gray-400">
-                      التحديث يُحفظ في سجل خطوات الصيانة مع الوقت والتاريخ واسم الفني
-                    </span>
-
+                  {/* Customer visibility toggle */}
+                  <div className="flex items-center justify-between p-3 bg-black/30 rounded-2xl border border-white/5 text-xs">
+                    <span className="text-gray-300 font-bold">ظهور صور الخراب للعميل في تقرير الواتساب:</span>
                     <button
                       type="button"
-                      onClick={handleAddInProgressUpdate}
-                      disabled={isInProgressSaving || isProcessingImages}
-                      className="px-6 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all"
-                    >
-                      {isInProgressSaving ? (
-                        <>
-                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>جاري الحفظ...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-4 h-4" />
-                          <span>+ حفظ هذا التحديث في سجل الصيانة 📸</span>
-                        </>
+                      onClick={() => setStage3CustomerVisible(!stage3CustomerVisible)}
+                      className={cn(
+                        "px-3 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-all",
+                        stage3CustomerVisible ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-white/10 text-gray-400"
                       )}
+                    >
+                      {stage3CustomerVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      <span>{stage3CustomerVisible ? 'مرئي للعميل' : 'خاص بالإدارة فقط'}</span>
                     </button>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="text-xs font-bold text-gray-300 block mb-1.5">
+                      شرح وتفاصيل الخراب / العطل:
+                    </label>
+                    <textarea
+                      value={stage3Note}
+                      onChange={(e) => setStage3Note(e.target.value)}
+                      placeholder="مثال: تم فحص العطل وتبين وجود تهريب زيت من الصوفة وتآكل في القماشات..."
+                      rows={3}
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
+                    />
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowStage(2)}
+                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      ⬅️ العودة للخطوة 2 (فيديو السيارة)
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowStage(4)}
+                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      >
+                        تخطي للخطوة 4
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSaveStage3Fault}
+                        disabled={isSavingStage3 || isProcessingImages || isProcessingVideo}
+                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                      >
+                        {isSavingStage3 ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>جاري الحفظ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>حفظ توثيق الخراب ➡️ الانتقال للخطوة 4 (القطعة الجديدة)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* STAGE 4: مكتمل (صورة نهائية + ملاحظات ختامية + إشعار الإدارة) */}
+              {/* ========================================================================= */}
+              {/* STAGE 4: تصوير القطعه الجديدة او بعد الاصلاح */}
+              {/* ========================================================================= */}
               {workflowStage === 4 && (
-                <div className="space-y-5 bg-white/5 p-5 rounded-3xl border border-white/10">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-black text-xs">
                         4
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white">المرحلة الرابعة: إكمال السند الفني (مكتمل)</h4>
-                        <p className="text-[11px] text-gray-400">توثيق صورة نهائية وملاحظات ختامية وإرسال إشعار فوري لمالك النظام / Owner.</p>
+                        <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                          <span>المرحلة الرابعة: تصوير القطعة الجديدة أو بعد الإصلاح</span>
+                          <span>📦</span>
+                        </h4>
+                        <p className="text-[11px] text-gray-400">توثيق القطعة الجديدة الأصلية قبل التركيب أو تصوير السيارة بعد الإصلاح والتثبيت.</p>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      الخطوة 4 من 5
+                    </span>
+                  </div>
+
+                  {/* Hidden inputs */}
+                  <input
+                    type="file"
+                    ref={stage4FileInputRef}
+                    onChange={(e) => handleProcessImageFiles(e.target.files, setStage4Photos, !stage4CustomerVisible)}
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    className="hidden"
+                  />
+                  <input
+                    type="file"
+                    ref={stage4VideoInputRef}
+                    onChange={(e) => handleProcessVideoFile(e.target.files, 4)}
+                    accept="video/*"
+                    capture="environment"
+                    className="hidden"
+                  />
+
+                  {/* Loading spinners */}
+                  {isProcessingImages && (
+                    <div className="p-3 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center gap-2 text-xs text-red-200">
+                      <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+                      <span>جاري معالجة وضغط الصور...</span>
+                    </div>
+                  )}
+                  {isProcessingVideo && (
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center gap-2 text-xs text-blue-200">
+                      <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      <span>{videoProgressStatus || 'جاري معالجة الفيديو...'}</span>
+                    </div>
+                  )}
+
+                  {/* Capture actions */}
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => stage4FileInputRef.current?.click()}
+                      className="p-4 bg-brand-red/15 hover:bg-brand-red/25 border-2 border-brand-red/30 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                    >
+                      <Camera className="w-5 h-5 text-brand-red" />
+                      <span>📸 التقاط صور للقطعة الجديدة / بعد التركيب</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFastVideoTargetStage(4);
+                        setShowFastCameraModal(true);
+                      }}
+                      className="p-4 bg-blue-500/15 hover:bg-blue-500/25 border-2 border-blue-500/30 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                    >
+                      <Video className="w-5 h-5 text-blue-400" />
+                      <span>🎥 فيديو توثيق القطعة أو بعد التركيب</span>
+                    </button>
+                  </div>
+
+                  {/* Previews */}
+                  {stage4Photos.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-gray-300">الصور والمقاطع المرفقة ({stage4Photos.length}):</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {stage4Photos.map((item, idx) => (
+                          <div key={idx} className="relative bg-black/60 rounded-2xl border border-white/10 overflow-hidden group">
+                            <div className="aspect-square relative cursor-pointer" onClick={() => setLightboxImage(item.url)}>
+                              <img
+                                src={item.thumbnailUrl || item.url}
+                                alt="القطعة الجديدة أو بعد الإصلاح"
+                                className="w-full h-full object-cover"
+                              />
+                              {item.thumbnailUrl && (
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                  <Play className="w-5 h-5 text-white fill-current" />
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setStage4Photos(prev => prev.filter((_, i) => i !== idx))}
+                              className="absolute top-1.5 left-1.5 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow cursor-pointer transition-all"
+                              title="حذف"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                            <input
+                              type="text"
+                              value={item.caption}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setStage4Photos(prev => prev.map((p, i) => i === idx ? { ...p, caption: val } : p));
+                              }}
+                              placeholder="وصف القطعة..."
+                              className="w-full bg-black/80 text-[11px] text-white p-1.5 border-t border-white/10 focus:outline-none"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Customer visibility toggle */}
+                  <div className="flex items-center justify-between p-3 bg-black/30 rounded-2xl border border-white/5 text-xs">
+                    <span className="text-gray-300 font-bold">ظهور صور القطعة للعميل في التقرير:</span>
+                    <button
+                      type="button"
+                      onClick={() => setStage4CustomerVisible(!stage4CustomerVisible)}
+                      className={cn(
+                        "px-3 py-1 rounded-xl font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-all",
+                        stage4CustomerVisible ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-white/10 text-gray-400"
+                      )}
+                    >
+                      {stage4CustomerVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                      <span>{stage4CustomerVisible ? 'مرئي للعميل' : 'خاص بالإدارة فقط'}</span>
+                    </button>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="text-xs font-bold text-gray-300 block mb-1.5">
+                      ملاحظات حول القطعة الجديدة وعملية الإصلاح:
+                    </label>
+                    <textarea
+                      value={stage4Note}
+                      onChange={(e) => setStage4Note(e.target.value)}
+                      placeholder="مثال: تم تركيب القطعة الجديدة الأصلية برقم تسلسلي مطابق، والشد حسب معايير الوكالة..."
+                      rows={3}
+                      className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
+                    />
+                  </div>
+
+                  {/* Actions footer */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowStage(3)}
+                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      ⬅️ العودة للخطوة 3 (شرح الخراب)
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowStage(5)}
+                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      >
+                        تخطي للخطوة 5
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSaveStage4NewPart}
+                        disabled={isSavingStage4 || isProcessingImages || isProcessingVideo}
+                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                      >
+                        {isSavingStage4 ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>جاري الحفظ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4" />
+                            <span>حفظ توثيق القطعة ➡️ الانتقال للخطوة 5 (إتمام العمل)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* STAGE 5: تصوير اتمام العمل والانتهاء */}
+              {/* ========================================================================= */}
+              {workflowStage === 5 && (
+                <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-black text-xs">
+                        5
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                          <span>المرحلة الخامسة: تصوير إتمام العمل والانتهاء</span>
+                          <span>🏁</span>
+                        </h4>
+                        <p className="text-[11px] text-gray-400">توثيق الصورة النهائية للسيارة بعد انتهاء الصيانة وإرسال إشعار فوري لمالك النظام.</p>
                       </div>
                     </div>
 
                     <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                      المرحلة الختامية 🏁
+                      المرحلة الختامية 🏁 (الخطوة 5 من 5)
                     </span>
                   </div>
 
@@ -1844,9 +2480,9 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         <CheckCheck className="w-6 h-6" />
                       </div>
                       <div className="space-y-1">
-                        <h4 className="text-base sm:text-lg font-black text-white">السند الفني مكتمل وموثق بنجاح! 🏁</h4>
+                        <h4 className="text-base sm:text-lg font-black text-white">تم إنجاز وتوثيق سند الصيانة بنجاح! 🏁</h4>
                         <p className="text-xs text-gray-300 max-w-lg mx-auto leading-relaxed">
-                          تم إنجاز كافة أعمال الصيانة وتوثيق المراحل الأربعة وإشعار الإدارة. يمكنك مشاركة التقرير الميداني مباشرة مع العميل أو استعراض أرشيف الصور والتحديثات المسجلة.
+                          تم توثيق كافة المراحل الـ 5 بنجاح وتحديث حالة الطلب إلى مكتمل وإشعار الإدارة والعميل.
                         </p>
                       </div>
 
@@ -1868,7 +2504,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                           className="px-4 py-2.5 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer"
                         >
                           <Clock className="w-4 h-4 text-brand-red" />
-                          <span>استعراض سجل خطوات الصيانة ({steps.length})</span>
+                          <span>استعراض سجل خطوات ومراحل الصيانة ({steps.length})</span>
                         </button>
                       </div>
 
@@ -1956,67 +2592,109 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       <div className="p-3.5 bg-sky-500/10 border border-sky-500/25 rounded-2xl flex items-start gap-2.5 text-xs text-sky-300">
                         <Bell className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                         <div className="leading-relaxed">
-                          <b>إشعار تلقائي للإدارة:</b> عند الضغط على "إكمال المهمة"، سيتم إرسال إشعار فوري لـ Owner والإدارة في لوحة التحكم وتيليجرام:
+                          <b>إشعار فوري للإدارة:</b> عند الضغط على "إكمال المهمة"، سيتم إرسال إشعار فوري لـ Owner والإدارة في لوحة التحكم وتيليجرام:
                           <div className="mt-1 font-mono text-[11px] text-sky-200 bg-black/40 p-1.5 rounded-lg border border-sky-500/20">
                             «تم إكمال السند الفني رقم #{bookingNumber} بواسطة الفني {currentTechName}»
                           </div>
                         </div>
                       </div>
 
-                      {/* Final Photo Upload */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-300 block">
-                          صورة نهائية للسيارة بعد انتهاء العمل *:
-                        </label>
+                      {/* Hidden inputs */}
+                      <input 
+                        type="file"
+                        ref={completedFileInputRef}
+                        onChange={(e) => handleProcessImageFiles(e.target.files, setCompletedPhotos, false)}
+                        accept="image/*"
+                        multiple
+                        capture="environment"
+                        className="hidden"
+                      />
 
-                        <input 
-                          type="file"
-                          ref={completedFileInputRef}
-                          onChange={(e) => handleProcessImageFiles(e.target.files, setCompletedPhotos, false)}
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                        />
-
-                        <div 
-                          onClick={() => completedFileInputRef.current?.click()}
-                          className="border-2 border-dashed border-white/20 hover:border-emerald-500/60 bg-black/30 hover:bg-white/5 rounded-2xl p-4 text-center cursor-pointer transition-all space-y-2 group"
-                        >
-                          <div className="w-10 h-10 rounded-full bg-emerald-500/10 group-hover:bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400 transition-all">
-                            <Camera className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-xs text-white">
-                              {completedPhotos.length > 0 ? `تم تحديد ${completedPhotos.length} صورة نهائية` : 'التقاط أو اختيار الصورة النهائية بعد اكتمال الصيانة'}
-                            </div>
-                            <p className="text-[10px] text-gray-400 mt-0.5">
-                              توثيق المظهر النهائي ونظافة المكان وسلامة القطع المركبة
-                            </p>
-                          </div>
+                      {/* Loading spinners */}
+                      {isProcessingImages && (
+                        <div className="p-3 bg-brand-red/10 border border-brand-red/30 rounded-2xl flex items-center gap-2 text-xs text-red-200">
+                          <div className="w-4 h-4 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+                          <span>جاري معالجة وضغط الصور...</span>
                         </div>
+                      )}
+                      {isProcessingVideo && (
+                        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2 text-xs text-emerald-200">
+                          <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                          <span>{videoProgressStatus || 'جاري معالجة الفيديو...'}</span>
+                        </div>
+                      )}
 
-                        {completedPhotos.length > 0 && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                            {completedPhotos.map((p, idx) => (
-                              <div key={idx} className="relative aspect-video rounded-xl overflow-hidden bg-black border border-white/10">
-                                <img src={p.url} alt="Final" className="w-full h-full object-cover" />
+                      {/* Capture actions */}
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => completedFileInputRef.current?.click()}
+                          className="p-4 bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-500/40 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                        >
+                          <Camera className="w-5 h-5 text-emerald-400" />
+                          <span>📸 تصوير السيارة بعد اكتمال الصيانة</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFastVideoTargetStage(5);
+                            setShowFastCameraModal(true);
+                          }}
+                          className="p-4 bg-white/5 hover:bg-white/10 border-2 border-white/10 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                        >
+                          <Video className="w-5 h-5 text-emerald-400" />
+                          <span>🎥 فيديو ختامي لتجربة التشغيل والجاهزية</span>
+                        </button>
+                      </div>
+
+                      {/* Previews of captured media */}
+                      {completedPhotos.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-bold text-gray-300">الصور والمقاطع الختامية المرفقة ({completedPhotos.length}):</div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {completedPhotos.map((item, idx) => (
+                              <div key={idx} className="relative bg-black/60 rounded-2xl border border-white/10 overflow-hidden group">
+                                <div className="aspect-square relative cursor-pointer" onClick={() => setLightboxImage(item.url)}>
+                                  <img
+                                    src={item.thumbnailUrl || item.url}
+                                    alt="صورة إتمام العمل"
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {item.thumbnailUrl && (
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                      <Play className="w-5 h-5 text-white fill-current" />
+                                    </div>
+                                  )}
+                                </div>
                                 <button
                                   type="button"
-                                  onClick={() => setCompletedPhotos([])}
-                                  className="absolute top-1 left-1 p-1 bg-red-600 text-white rounded-md"
+                                  onClick={() => setCompletedPhotos(prev => prev.filter((_, i) => i !== idx))}
+                                  className="absolute top-1.5 left-1.5 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow cursor-pointer transition-all"
+                                  title="حذف"
                                 >
-                                  <X className="w-3 h-3" />
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
+                                <input
+                                  type="text"
+                                  value={item.caption}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setCompletedPhotos(prev => prev.map((p, i) => i === idx ? { ...p, caption: val } : p));
+                                  }}
+                                  placeholder="وصف المرفق الختامي..."
+                                  className="w-full bg-black/80 text-[11px] text-white p-1.5 border-t border-white/10 focus:outline-none"
+                                />
                               </div>
                             ))}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
 
                       {/* Final Notes Field */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-gray-300 block">
-                          ملاحظات ختامية حول إنجاز المهمة *:
+                          ملاحظات ختامية حول إنجاز المهمة وتسليم السيارة:
                         </label>
                         <textarea
                           value={completedNote}
@@ -2028,20 +2706,20 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       </div>
 
                       {/* Submit Completion Button */}
-                      <div className="pt-2 flex items-center justify-between border-t border-white/10">
+                      <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-white/10">
                         <button
                           type="button"
-                          onClick={() => setWorkflowStage(3)}
-                          className="px-3 py-1.5 text-xs text-gray-400 hover:text-white"
+                          onClick={() => setWorkflowStage(4)}
+                          className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
                         >
-                          العودة لقيد العمل
+                          ⬅️ العودة للخطوة 4 (القطعة الجديدة)
                         </button>
 
                         <button
                           type="button"
                           onClick={handleCompleteService}
-                          disabled={isCompleting || isProcessingImages}
-                          className="px-7 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50 transition-all"
+                          disabled={isCompleting || isProcessingImages || isProcessingVideo}
+                          className="px-7 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-xl shadow-emerald-600/30 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
                         >
                           {isCompleting ? (
                             <>
@@ -2050,8 +2728,8 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                             </>
                           ) : (
                             <>
-                              <CheckCheck className="w-4 h-4" />
-                              <span>إكمال المهمة وإرسال إشعار للإدارة 🏁</span>
+                              <CheckCheck className="w-5 h-5" />
+                              <span>🏁 إكمال المهمة وإغلاق السند وإشعار الإدارة والعميل ✅</span>
                             </>
                           )}
                         </button>
@@ -2887,12 +3565,25 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         isOpen={showFastCameraModal}
         onClose={() => setShowFastCameraModal(false)}
         onVideoCaptured={async (videoBlob) => {
-          await handleProcessVideoFile(videoBlob);
+          await handleProcessVideoFile(videoBlob, fastVideoTargetStage);
         }}
         onFallbackToFilePicker={() => {
-          arrivalVideoInputRef.current?.click();
+          if (fastVideoTargetStage === 2) {
+            arrivalVideoInputRef.current?.click();
+          } else if (fastVideoTargetStage === 3) {
+            stage3VideoInputRef.current?.click() || stage3FileInputRef.current?.click();
+          } else if (fastVideoTargetStage === 4) {
+            stage4VideoInputRef.current?.click() || stage4FileInputRef.current?.click();
+          } else {
+            completedFileInputRef.current?.click();
+          }
         }}
-        title="فيديو فحص واستلام السيارة عند الوصول 🚗"
+        title={
+          fastVideoTargetStage === 2 ? "فيديو فحص واستلام السيارة كامل والعداد عند الوصول 🎥" :
+          fastVideoTargetStage === 3 ? "فيديو توثيق وشرح الخراب / العطل ⚠️" :
+          fastVideoTargetStage === 4 ? "فيديو توثيق القطعة الجديدة أو بعد الإصلاح 📦" :
+          "فيديو اختبار تشغيل السيارة وإتمام الصيانة 🏁"
+        }
         maxSeconds={25}
       />
     </div>

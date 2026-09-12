@@ -3498,6 +3498,7 @@ const AdminDashboard = ({
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<MaintenanceRecord | null>(null);
   const [timelineBookingRecord, setTimelineBookingRecord] = useState<MaintenanceRecord | null>(null);
   const [timelineInitialTab, setTimelineInitialTab] = useState<'timeline' | 'add_step' | 'assign'>('timeline');
+  const [timelineInitialStage, setTimelineInitialStage] = useState<1 | 2 | 3 | 4 | 5 | undefined>(undefined);
   const [showWorkflowGuideModal, setShowWorkflowGuideModal] = useState(false);
   const [workflowGuideDefaultRole, setWorkflowGuideDefaultRole] = useState<'customer' | 'technician'>('technician');
 
@@ -3525,7 +3526,7 @@ const AdminDashboard = ({
     setSelectedBookingDetails(record);
   };
 
-  const handleOpenTimeline = (record: MaintenanceRecord, tab: 'timeline' | 'add_step' | 'assign' = 'timeline') => {
+  const handleOpenTimeline = (record: MaintenanceRecord, tab: 'timeline' | 'add_step' | 'assign' = 'timeline', stage?: 1 | 2 | 3 | 4 | 5) => {
     if (isTechnician && currentStaffUser) {
       const staffName = (currentStaffUser.fullName || '').trim().toLowerCase();
       const isAssigned = record.assignedStaffId === currentStaffUser.id || 
@@ -3538,6 +3539,7 @@ const AdminDashboard = ({
     setTimelineBookingRecord(record);
     const safeTab = (currentStaffUser?.role === 'technician' && tab === 'assign') ? 'timeline' : tab;
     setTimelineInitialTab(safeTab);
+    setTimelineInitialStage(stage);
   };
   const [techTaskFilter, setTechTaskFilter] = useState<'all' | 'my_tasks'>('all');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
@@ -9775,11 +9777,15 @@ const AdminDashboard = ({
             allRecords={records}
             currentStaffUser={currentStaffUser}
             initialTab={timelineInitialTab}
+            initialStage={timelineInitialStage}
             telegramConfig={{
               botToken: settingsForm.telegramBotToken,
               chatId: settingsForm.telegramChatId
             }}
-            onClose={() => setTimelineBookingRecord(null)}
+            onClose={() => {
+              setTimelineBookingRecord(null);
+              setTimelineInitialStage(undefined);
+            }}
             onUpdateRecord={(updatedRecord) => {
               setRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r).sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a)));
               if (selectedBookingDetails?.id === updatedRecord.id) {

@@ -30,7 +30,7 @@ interface TechnicianWorkspaceProps {
   records: MaintenanceRecord[];
   currentStaffUser?: StaffUser | null;
   onUpdateStatus: (id: string, newStatus: MaintenanceRecord['status']) => void;
-  onOpenTimeline: (record: MaintenanceRecord, tab?: 'timeline' | 'add_step') => void;
+  onOpenTimeline: (record: MaintenanceRecord, tab?: 'timeline' | 'add_step', stage?: 1 | 2 | 3 | 4 | 5) => void;
   onSelectDetails: (record: MaintenanceRecord) => void;
   onOpenWorkflowGuide?: () => void;
   lang: 'ar' | 'en';
@@ -345,19 +345,19 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
               </a>
             )}
 
-            {/* 4. Arrival Video Inspection 1-Tap */}
+            {/* 4. Car & Odometer Video 1-Tap */}
             <button
               type="button"
               onClick={() => {
                 if (activeSpotlightJob.status !== 'in-progress') {
                   handleQuickStatusTransition(activeSpotlightJob, 'in-progress');
                 }
-                onOpenTimeline(activeSpotlightJob, 'add_step');
+                onOpenTimeline(activeSpotlightJob, 'add_step', 2);
               }}
               className="flex-1 min-w-[170px] py-3 px-4 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/40 ring-1 ring-white/10"
             >
               <Video className="w-4 h-4 text-amber-300 animate-pulse" />
-              <span>🎥 تصوير فيديو فحص الوصول</span>
+              <span>🎥 تصوير فيديو السيارة والعداد (الخطوة 2)</span>
             </button>
 
             {/* 5. Timeline Documentation & Photos */}

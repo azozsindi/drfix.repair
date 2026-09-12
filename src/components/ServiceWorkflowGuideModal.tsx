@@ -226,70 +226,64 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
                   </div>
                   <div className="space-y-1">
                     <h5 className="font-bold text-white text-sm flex items-center gap-2">
-                      <span>تسجيل الدخول وشاشة "مهامي الميدانية 🔧"</span>
-                      <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded">بنقرة واحدة</span>
+                      <span>1. وصول الفني (تسجيل الوصول والبدء)</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">وصول الفني</span>
                     </h5>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      يدخل الفني بحسابه، فتظهر له فوراً بطاقة <b>المهمة الحالية ذات الأولوية</b> في أعلى الشاشة بكامل بيانات السيارة وموقع العميل ورقم جواله، دون أي لوحات معقدة.
+                      يصل الفني لموقع العميل ويسجل وصوله بنقرة واحدة لتحديث حالة الطلب إلى "قيد الفحص والصيانة" وإشعار العميل والإدارة.
                     </p>
                   </div>
                 </div>
 
-                {/* Tech Step 2 */}
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-start gap-3.5">
-                  <div className="w-8 h-8 rounded-full bg-brand-red text-white font-black text-sm flex items-center justify-center shrink-0">
-                    2
-                  </div>
-                  <div className="space-y-1">
-                    <h5 className="font-bold text-white text-sm flex items-center gap-2">
-                      <span>نقرة واحدة: "🚗 أنا في الطريق للعميل" + فتح الخريطة</span>
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">بلمسة واحدة</span>
-                    </h5>
-                    <p className="text-xs text-gray-300 leading-relaxed">
-                      يضغط الفني زر <b>"أنا في الطريق"</b>، فيتم إشعار العميل فوراً. ويضغط زر <b>"ملاحة GPS 🗺️"</b> ليفتح له تطبيق خرائط جوجل ويوجهه مباشرة لموقع السيارة بأسرع طريق.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tech Step 3 - THE VIDEO REQUIREMENT */}
+                {/* Tech Step 2 - VIDEO CAR & ODOMETER */}
                 <div className="p-4 rounded-2xl bg-brand-red/15 border-2 border-brand-red/50 flex items-start gap-3.5 shadow-lg shadow-brand-red/10">
                   <div className="w-8 h-8 rounded-full bg-brand-red text-white font-black text-sm flex items-center justify-center shrink-0">
-                    3
+                    2
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h5 className="font-black text-white text-sm flex items-center gap-1.5">
                         <Video className="w-4 h-4 text-brand-red" />
-                        <span>أول ما يوصل الفني: تصوير فيديو استلام ومعاينة السيارة 🎥</span>
+                        <span>2. تصوير فيديو للسيارة كامل والعداد (10-20 ثانية)</span>
                       </h5>
                       <span className="text-[10px] bg-brand-red text-white px-2 py-0.5 rounded-full font-bold">
-                        إجراء إلزامي وسريع
+                        إلزامي وسريع
                       </span>
                     </div>
                     <p className="text-xs text-gray-200 leading-relaxed">
-                      بمجرد الوصول لموقع السيارة، يضغط الفني على زر:
-                      <br />
-                      <span className="inline-block mt-1 font-bold bg-black/60 px-3 py-1 rounded-xl border border-brand-red text-white">
-                        🎥 تصوير فيديو فحص واستلام السيارة عند الوصول
-                      </span>
-                      <br />
-                      يصور الفني جولة فيديو سريعة (10 إلى 20 ثانية) حول السيارة توثق: حالة البودي الخارجية، أي خدوش أو صدمات سابقة، وعداد المسافة (كيلومترات السيارة). يتم رفع الفيديو وحفظه تلقائياً لحماية الفني والمركز والعميل.
+                      جولة فيديو سريعة (10 إلى 20 ثانية) حول السيارة توثق: حالة البودي الخارجية، أي خدوش أو صدمات سابقة، وتصوير واضح لعداد الكيلومترات، لحماية حقوق العميل والفني والمركز.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tech Step 3 */}
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-start gap-3.5">
+                  <div className="w-8 h-8 rounded-full bg-amber-500 text-white font-black text-sm flex items-center justify-center shrink-0">
+                    3
+                  </div>
+                  <div className="space-y-1">
+                    <h5 className="font-bold text-white text-sm flex items-center gap-2">
+                      <span>3. تصوير الخراب أو شرح (توثيق المشكلة)</span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded">شفافية وتوضيح</span>
+                    </h5>
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                      تصوير القطعة التالفة أو العطل بالصور أو مقطع فيديو توضيحي قصير مع ملاحظة صوتية/نصية لشرح سبب المشكلة للعميل قبل البدء بالفك أو الاستبدال.
                     </p>
                   </div>
                 </div>
 
                 {/* Tech Step 4 */}
                 <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-start gap-3.5">
-                  <div className="w-8 h-8 rounded-full bg-brand-red text-white font-black text-sm flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-blue-500 text-white font-black text-sm flex items-center justify-center shrink-0">
                     4
                   </div>
                   <div className="space-y-1">
                     <h5 className="font-bold text-white text-sm flex items-center gap-2">
-                      <span>إجراء الصيانة وتوثيق القطع (صور اختيارية)</span>
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">شفافية كاملة</span>
+                      <span>4. تصوير القطعة الجديدة أو بعد الإصلاح</span>
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded">ضمان الجودة</span>
                     </h5>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      يقوم الفني بفك وتركيب القطع، وإذا كانت هناك قطعة متضررة أو قطع غيار جديدة يمكنه التقاط صورة سريعة وحفظها لتظهر في سجل وتقرير العميل الفني.
+                      تصوير القطعة الأصلية الجديدة برقمها التسلسلي أو تصوير موضع الإصلاح بعد التركيب والتثبيت لإثبات جودة العمل واستخدام قطع غيار موثوقة.
                     </p>
                   </div>
                 </div>
@@ -301,11 +295,11 @@ export const ServiceWorkflowGuideModal: React.FC<ServiceWorkflowGuideModalProps>
                   </div>
                   <div className="space-y-1">
                     <h5 className="font-bold text-white text-sm flex items-center gap-2">
-                      <span>نقرة واحدة: "✅ تم إنجاز الصيانة بنجاح"</span>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">إغلاق فوري</span>
+                      <span>5. تصوير إتمام العمل والانتهاء (إغلاق السند)</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">المرحلة الختامية</span>
                     </h5>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      يضغط الفني زر الإنجاز النهائي، فيتم إرسال إشعار فوري للإدارة والمالك عبر تيليجرام ورابط التقرير للعميل، وتنتقل المهمة إلى سجل المنجزات، ليصبح الفني متاحاً للمهمة التالية فوراً!
+                      تصوير نهائي للسيارة بعد جاهزيتها وتسليمها، ثم الضغط على "إكمال المهمة"، ليتم إشعار الإدارة فوراً وإرسال رابط التقرير المصور للعميل عبر الواتساب.
                     </p>
                   </div>
                 </div>

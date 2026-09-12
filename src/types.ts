@@ -48,7 +48,19 @@ export interface ServiceStepPhoto {
   thumbnailUrl?: string; // Video poster thumbnail
 }
 
-export type ServiceStepKey = 'assigned' | 'accepted' | 'on_the_way' | 'arrived_inspection' | 'in_progress' | 'completed' | 'custom';
+export type ServiceStepKey = 
+  | 'assigned' 
+  | 'accepted' 
+  | 'on_the_way' 
+  | 'arrived_inspection' 
+  | 'arrival' 
+  | 'car_and_odometer_video' 
+  | 'fault_documentation' 
+  | 'new_part_after_repair' 
+  | 'completion_and_delivery' 
+  | 'in_progress' 
+  | 'completed' 
+  | 'custom';
 
 export type BookingStatus = 'new' | 'pending' | 'accepted' | 'on_the_way' | 'in-progress' | 'completed' | 'cancelled' | 'rescheduled' | 'no_show';
 
