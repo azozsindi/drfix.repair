@@ -198,7 +198,7 @@ export const FastVideoRecorderModal: React.FC<FastVideoRecorderModalProps> = ({
     try {
       const recorder = new MediaRecorder(stream, {
         mimeType,
-        videoBitsPerSecond: 1_200_000 // 1.2 Mbps = very small file size (~2.5 MB for 20s)
+        videoBitsPerSecond: 800_000 // 800 Kbps = ultra light ~1.2 MB for 15-20s, crystal clear & instant upload
       });
 
       recorder.ondataavailable = (event) => {
