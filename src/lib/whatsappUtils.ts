@@ -48,9 +48,9 @@ export const getTechnicianAssignmentMessage = (
     }
   }
 
-  // Tracking link
+  // Tracking link - directs directly to the timeline & documentation view for technician & staff
   const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://www.drfix.repair';
-  const portalUrl = `${origin}?track=${bookingNo}`;
+  const portalUrl = `${origin}/?track=${encodeURIComponent(bookingNo)}`;
 
   return `🔧 *تكليف بمهمة صيانة جديدة | DR.FIX* 🚗\n` +
     `السلام عليكم يا كابتن ${techName || 'المحترم'}، تم إسناد طلب صيانة جديد إليك، يرجى الاطلاع وتحديث المراحل:\n\n` +
@@ -66,7 +66,7 @@ export const getTechnicianAssignmentMessage = (
     `\n🔗 *رابط السند وتوثيق المراحل:* \n${portalUrl}\n\n` +
     `⚡ *سير المراحل المطلوب في النظام:* \n` +
     `1. تم القبول ⬅️ 2. بالطريق 🚗 ⬅️ 3. قيد العمل 🔄 ⬅️ 4. مكتمل 🏁\n` +
-    `_بالتوفيق!_ 🌟`;
+    `_بالتوفيق!_ ✨`;
 };
 
 /**

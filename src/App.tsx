@@ -11120,6 +11120,114 @@ function MainContent() {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  // Deep linking: Direct modal opening for tracking link (?track=BOOKING_ID)
+  const [trackBookingRecord, setTrackBookingRecord] = useState<MaintenanceRecord | null>(null);
+  const [isTrackLoading, setIsTrackLoading] = useState(false);
+  const [trackErrorMsg, setTrackErrorMsg] = useState<string | null>(null);
+  const [staffListForTrack, setStaffListForTrack] = useState<StaffUser[]>([]);
+  const trackUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    // Load staff list for technician assignment options inside timeline modal
+    const unsubStaff = onSnapshot(collection(db, 'staff'), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as StaffUser));
+      setStaffListForTrack(list);
+    }, (err) => console.warn('Staff fetch for track:', err));
+
+    return () => unsubStaff();
+  }, []);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const trackParam = searchParams.get('track');
+
+    if (!trackParam) {
+      if (trackUnsubscribeRef.current) {
+        trackUnsubscribeRef.current();
+        trackUnsubscribeRef.current = null;
+      }
+      return;
+    }
+
+    const cleanCode = trackParam.trim().replace(/^#/, '');
+    if (!cleanCode) return;
+
+    setIsTrackLoading(true);
+    setTrackErrorMsg(null);
+
+    // Query Firestore for this booking by bookingId or document ID
+    const maintenanceCol = collection(db, 'maintenance');
+    const qByBookingId = query(maintenanceCol, where('bookingId', '==', cleanCode), limit(1));
+
+    const unsub = onSnapshot(qByBookingId, async (snapshot) => {
+      if (!snapshot.empty) {
+        const docSnap = snapshot.docs[0];
+        setTrackBookingRecord({ id: docSnap.id, ...(docSnap.data() as any) } as MaintenanceRecord);
+        setIsTrackLoading(false);
+        setTrackErrorMsg(null);
+      } else {
+        // Fallback: Check if cleanCode is the direct firestore document ID or uppercase variant
+        try {
+          const docDirectRef = doc(db, 'maintenance', cleanCode);
+          const docDirectSnap = await getDoc(docDirectRef);
+          if (docDirectSnap.exists()) {
+            setTrackBookingRecord({ id: docDirectSnap.id, ...(docDirectSnap.data() as any) } as MaintenanceRecord);
+            setIsTrackLoading(false);
+            setTrackErrorMsg(null);
+          } else {
+            // Also check lowercase or uppercase bookingId match if any
+            const qFallback = query(maintenanceCol, where('bookingId', '==', cleanCode.toUpperCase()), limit(1));
+            const snapFallback = await getDocs(qFallback);
+            if (!snapFallback.empty) {
+              const dSnap = snapFallback.docs[0];
+              setTrackBookingRecord({ id: dSnap.id, ...(dSnap.data() as any) } as MaintenanceRecord);
+              setIsTrackLoading(false);
+              setTrackErrorMsg(null);
+            } else {
+              setIsTrackLoading(false);
+              setTrackErrorMsg(`عذراً، لم يتم العثور على طلب صيانة برقم السند (#${cleanCode}). يرجى التأكد من صحة الرابط.`);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching track doc directly:', err);
+          setIsTrackLoading(false);
+          setTrackErrorMsg(`عذراً، لم يتم العثور على الطلب (#${cleanCode}).`);
+        }
+      }
+    }, (err) => {
+      console.error('Track booking query error:', err);
+      setIsTrackLoading(false);
+      setTrackErrorMsg('حدث خطأ أثناء تحميل بيانات الطلب، يرجى المحاولة مرة أخرى.');
+    });
+
+    trackUnsubscribeRef.current = unsub;
+
+    return () => {
+      if (trackUnsubscribeRef.current) {
+        trackUnsubscribeRef.current();
+        trackUnsubscribeRef.current = null;
+      }
+    };
+  }, [location.search]);
+
+  const handleCloseTrackModal = () => {
+    setTrackBookingRecord(null);
+    setTrackErrorMsg(null);
+    setIsTrackLoading(false);
+    if (trackUnsubscribeRef.current) {
+      trackUnsubscribeRef.current();
+      trackUnsubscribeRef.current = null;
+    }
+    // Remove track query param smoothly from URL without reload
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.delete('track');
+    const newSearch = searchParams.toString();
+    navigate({
+      pathname: location.pathname,
+      search: newSearch ? `?${newSearch}` : ''
+    }, { replace: true });
+  };
+
   const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser | null>(() => {
     try {
       const saved = sessionStorage.getItem('drfix_current_staff') || localStorage.getItem('drfix_current_staff');
@@ -11345,6 +11453,58 @@ function MainContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Direct Tracking Link Modal: Opens ServiceTimelineModal immediately for Technician & Customer via ?track=BOOKING_ID */}
+      {trackBookingRecord && (
+        <ServiceTimelineModal
+          record={trackBookingRecord}
+          staffList={staffListForTrack}
+          allRecords={[trackBookingRecord]}
+          currentStaffUser={currentStaffUser}
+          initialTab="timeline"
+          telegramConfig={{
+            botToken: settings.telegramBotToken,
+            chatId: settings.telegramChatId
+          }}
+          onClose={handleCloseTrackModal}
+          onUpdateRecord={(updatedRecord) => {
+            setTrackBookingRecord(updatedRecord);
+          }}
+        />
+      )}
+
+      {/* Direct Tracking Link Loading Indicator */}
+      {isTrackLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#121212] border border-white/10 p-6 rounded-2xl flex flex-col items-center gap-3 text-center shadow-2xl max-w-sm mx-4">
+            <div className="w-10 h-10 border-3 border-brand-red border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-bold text-white">جاري تحميل بيانات السند وتوثيق مراحل الصيانة...</p>
+            <p className="text-xs text-gray-400 font-mono">DR.FIX TRACKING SYSTEM</p>
+          </div>
+        </div>
+      )}
+
+      {/* Direct Tracking Link Not Found Dialog */}
+      {trackErrorMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#121212] border border-red-500/30 p-6 rounded-2xl flex flex-col items-center gap-4 text-center shadow-2xl max-w-md w-full">
+            <div className="w-12 h-12 rounded-full bg-red-500/20 text-brand-red flex items-center justify-center font-bold text-xl">
+              ⚠️
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white mb-2">تنبيه البحث عن السند</h3>
+              <p className="text-sm text-gray-300 leading-relaxed">{trackErrorMsg}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCloseTrackModal}
+              className="px-6 py-2.5 bg-brand-red hover:bg-red-700 text-white text-sm font-bold rounded-xl transition-all cursor-pointer shadow-lg shadow-brand-red/20"
+            >
+              إغلاق ومتابعة للموقع
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
