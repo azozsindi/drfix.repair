@@ -25,14 +25,17 @@ interface PartnersPageProps {
   partners: Partner[];
   settings?: any;
   onSelectPartnerForBooking?: (partner: Partner) => void;
+  lang?: 'ar' | 'en';
 }
 
 export const PartnersPage: React.FC<PartnersPageProps> = ({ 
   partners, 
   settings,
-  onSelectPartnerForBooking 
+  onSelectPartnerForBooking,
+  lang = 'ar'
 }) => {
   const navigate = useNavigate();
+  const isAr = (lang || (typeof document !== 'undefined' && document.documentElement.lang)) !== 'en';
 
   // If partners section is hidden by admin, redirect to home
   if (settings && settings.showPartners === false) {
@@ -80,7 +83,10 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
   const whatsappSupportNumber = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
 
   return (
-    <div className="min-h-[auto] sm:min-h-screen bg-brand-black text-white pt-4 sm:pt-10 md:pt-12 pb-16 sm:pb-24 px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white">
+    <div 
+      dir={isAr ? 'rtl' : 'ltr'}
+      className="min-h-[auto] sm:min-h-screen bg-brand-black text-white pt-4 sm:pt-10 md:pt-12 pb-16 sm:pb-24 px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white"
+    >
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute top-1/4 right-0 w-[500px] h-[500px] bg-brand-red/5 rounded-full blur-[120px]" />
@@ -90,9 +96,9 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
       <div className="max-w-7xl mx-auto relative z-10 space-y-12">
         {/* Breadcrumb & Navigation */}
         <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400 font-mono">
-          <Link to="/" className="hover:text-brand-red transition-colors">الرئيسية</Link>
-          <ChevronRight className="w-3.5 h-3.5 text-gray-600 rotate-180" />
-          <span className="text-white font-bold">شركاء النجاح</span>
+          <Link to="/" className="hover:text-brand-red transition-colors">{isAr ? 'الرئيسية' : 'Home'}</Link>
+          <ChevronRight className={`w-3.5 h-3.5 text-gray-600 ${isAr ? 'rotate-180' : ''}`} />
+          <span className="text-white font-bold">{isAr ? 'شركاء النجاح' : 'Success Partners'}</span>
         </div>
 
         {/* Page Hero Header */}
@@ -103,7 +109,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-red/10 border border-brand-red/20 text-brand-red text-xs sm:text-sm font-bold tracking-wide shadow-sm"
           >
             <Handshake className="w-4 h-4" />
-            <span>شبكة ورش ومراكز معتمدة لدى Dr.Fix</span>
+            <span>{isAr ? 'شبكة ورش ومراكز معتمدة لدى Dr.Fix' : 'Certified Workshop Network at Dr.Fix'}</span>
           </motion.div>
 
           <motion.h1
@@ -112,7 +118,11 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
             transition={{ delay: 0.1 }}
             className="text-3xl sm:text-5xl font-black font-display tracking-tight text-white"
           >
-            شركاء <span className="text-brand-red">النجاح</span>
+            {isAr ? (
+              <>شركاء <span className="text-brand-red">النجاح</span></>
+            ) : (
+              <>Success <span className="text-brand-red">Partners</span></>
+            )}
           </motion.h1>
 
           <motion.p
@@ -121,7 +131,9 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
             transition={{ delay: 0.2 }}
             className="text-sm sm:text-base text-gray-400 leading-relaxed max-w-2xl mx-auto"
           >
-            نخبة من الورش المتميزة ومحلات قطع الغيار المعتمدة في جدة، تعمل بتكامل تام مع فريق Dr.Fix لتوفير حلول صيانة شاملة، وخصومات حصرية لعملائنا الكرام.
+            {isAr 
+              ? 'نخبة من الورش المتميزة ومحلات قطع الغيار المعتمدة في جدة، تعمل بتكامل تام مع فريق Dr.Fix لتوفير حلول صيانة شاملة، وخصومات حصرية لعملائنا الكرام.'
+              : 'An elite network of verified workshops and certified auto parts centers in Jeddah, operating in full synergy with Dr.Fix to provide comprehensive maintenance solutions and exclusive perks.'}
           </motion.p>
         </div>
 
@@ -129,20 +141,20 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
         <div className="space-y-4 max-w-4xl mx-auto">
           {/* Search Box */}
           <div className="relative">
-            <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className={`absolute ${isAr ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400`} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث باسم الورشة، الحي، أو نوع الخدمة (مثل: ميكانيكا، توضيب، تكييف، سمكرة)..."
-              className="w-full bg-white/5 border border-white/10 rounded-2xl pr-12 pl-4 py-3.5 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red transition-all shadow-lg"
+              placeholder={isAr ? 'ابحث باسم الورشة، الحي، أو نوع الخدمة (مثل: ميكانيكا، توضيب، تكييف، سمكرة)...' : 'Search workshop, district, or service (e.g. mechanics, AC, bodywork)...'}
+              className={`w-full bg-white/5 border border-white/10 rounded-2xl ${isAr ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3.5 text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-brand-red focus:ring-1 focus:ring-brand-red transition-all shadow-lg`}
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-white bg-white/10 px-2 py-1 rounded-md"
+                className={`absolute ${isAr ? 'left-4' : 'right-4'} top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-white bg-white/10 px-2 py-1 rounded-md`}
               >
-                مسح
+                {isAr ? 'مسح' : 'Clear'}
               </button>
             )}
           </div>
@@ -158,7 +170,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
               }`}
             >
               <Filter className="w-3.5 h-3.5" />
-              <span>الكل ({partners.filter(p => p.isActive !== false).length})</span>
+              <span>{isAr ? `الكل (${partners.filter(p => p.isActive !== false).length})` : `All (${partners.filter(p => p.isActive !== false).length})`}</span>
             </button>
 
             {categories.map(cat => {
@@ -185,18 +197,20 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
         {filteredPartners.length === 0 ? (
           <div className="text-center py-16 bg-white/[0.02] border border-white/5 rounded-3xl p-8 max-w-md mx-auto space-y-4">
             <Store className="w-12 h-12 text-gray-500 mx-auto" />
-            <h3 className="text-lg font-bold text-white">لم يتم العثور على شركاء</h3>
+            <h3 className="text-lg font-bold text-white">{isAr ? 'لم يتم العثور على شركاء' : 'No Partners Found'}</h3>
             <p className="text-xs sm:text-sm text-gray-400">
-              لا توجد نتائج تطابق بحثك حالياً. يمكنك تجربة كلمات بحث أخرى أو عرض كل التخصصات.
+              {isAr 
+                ? 'لا توجد نتائج تطابق بحثك حالياً. يمكنك تجربة كلمات بحث أخرى أو عرض كل التخصصات.'
+                : 'No partners matched your search. Try different keywords or select another category.'}
             </p>
             <button
               onClick={() => {
                 setSelectedCategory('all');
                 setSearchQuery('');
               }}
-              className="px-4 py-2 bg-brand-red text-white text-xs font-bold rounded-xl hover:bg-brand-red/90 transition-all"
+              className="px-4 py-2 bg-brand-red text-white text-xs font-bold rounded-xl hover:bg-brand-red/90 transition-all cursor-pointer"
             >
-              إعادة ضبط البحث
+              {isAr ? 'إعادة ضبط البحث' : 'Reset Search'}
             </button>
           </div>
         ) : (
@@ -224,21 +238,21 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
 
                     {/* Category Badge */}
-                    <div className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 backdrop-blur-md border border-white/15 text-[11px] font-bold text-white">
+                    <div className={`absolute top-3 ${isAr ? 'right-3' : 'left-3'} flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/70 backdrop-blur-md border border-white/15 text-[11px] font-bold text-white`}>
                       <Store className="w-3 h-3 text-brand-red" />
-                      <span>{partner.category || 'صيانة عامة'}</span>
+                      <span>{partner.category || (isAr ? 'صيانة عامة' : 'General Service')}</span>
                     </div>
 
                     {/* Rating / Verified Badge */}
-                    <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-red/20 backdrop-blur-md border border-brand-red/30 text-[11px] font-black text-white">
+                    <div className={`absolute top-3 ${isAr ? 'left-3' : 'right-3'} flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-red/20 backdrop-blur-md border border-brand-red/30 text-[11px] font-black text-white`}>
                       <Star className="w-3 h-3 fill-brand-red text-brand-red" />
                       <span>{partner.rating ? partner.rating.toFixed(1) : '4.9'}</span>
                     </div>
 
                     {/* Dr.Fix Partner Tag */}
-                    <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-brand-red/90 text-white text-[10px] font-mono font-black uppercase tracking-wider">
+                    <div className={`absolute bottom-3 ${isAr ? 'right-3' : 'left-3'} flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-brand-red/90 text-white text-[10px] font-mono font-black uppercase tracking-wider`}>
                       <ShieldCheck className="w-3 h-3" />
-                      <span>شريك معتمد</span>
+                      <span>{isAr ? 'شريك معتمد' : 'Verified Partner'}</span>
                     </div>
                   </div>
 
@@ -258,7 +272,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                       {/* Location / Address */}
                       <div className="flex items-start gap-2 text-xs text-gray-300">
                         <MapPin className="w-4 h-4 text-brand-red shrink-0 mt-0.5" />
-                        <span>{partner.address || 'جدة'}</span>
+                        <span>{partner.address || (isAr ? 'جدة' : 'Jeddah')}</span>
                       </div>
 
                       {/* Working Hours if available */}
@@ -289,7 +303,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                           className="w-full py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs sm:text-sm font-bold text-white flex items-center justify-center gap-2 transition-all hover:border-brand-red/40 group/btn"
                         >
                           <MapPin className="w-4 h-4 text-brand-red group-hover/btn:scale-110 transition-transform" />
-                          <span>الموقع على خرائط جوجل</span>
+                          <span>{isAr ? 'الموقع على خرائط جوجل' : 'View on Google Maps'}</span>
                           <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover/btn:text-white" />
                         </a>
                       )}
@@ -302,7 +316,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                             className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-gray-200 flex items-center justify-center gap-1.5 transition-all active:scale-95"
                           >
                             <Phone className="w-3.5 h-3.5 text-brand-red" />
-                            <span>اتصال</span>
+                            <span>{isAr ? 'اتصال' : 'Call'}</span>
                           </a>
                         ) : null}
 
@@ -315,7 +329,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                             className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-brand-red hover:text-white border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-all active:scale-95 group"
                           >
                             <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
-                            <span>واتساب</span>
+                            <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
                           </a>
                         ) : null}
                       </div>
@@ -326,7 +340,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                         className="w-full py-2.5 px-4 rounded-xl bg-brand-red hover:bg-brand-red/90 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-brand-red/20 active:scale-98 cursor-pointer"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>طلب فحص / صيانة عن طريق Dr.Fix</span>
+                        <span>{isAr ? 'طلب فحص / صيانة عن طريق Dr.Fix' : 'Book Service via Dr.Fix'}</span>
                       </button>
                     </div>
                   </div>
@@ -345,22 +359,24 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black font-display text-white">
-              هل تمتلك ورشة أو محل قطع غيار سيارات في جدة؟
+              {isAr ? 'هل تمتلك ورشة أو محل قطع غيار سيارات في جدة؟' : 'Do you own an auto workshop or parts shop in Jeddah?'}
             </h2>
 
             <p className="text-xs sm:text-base text-gray-300 leading-relaxed max-w-xl mx-auto">
-              انضم إلى شبكة شركاء نجاح Dr.Fix المعتمدة، واحصل على تدفق مستمر للعملاء وطلبات الصيانة مع توثيق اسم ورشتك وموقعك على منصتنا.
+              {isAr 
+                ? 'انضم إلى شبكة شركاء نجاح Dr.Fix المعتمدة، واحصل على تدفق مستمر للعملاء وطلبات الصيانة مع توثيق اسم ورشتك وموقعك على منصتنا.'
+                : 'Join the Dr.Fix certified partners network, receive continuous bookings, and showcase your center on our platform.'}
             </p>
 
             <div className="pt-2 flex flex-wrap justify-center gap-3 sm:gap-4">
               <a
-                href={`https://api.whatsapp.com/send?phone=${whatsappSupportNumber}&text=${encodeURIComponent('السلام عليكم، أرغب في الانضمام إلى شبكة شركاء نجاح Dr.Fix مع ورشتي / متجري')}`}
+                href={`https://api.whatsapp.com/send?phone=${whatsappSupportNumber}&text=${encodeURIComponent(isAr ? 'السلام عليكم، أرغب في الانضمام إلى شبكة شركاء نجاح Dr.Fix مع ورشتي / متجري' : 'Hello, I would like to join the Dr.Fix certified partners network.')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-6 py-3 rounded-2xl bg-brand-red hover:bg-red-700 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/25 transition-all active:scale-95"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>قدم طلب الانضمام عبر واتساب</span>
+                <span>{isAr ? 'قدم طلب الانضمام عبر واتساب' : 'Apply via WhatsApp'}</span>
               </a>
 
               <a
@@ -368,7 +384,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                 className="px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition-all"
               >
                 <Phone className="w-4 h-4 text-brand-red" />
-                <span>الاتصال بالإدارة</span>
+                <span>{isAr ? 'الاتصال بالإدارة' : 'Call Management'}</span>
               </a>
             </div>
           </div>

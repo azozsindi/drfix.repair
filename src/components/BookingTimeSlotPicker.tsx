@@ -89,8 +89,6 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
 
   // Auto-select first available slot if nothing is selected or if current slot has passed
   useEffect(() => {
-    if (activeImmediate) return;
-
     // Check if the current slot is selectable for this date
     const currentAvailable = slotAvailabilities.find(
       s => s.slot.labelAr === activeTimeSlot || s.slot.labelEn === activeTimeSlot
@@ -103,12 +101,12 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
         handleTimeSlotChange(isAr ? firstAvailable.slot.labelAr : firstAvailable.slot.labelEn);
       }
     }
-  }, [activeDate, activeImmediate, slotAvailabilities]);
+  }, [activeDate, slotAvailabilities]);
 
   const handleApplyCustomTime = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!customTimeInput.trim()) return;
-    const formatted = `${customTimeInput.trim()} (وقت مخصص)`;
+    const formatted = isAr ? `${customTimeInput.trim()} (وقت مخصص)` : `${customTimeInput.trim()} (Custom Time)`;
     handleTimeSlotChange(formatted);
     setShowCustomTime(false);
   };
@@ -146,146 +144,73 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
             </p>
           </div>
         </div>
-
-        {/* Dispatch Type Switch: Immediate vs Scheduled */}
-        <div className="flex items-center gap-1.5 bg-black/60 p-1 rounded-xl border border-white/10 w-full sm:w-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              handleImmediateChange(true);
-              handleTimeSlotChange('فوري خلال 45 دقيقة ⚡');
-            }}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeImmediate
-                ? 'bg-brand-red text-white shadow-md shadow-brand-red/30 font-black'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-            <span>{isAr ? 'خدمة فورية عاجلة (45 دقيقة)' : 'Express (45 min)'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              handleImmediateChange(false);
-              // if timeSlot was immediate, default to first selectable slot
-              if (activeTimeSlot.includes('فوري')) {
-                const firstAvailable = slotAvailabilities.find(s => s.isSelectable);
-                if (firstAvailable) {
-                  handleTimeSlotChange(isAr ? firstAvailable.slot.labelAr : firstAvailable.slot.labelEn);
-                }
-              }
-            }}
-            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              !activeImmediate
-                ? 'bg-white/20 text-white shadow-md font-black'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-            <span>{isAr ? 'حجز موعد محدد' : 'Scheduled Slot'}</span>
-          </button>
-        </div>
       </div>
 
-      {/* Immediate Mode Banner */}
-      {activeImmediate ? (
-        <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-brand-red/10 to-transparent border border-amber-500/30 flex items-start gap-3.5 animate-fadeIn">
-          <div className="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
-            <Zap className="w-4 h-4 animate-bounce" />
+      {/* Scheduled Time Slots Flow */}
+      <div className="space-y-4 animate-fadeIn">
+        {/* 1. Date Selector Tabs */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4 text-brand-red" />
+              <span>{isAr ? '1. اختر يوم الزيارة:' : '1. Select Visit Date:'}</span>
+            </label>
+            <span className="text-[11px] text-gray-300 font-mono bg-black/50 px-2.5 py-1 rounded-lg border border-white/10">
+              {friendlyDate || activeDate}
+            </span>
           </div>
-          <div className="space-y-1">
-            <div className="text-xs sm:text-sm font-bold text-amber-300 flex items-center gap-2 flex-wrap">
-              <span>{isAr ? 'تم تفعيل خيار الخدمة الفورية العاجلة ⚡' : 'Express Emergency Dispatch Selected'}</span>
-              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-[11px] text-amber-200 border border-amber-500/30 font-mono font-bold">
-                {isAr ? 'الوصول: 30 - 45 دقيقة' : 'ETA: 30 - 45 min'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              {isAr 
-                ? 'سيتم توجيه أقرب ورشة متنقلة وفني ميكانيكي / كهربائي إلى موقع سيارتك في جدة مباشرة بعد إتمام الطلب.'
-                : 'The nearest mobile mechanic workshop will be dispatched to your vehicle in Jeddah immediately.'}
-            </p>
+
+          {/* Clean Date Cards Grid / Slider */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
+            {datePresets.map((preset) => {
+              const isSelected = activeDate === preset.dateStr;
+              return (
+                <button
+                  key={preset.dateStr}
+                  type="button"
+                  onClick={() => handleDateChange(preset.dateStr)}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 min-h-[64px] ${
+                    isSelected
+                      ? 'bg-brand-red border-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/30'
+                      : 'bg-black/40 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <span className={`text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-gray-200'}`}>
+                    {preset.label}
+                  </span>
+                  <span className={`text-[11px] font-mono leading-none ${isSelected ? 'text-white/90 font-bold' : 'text-gray-400'}`}>
+                    {preset.sublabel}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
-      ) : (
-        /* Scheduled Time Slots Flow */
-        <div className="space-y-4 animate-fadeIn">
-          {/* 1. Date Selector Tabs */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-gray-200 flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 text-brand-red" />
-                <span>{isAr ? '1. اختر يوم الزيارة:' : '1. Select Visit Date:'}</span>
-              </label>
-              <span className="text-[11px] text-gray-300 font-mono bg-black/50 px-2.5 py-1 rounded-lg border border-white/10">
-                {friendlyDate || activeDate}
+
+        {/* Alert if today has no available slots left */}
+        {availableSlotsCount === 0 && (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-center gap-2 text-amber-300 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>
+                {isAr 
+                  ? 'انتهت فترات الصيانة المتاحة لهذا اليوم. يمكنك اختيار موعد غداً أو في الأيام التالية.' 
+                  : 'All slots for this day have ended. You can choose tomorrow or upcoming days.'}
               </span>
             </div>
-
-            {/* Clean Date Cards Grid / Slider */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
-              {datePresets.map((preset) => {
-                const isSelected = activeDate === preset.dateStr;
-                return (
-                  <button
-                    key={preset.dateStr}
-                    type="button"
-                    onClick={() => handleDateChange(preset.dateStr)}
-                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 min-h-[64px] ${
-                      isSelected
-                        ? 'bg-brand-red border-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/30'
-                        : 'bg-black/40 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    <span className={`text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-gray-200'}`}>
-                      {preset.label}
-                    </span>
-                    <span className={`text-[11px] font-mono leading-none ${isSelected ? 'text-white/90 font-bold' : 'text-gray-400'}`}>
-                      {preset.sublabel}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Alert if today has no available slots left */}
-          {availableSlotsCount === 0 && (
-            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
-              <div className="flex items-center gap-2 text-amber-300 text-xs">
-                <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-                <span>
-                  {isAr 
-                    ? 'انتهت فترات الصيانة المتاحة لهذا اليوم. يمكنك اختيار موعد غداً أو طلب الخدمة الفورية.' 
-                    : 'All slots for this day have ended. You can book tomorrow or request express dispatch.'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
-                {datePresets[1] && (
-                  <button
-                    type="button"
-                    onClick={() => handleDateChange(datePresets[1].dateStr)}
-                    className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer text-center"
-                  >
-                    📅 {isAr ? 'مواعيد غداً' : 'Book Tomorrow'}
-                  </button>
-                )}
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              {datePresets[1] && (
                 <button
                   type="button"
-                  onClick={() => {
-                    handleImmediateChange(true);
-                    handleTimeSlotChange('فوري خلال 45 دقيقة ⚡');
-                  }}
-                  className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-brand-red hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                  onClick={() => handleDateChange(datePresets[1].dateStr)}
+                  className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all cursor-pointer text-center"
                 >
-                  <Zap className="w-3.5 h-3.5 text-amber-300" />
-                  <span>{isAr ? 'خدمة فورية الآن' : 'Express Now'}</span>
+                  📅 {isAr ? 'مواعيد غداً' : 'Book Tomorrow'}
                 </button>
-              </div>
+              )}
             </div>
-          )}
+          </div>
+        )}
 
           {/* 2. Time Slots Grid */}
           <div className="space-y-2">
@@ -309,7 +234,7 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
               {slotAvailabilities.map((avail) => {
                 const label = isAr ? avail.slot.labelAr : avail.slot.labelEn;
-                const isSelected = !activeImmediate && (activeTimeSlot === label || activeTimeSlot === avail.slot.labelAr || activeTimeSlot === avail.slot.labelEn);
+                const isSelected = (activeTimeSlot === label || activeTimeSlot === avail.slot.labelAr || activeTimeSlot === avail.slot.labelEn);
                 const isSelectable = avail.isSelectable;
 
                 return (
@@ -414,23 +339,23 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
                 {/* Quick pre-set common prayer / clock options */}
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {[
-                    'بعد صلاة الظهر مباشرة',
-                    'بعد صلاة العصر (04:30 م)',
-                    'بعد صلاة المغرب (06:45 م)',
-                    'بعد صلاة العشاء (08:30 م)',
-                    'الساعة 10:00 صباحاً',
-                    'الساعة 02:00 ظهراً'
-                  ].map((quickText) => (
+                    { ar: 'بعد صلاة الظهر مباشرة', en: 'Right after Dhuhr' },
+                    { ar: 'بعد صلاة العصر (04:30 م)', en: 'After Asr (04:30 PM)' },
+                    { ar: 'بعد صلاة المغرب (06:45 م)', en: 'After Maghrib (06:45 PM)' },
+                    { ar: 'بعد صلاة العشاء (08:30 م)', en: 'After Isha (08:30 PM)' },
+                    { ar: 'الساعة 10:00 صباحاً', en: '10:00 AM' },
+                    { ar: 'الساعة 02:00 ظهراً', en: '02:00 PM' }
+                  ].map((preset) => (
                     <button
-                      key={quickText}
+                      key={preset.en}
                       type="button"
                       onClick={() => {
-                        handleTimeSlotChange(`${quickText} (مخصص)`);
+                        handleTimeSlotChange(isAr ? `${preset.ar} (مخصص)` : `${preset.en} (Custom)`);
                         setShowCustomTime(false);
                       }}
                       className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-gray-300 hover:text-white cursor-pointer transition-colors"
                     >
-                      {quickText}
+                      {isAr ? preset.ar : preset.en}
                     </button>
                   ))}
                 </div>
@@ -464,7 +389,6 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
             </div>
           )}
         </div>
-      )}
     </div>
   );
 };

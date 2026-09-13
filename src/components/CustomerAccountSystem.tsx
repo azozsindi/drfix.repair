@@ -583,7 +583,12 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         } catch {}
       }
     }, (err) => {
-      console.error('Customer sync error:', err);
+      const errStr = err instanceof Error ? err.message : String(err);
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+        console.warn('[Firestore Quota] Customer real-time sync paused, using local profile session.');
+      } else {
+        console.error('Customer sync error:', err);
+      }
     });
 
     // Initial background car sync

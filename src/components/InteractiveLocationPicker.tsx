@@ -243,7 +243,7 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
               type="button"
               onClick={() => setIsRangeModalOpen(true)}
               className="px-3 py-2.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition-all flex items-center justify-center gap-1 cursor-pointer"
-              title="فحص رسوم ونطاق التغطية"
+              title={isAr ? 'فحص رسوم ونطاق التغطية' : 'Check service zones & travel fees'}
             >
               <Compass className="w-3.5 h-3.5 text-blue-400" />
               <span className="hidden sm:inline">{isAr ? 'النطاق' : 'Zones'}</span>
@@ -255,7 +255,7 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-2.5 py-2.5 rounded-xl text-xs bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-all flex items-center justify-center"
-                title="عرض في خرائط Google"
+                title={isAr ? 'عرض في خرائط Google' : 'View in Google Maps'}
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
@@ -272,56 +272,13 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
                 <div className="font-bold text-amber-300">{locationError}</div>
                 <div className="text-[11px] text-gray-300 leading-relaxed">
                   {isAr 
-                    ? 'لا تشيل هم! يمكنك ببساطة اختيار حيك في جدة من القائمة السريعة بالأسفل بنقرة واحدة بدون الحاجة لتفعيل الـ GPS.' 
-                    : 'No problem! Simply select your district from the quick buttons below.'}
+                    ? 'لا تشيل هم! يمكنك إدخال اسم الحي والشارع بالأسفل أو النقر على زر الخريطة التفاعلية لتحديد الموقع بدقة.' 
+                    : 'No problem! You can enter your district/street below or use the map picker.'}
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        {/* Quick Jeddah Districts Chips (Clickable) */}
-        <div className="mt-4 pt-3.5 border-t border-white/10 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-gray-300 flex items-center gap-1.5">
-              <span>⚡</span>
-              <span>{isAr ? 'أحياء جدة الأكثر طلباً (انقر للاختيار المباشر):' : 'Popular Jeddah Districts:'}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowAllDistricts(!showAllDistricts)}
-              className="text-brand-red hover:underline text-[11px] font-bold cursor-pointer"
-            >
-              {showAllDistricts ? (isAr ? 'عرض أقل' : 'Show less') : (isAr ? 'عرض كل الأحياء (+15)' : 'Show all (+15)')}
-            </button>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
-            {(showAllDistricts ? POPULAR_JEDDAH_DISTRICTS : POPULAR_JEDDAH_DISTRICTS.slice(0, 10)).map((district) => {
-              const isSelected = locationName.includes(district.nameAr);
-              return (
-                <button
-                  key={district.id}
-                  type="button"
-                  onClick={() => handleSelectDistrict(district)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    isSelected
-                      ? 'bg-brand-red text-white shadow-md shadow-brand-red/30 scale-105 border border-brand-red'
-                      : 'bg-white/5 hover:bg-white/15 text-gray-300 border border-white/10 hover:border-white/20'
-                  }`}
-                >
-                  {isSelected && <Check className="w-3 h-3 text-white" />}
-                  <span>{district.nameAr}</span>
-                  {district.travelFee > 0 && (
-                    <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${isSelected ? 'bg-black/30 text-white' : 'bg-blue-500/20 text-blue-300'}`}>
-                      +{district.travelFee}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Detailed Address / Street / Landmark Input */}
         <div className="mt-3.5 pt-3 border-t border-white/5 space-y-1.5">
@@ -459,7 +416,7 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
                 >
                   <span className="w-2.5 h-2.5 rounded-full bg-brand-red animate-ping" />
                   <span className="absolute -bottom-5 text-[9px] font-bold text-brand-red bg-black/80 px-1.5 py-0.5 rounded whitespace-nowrap">
-                    ورشة DR.FIX
+                    {isAr ? 'ورشة DR.FIX' : 'DR.FIX HQ'}
                   </span>
                 </div>
 
@@ -502,7 +459,7 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
                 >
                   <div className="bg-emerald-500 text-white text-[11px] font-black px-2 py-0.5 rounded-md shadow-lg flex items-center gap-1 whitespace-nowrap mb-1">
                     <CheckCircle2 className="w-3 h-3" />
-                    <span>موقع سيارتك</span>
+                    <span>{isAr ? 'موقع سيارتك' : 'Car Location'}</span>
                   </div>
                   <div className="w-7 h-7 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center text-white shadow-xl shadow-emerald-500/50">
                     <MapPin className="w-4 h-4 fill-white" />

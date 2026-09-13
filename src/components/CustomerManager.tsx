@@ -215,10 +215,17 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         }
       });
 
-      setCustomers(Array.from(unifiedMap.values()));
+      const unifiedList = Array.from(unifiedMap.values());
+      setCustomers(unifiedList);
+      try { localStorage.setItem('drfix_cached_customers_manager', JSON.stringify(unifiedList)); } catch {}
       setLoading(false);
     }, (err) => {
-      console.error('Firestore customers listener error:', err);
+      const errStr = err instanceof Error ? err.message : String(err);
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+        console.warn('[Firestore Quota] Customers listener paused; using local memory/cache.');
+      } else {
+        console.error('Firestore customers listener error:', err);
+      }
       setLoading(false);
     });
 

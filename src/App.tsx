@@ -220,9 +220,37 @@ interface FirestoreErrorInfo {
   }
 }
 
+export function isFirestoreQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  const str = error instanceof Error ? error.message : typeof error === 'string' ? error : JSON.stringify(error);
+  return (
+    str.includes('Quota limit exceeded') ||
+    str.includes('Quota exceeded') ||
+    str.includes('quota metric') ||
+    str.includes('RESOURCE_EXHAUSTED') ||
+    str.includes('exceeded free quota') ||
+    str.includes('Free daily read units per project')
+  );
+}
+
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errStr = error instanceof Error ? error.message : String(error);
+
+  if (isFirestoreQuotaError(error)) {
+    try {
+      sessionStorage.setItem('drfix_firestore_quota_exceeded', 'true');
+    } catch {}
+    console.warn(`[Firestore Quota Fallback] Free daily quota reached for path: ${path || 'unknown'}. Smoothly operating in local cached mode.`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('firestore-quota-exceeded', { 
+        detail: { path, error: errStr } 
+      }));
+    }
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errStr,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -951,6 +979,15 @@ const Ticker = ({ settings }: { settings: AppSettings }) => {
   
   const items = (lang === 'ar' && settings.tickerText)
     ? settings.tickerText.split('•').map(s => s.trim()).filter(Boolean)
+    : lang === 'en'
+    ? [
+        '24/7 Mobile Car Maintenance',
+        'Free Car Wash with Every Service',
+        'Available Round the Clock',
+        'DR. FIX AUTO SERVICES',
+        'Certified Technicians to Your Doorstep',
+        'Fast Response & Guaranteed Quality'
+      ]
     : [
         'خدمة صيانة متنقلة 24/7',
         'غسيل مجاني مع كل صيانة',
@@ -1137,7 +1174,7 @@ const Navbar = ({
               <a 
                 href={`tel:${settings.phone || '0546870807'}`} 
                 className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all shrink-0"
-                title="اتصال هاتفي"
+                title={lang === 'ar' ? 'اتصال هاتفي' : 'Phone Call'}
               >
                 <Phone className="w-3.5 h-3.5" />
               </a>
@@ -1146,7 +1183,7 @@ const Navbar = ({
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all shadow-sm shrink-0 group"
-                title="واتساب"
+                title={lang === 'ar' ? 'واتساب' : 'WhatsApp'}
               >
                 <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
               </a>
@@ -1219,7 +1256,7 @@ const Navbar = ({
                     className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 transition-colors"
                   >
                     <Phone className="w-4 h-4 text-brand-red" />
-                    <span>اتصال هاتفي</span>
+                    <span>{lang === 'ar' ? 'اتصال هاتفي' : 'Phone Call'}</span>
                   </a>
                   <a 
                     href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
@@ -1229,7 +1266,7 @@ const Navbar = ({
                     className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 hover:border-brand-red transition-colors group"
                   >
                     <MessageCircle className="w-4 h-4 text-brand-red" />
-                    <span>واتساب</span>
+                    <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
                   </a>
                 </div>
 
@@ -1594,8 +1631,14 @@ const STATIC_SERVICES = [
 ];
 
 const Services = ({ onServiceSelect }: { onServiceSelect: (type: string) => void }) => {
-  const [services, setServices] = useState<ServiceItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [services, setServices] = useState<ServiceItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_services');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return STATIC_SERVICES as any;
+  });
+  const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [startX, setStartX] = useState(0);
@@ -1610,6 +1653,7 @@ const Services = ({ onServiceSelect }: { onServiceSelect: (type: string) => void
         results.push({ id: doc.id, ...doc.data() } as ServiceItem);
       });
       setServices(results);
+      try { localStorage.setItem('drfix_cached_services', JSON.stringify(results)); } catch {}
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'services');
@@ -1657,13 +1701,26 @@ const Services = ({ onServiceSelect }: { onServiceSelect: (type: string) => void
   };
 
   const allServices = React.useMemo(() => {
-    const merged = [...services];
+    const seen = new Set<string>();
+    const merged: ServiceItem[] = [];
+
+    services.forEach(s => {
+      const key = s.id || s.title;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(s);
+      }
+    });
+
     STATIC_SERVICES.forEach(staticS => {
-      if (!services.some(s => s.title === staticS.title)) {
+      const key = staticS.id || staticS.title;
+      if (!seen.has(key) && !merged.some(m => m.title === staticS.title)) {
+        seen.add(key);
         merged.push(staticS as any);
       }
     });
-    return merged;
+
+    return merged.length > 0 ? merged : (STATIC_SERVICES as any);
   }, [services]);
 
   if (loading) return null;
@@ -1738,11 +1795,57 @@ interface Offer {
   createdAt: Timestamp;
 }
 
-const STATIC_OFFERS: Offer[] = [];
+const STATIC_OFFERS: Offer[] = [
+  {
+    id: 'off-1',
+    title: 'عرض الصيانة الدورية وتغيير الزيت',
+    titleEn: 'Regular Maintenance & Oil Change Offer',
+    price: '149 ريال',
+    subtitle: 'ريال شامل الضريبة والغسيل',
+    subtitleEn: 'SAR inclusive of tax & wash',
+    features: ['تغيير زيت وفلتر أصلي', 'فحص شامل 25 نقطة', 'غسيل ساطع للسيارة مجاناً', 'ضمان معتمد 3 أشهر'],
+    featuresEn: ['Genuine oil & filter change', '25-point comprehensive check', 'Free express car wash', '3-month warranty'],
+    icon: 'zap',
+    active: true,
+    createdAt: Timestamp.now()
+  },
+  {
+    id: 'off-2',
+    title: 'باقة الفحص الشامل وبرمجة الكمبيوتر',
+    titleEn: 'Comprehensive Diagnostics & Computer Scan',
+    price: '99 ريال',
+    subtitle: 'ريال فقط لفترة محدودة',
+    subtitleEn: 'SAR only for limited time',
+    features: ['فحص كمبيوتر بأحدث الأجهزة', 'كشف أعطال الماكينة والجير', 'فحص الحساسات والكهرباء', 'تقرير إلكتروني فوري عبر واتساب'],
+    featuresEn: ['Latest computer scan tools', 'Engine & gearbox fault check', 'Sensors & electric system check', 'Instant WhatsApp digital report'],
+    icon: 'tag',
+    active: true,
+    createdAt: Timestamp.now()
+  },
+  {
+    id: 'off-3',
+    title: 'باقة صيانة التكييف وتعبئة الفريون',
+    titleEn: 'AC Service & Original Freon Refill',
+    price: '199 ريال',
+    subtitle: 'ريال شامل الفحص وتغيير الفلتر',
+    subtitleEn: 'SAR inclusive of check & filter',
+    features: ['فحص ضغط وتنسيم دائرة التبريد', 'تعبئة فريون أمريكي أصلي', 'تنظيف ثلاجة المكيف والمروحة', 'تعقيم مجاري الهواء'],
+    featuresEn: ['Pressure & leak test', 'Original US freon refill', 'Evaporator core & blower cleaning', 'Air duct sanitization'],
+    icon: 'zap',
+    active: true,
+    createdAt: Timestamp.now()
+  }
+];
 
 const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) => {
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [offers, setOffers] = useState<Offer[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_offers');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return STATIC_OFFERS;
+  });
+  const [loading, setLoading] = useState(false);
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
 
@@ -1757,6 +1860,7 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
         }
       });
       setOffers(results);
+      try { localStorage.setItem('drfix_cached_offers', JSON.stringify(results)); } catch {}
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'offers');
@@ -1766,7 +1870,26 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
   }, []);
 
   const allOffers = React.useMemo(() => {
-    return offers;
+    const seen = new Set<string>();
+    const merged: Offer[] = [];
+
+    offers.forEach(o => {
+      const key = o.id || o.title;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(o);
+      }
+    });
+
+    STATIC_OFFERS.forEach(staticO => {
+      const key = staticO.id || staticO.title;
+      if (!seen.has(key) && !merged.some(m => m.title === staticO.title)) {
+        seen.add(key);
+        merged.push(staticO);
+      }
+    });
+
+    return merged.length > 0 ? merged : STATIC_OFFERS;
   }, [offers]);
 
   if (loading || allOffers.length === 0) return null;
@@ -1857,8 +1980,14 @@ const STATIC_GALLERY: GalleryItem[] = [
 ];
 
 const Gallery = () => {
-  const [items, setItems] = useState<GalleryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<GalleryItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_gallery');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return STATIC_GALLERY;
+  });
+  const [loading, setLoading] = useState(false);
   const { t, lang } = useLanguage();
 
   useEffect(() => {
@@ -1869,6 +1998,7 @@ const Gallery = () => {
         results.push({ id: doc.id, ...doc.data() } as GalleryItem);
       });
       setItems(results);
+      try { localStorage.setItem('drfix_cached_gallery', JSON.stringify(results)); } catch {}
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'gallery');
@@ -1878,13 +2008,26 @@ const Gallery = () => {
   }, []);
 
   const allItems = React.useMemo(() => {
-    const merged = [...items];
+    const seen = new Set<string>();
+    const merged: GalleryItem[] = [];
+
+    items.forEach(item => {
+      const key = item.id || item.title;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    });
+
     STATIC_GALLERY.forEach(staticItem => {
-      if (!items.some(item => item.title === staticItem.title)) {
+      const key = staticItem.id || staticItem.title;
+      if (!seen.has(key) && !merged.some(item => item.title === staticItem.title)) {
+        seen.add(key);
         merged.push(staticItem);
       }
     });
-    return merged;
+
+    return merged.length > 0 ? merged : STATIC_GALLERY;
   }, [items]);
 
   if (loading) return null;
@@ -2893,20 +3036,22 @@ const BookingForm = ({
                 <h3 className="text-3xl font-black mb-2 italic">{t.booking.successTitle}</h3>
                 {confirmedBookingId && (
                   <div className="my-3 px-4 py-2 bg-brand-red/10 border border-brand-red/30 rounded-xl font-mono text-brand-red font-bold text-lg">
-                    رقم الحجز: {confirmedBookingId}
+                    {lang === 'ar' ? `رقم الحجز: ${confirmedBookingId}` : `Booking ID: ${confirmedBookingId}`}
                   </div>
                 )}
                 <p className="text-gray-300 text-base max-w-md">{t.booking.successDesc}</p>
-                <p className="text-xs text-gray-400 mt-3">تم إرسال طلبك بنجاح وجاري تجهيز الخدمة فوراً.</p>
+                <p className="text-xs text-gray-400 mt-3">
+                  {lang === 'ar' ? 'تم إرسال طلبك بنجاح وجاري تجهيز الخدمة فوراً.' : 'Your request was successfully submitted and is being processed.'}
+                </p>
                 <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                   <a
-                    href={`https://api.whatsapp.com/send?phone=${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}&text=${encodeURIComponent(`السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}`)}`}
+                    href={`https://api.whatsapp.com/send?phone=${(settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '')}&text=${encodeURIComponent(lang === 'ar' ? `السلام عليكم، حجزت صيانة سيارة عبر الموقع برقم #${confirmedBookingId || ''}` : `Hello, I booked a car service appointment #${confirmedBookingId || ''}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-5 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all active:scale-95"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>تأكيد عبر واتساب</span>
+                    <span>{lang === 'ar' ? 'تأكيد عبر واتساب' : 'Confirm via WhatsApp'}</span>
                   </a>
                   <button 
                     type="button"
@@ -2917,7 +3062,7 @@ const BookingForm = ({
                     className="px-5 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-brand-red/20 cursor-pointer transition-all active:scale-95"
                   >
                     <Clock className="w-4 h-4" />
-                    <span>متابعة حالة الحجز في كرت الصيانة</span>
+                    <span>{lang === 'ar' ? 'متابعة حالة الحجز في كرت الصيانة' : 'Track Booking in Service Card'}</span>
                   </button>
                   <button 
                     type="button"
@@ -3028,7 +3173,13 @@ const STATIC_TESTIMONIALS = [
 ];
 
 const Testimonials = () => {
-  const [testimonials, setTestimonials] = useState<TestimonialData[]>([]);
+  const [testimonials, setTestimonials] = useState<TestimonialData[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_testimonials');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return STATIC_TESTIMONIALS as any;
+  });
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isMouseDown, setIsMouseDown] = useState(false);
@@ -3053,9 +3204,14 @@ const Testimonials = () => {
       });
       
       setTestimonials(data);
+      try { localStorage.setItem('drfix_cached_testimonials', JSON.stringify(data)); } catch {}
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching testimonials:", error);
+      if (!isFirestoreQuotaError(error)) {
+        console.error("Error fetching testimonials:", error);
+      } else {
+        console.warn("[Firestore Quota] Testimonials using offline/static fallback.");
+      }
       handleFirestoreError(error, OperationType.LIST, 'testimonials');
       setLoading(false);
     });
@@ -3094,7 +3250,31 @@ const Testimonials = () => {
     }
   };
 
-  const displayData = React.useMemo(() => [...testimonials, ...STATIC_TESTIMONIALS], [testimonials]);
+  const displayData = React.useMemo(() => {
+    const seen = new Set<string>();
+    const merged: TestimonialData[] = [];
+
+    testimonials.forEach(t => {
+      const key = t.id || `${t.name}-${t.comment}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(t);
+      }
+    });
+
+    STATIC_TESTIMONIALS.forEach(staticT => {
+      const key = staticT.id;
+      const textKey = `${staticT.name}-${staticT.comment}`;
+      const duplicate = merged.some(m => m.id === staticT.id || (m.name === staticT.name && m.comment === staticT.comment));
+      if (!seen.has(key) && !seen.has(textKey) && !duplicate) {
+        seen.add(key);
+        seen.add(textKey);
+        merged.push(staticT as any);
+      }
+    });
+
+    return merged.length > 0 ? merged : (STATIC_TESTIMONIALS as any);
+  }, [testimonials]);
 
   if (loading) return null;
 
@@ -3431,7 +3611,14 @@ const AdminDashboard = ({
   const lastChimeTime = useRef<number>(0);
   const lastAssignmentChimeTime = useRef<number>(0);
 
-  const [records, setRecords] = useState<MaintenanceRecord[]>([]);
+  const [records, setRecords] = useState<MaintenanceRecord[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_maintenance');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [testimonials, setTestimonials] = useState<TestimonialData[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -3452,7 +3639,26 @@ const AdminDashboard = ({
       return DEFAULT_SAMPLE_CONTRACTS;
     }
   });
-  const [staffList, setStaffList] = useState<StaffUser[]>([]);
+  const [staffList, setStaffList] = useState<StaffUser[]>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_staff');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [quotaExceededInfo, setQuotaExceededInfo] = useState<{ path?: string; message?: string } | null>(null);
+
+  useEffect(() => {
+    const handleQuota = (e: any) => {
+      setQuotaExceededInfo({
+        path: e.detail?.path || '',
+        message: e.detail?.error || ''
+      });
+    };
+    window.addEventListener('firestore-quota-exceeded', handleQuota);
+    return () => window.removeEventListener('firestore-quota-exceeded', handleQuota);
+  }, []);
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
@@ -3889,7 +4095,7 @@ const AdminDashboard = ({
         isSyncStabilized.current = true;
       }, 4000);
 
-      const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'));
+      const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'), limit(150));
 
       const unsubM = onSnapshot(qM, (snapshot) => {
         const results: MaintenanceRecord[] = [];
@@ -3975,7 +4181,14 @@ const AdminDashboard = ({
         });
         results.sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
         setRecords(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'maintenance'));
+        try { localStorage.setItem('drfix_cached_maintenance', JSON.stringify(results)); } catch {}
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'maintenance');
+        try {
+          const cached = localStorage.getItem('drfix_cached_maintenance');
+          if (cached) setRecords(JSON.parse(cached));
+        } catch {}
+      });
 
       // Testimonials
       const qT = collection(db, 'testimonials');
@@ -4023,14 +4236,21 @@ const AdminDashboard = ({
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
 
       // Staff Users
-      const qStaff = query(collection(db, 'staff'), orderBy('createdAt', 'desc'));
+      const qStaff = query(collection(db, 'staff'), orderBy('createdAt', 'desc'), limit(50));
       const unsubStaff = onSnapshot(qStaff, (snapshot) => {
         const results: StaffUser[] = [];
         snapshot.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as StaffUser);
         });
         setStaffList(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'staff'));
+        try { localStorage.setItem('drfix_cached_staff', JSON.stringify(results)); } catch {}
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'staff');
+        try {
+          const cached = localStorage.getItem('drfix_cached_staff');
+          if (cached) setStaffList(JSON.parse(cached));
+        } catch {}
+      });
 
       // Partners
       const qPartners = query(collection(db, 'partners'), orderBy('order', 'asc'));
@@ -5546,6 +5766,54 @@ const AdminDashboard = ({
             ))}
           </div>
         </div>
+
+        {/* Firestore Quota Notice Banner */}
+        {quotaExceededInfo && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-sm sm:text-base text-amber-300">
+                    {lang === 'ar' ? 'تنبيه: استهلاك الحصة اليومية المجانية لقاعدة البيانات (Firestore Quota Limit)' : 'Notice: Free Daily Read Quota Exceeded'}
+                  </h4>
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {lang === 'ar' ? 'البيانات تعمل محلياً (Offline Cache)' : 'Working via Offline Cache'}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 leading-relaxed max-w-3xl">
+                  {lang === 'ar' 
+                    ? 'وصلت قاعدة البيانات للحد الأقصى اليومي المجاني (50,000 عملية قراءة/يومياً). سيتم تجديد الحصة تلقائياً غداً، أو يمكنك الترقية لتجنب أي توقف. بيانات الحجوزات والفنيين معروضة حالياً من النسخة المحلية.'
+                    : 'Your database reached the free daily Spark limit (50k daily reads). Quota automatically resets tomorrow, or you can upgrade. Local cached data is being displayed.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <a
+                href="https://console.firebase.google.com/project/hr-system-2026/firestore/databases/ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601/data?openUpgradeDialog=true"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition-colors"
+              >
+                <span>{lang === 'ar' ? 'ترقية الخطة في Firebase' : 'Upgrade Plan'}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+              <button
+                onClick={() => setQuotaExceededInfo(null)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer"
+                title={lang === 'ar' ? 'إخفاء' : 'Dismiss'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
 
         <AnimatePresence mode="wait">
           {!isTechnician && activeTab === 'dashboard' && (
@@ -7357,7 +7625,7 @@ const AdminDashboard = ({
                           : "bg-white/5 text-gray-400 hover:text-white hover:bg-white/10"
                       )}
                     >
-                      جميع التقييمات ({testimonials.length + STATIC_TESTIMONIALS.length})
+                      جميع التقييمات ({testimonials.length + STATIC_TESTIMONIALS.filter(st => !testimonials.some(t => t.name === st.name && t.comment === st.comment)).length})
                     </button>
                     {[5, 4, 3, 2, 1].map(r => (
                       <button
@@ -7412,7 +7680,27 @@ const AdminDashboard = ({
 
               {/* Testimonials List */}
               <div className="space-y-4">
-                {[...testimonials, ...STATIC_TESTIMONIALS.map(st => ({ ...st, id: 'static-' + st.name, isStatic: true }))]
+                {(() => {
+                  const seen = new Set<string>();
+                  const adminList: any[] = [];
+                  testimonials.forEach(t => {
+                    const key = t.id || `${t.name}-${t.comment}`;
+                    if (!seen.has(key)) {
+                      seen.add(key);
+                      adminList.push(t);
+                    }
+                  });
+                  STATIC_TESTIMONIALS.forEach(st => {
+                    const key = st.id;
+                    const textKey = `${st.name}-${st.comment}`;
+                    if (!seen.has(key) && !seen.has(textKey) && !adminList.some(a => a.name === st.name && a.comment === st.comment)) {
+                      seen.add(key);
+                      seen.add(textKey);
+                      adminList.push({ ...st, id: 'static-' + st.id, isStatic: true });
+                    }
+                  });
+                  return adminList;
+                })()
                   .filter(t => testimonialRatingFilter === 'all' || (t.rating || 5) === testimonialRatingFilter)
                   .filter(t => {
                     if (!testimonialSearch.trim()) return true;
@@ -7423,13 +7711,13 @@ const AdminDashboard = ({
                       (t.reply || '').toLowerCase().includes(q)
                     );
                   })
-                  .map((t) => {
+                  .map((t, idx) => {
                     const displayName = t.name && t.name.trim() ? t.name.trim() : 'زائر';
                     const initialChar = displayName.charAt(0).toUpperCase();
                     const starRating = typeof t.rating === 'number' && t.rating >= 1 && t.rating <= 5 ? t.rating : 5;
 
                     return (
-                      <div key={t.id || displayName} className="glass-card p-6 border-white/5 space-y-4 hover:border-white/10 transition-colors">
+                      <div key={t.id ? `${t.id}` : `adm-t-${idx}`} className="glass-card p-6 border-white/5 space-y-4 hover:border-white/10 transition-colors">
                         <div className="flex flex-wrap justify-between items-start gap-4">
                           <div className="flex items-center gap-4">
                             <div className="w-11 h-11 bg-brand-red/20 border border-brand-red/30 rounded-2xl flex items-center justify-center font-bold text-brand-red shrink-0 text-base">
@@ -10015,7 +10303,13 @@ const FAQ = () => {
 };
 
 const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolean }) => {
-  const [visitors, setVisitors] = useState<number | null>(null);
+  const [visitors, setVisitors] = useState<number | null>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_visitors');
+      if (cached) return Number(cached);
+    } catch {}
+    return 1250;
+  });
   const [legalModalState, setLegalModalState] = useState<{ isOpen: boolean; tab: 'privacy' | 'terms' }>({
     isOpen: false,
     tab: 'privacy'
@@ -10023,6 +10317,10 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
   const { t, lang } = useLanguage();
 
   useEffect(() => {
+    if (sessionStorage.getItem('drfix_firestore_quota_exceeded') === 'true') {
+      return;
+    }
+
     const updateVisitors = async () => {
       const statsRef = doc(db, 'stats', 'global');
       
@@ -10033,6 +10331,7 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
           // Create initial doc
           await setDoc(statsRef, { visitorCount: 1 });
           setVisitors(1);
+          try { localStorage.setItem('drfix_cached_visitors', '1'); } catch {}
         } else {
           // Check if already counted in this session
           const hasVisited = sessionStorage.getItem('hasVisited');
@@ -10047,13 +10346,26 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
         // Listen for real-time updates
         const unsubscribe = onSnapshot(statsRef, (doc) => {
           if (doc.exists()) {
-            setVisitors(doc.data().visitorCount);
+            const count = doc.data().visitorCount;
+            setVisitors(count);
+            try { localStorage.setItem('drfix_cached_visitors', String(count)); } catch {}
           }
-        }, (error) => handleFirestoreError(error, OperationType.GET, 'stats/global'));
+        }, (error) => {
+          if (!isFirestoreQuotaError(error)) {
+            handleFirestoreError(error, OperationType.GET, 'stats/global');
+          } else {
+            console.warn('[Firestore Quota] Real-time visitor sync paused.');
+          }
+        });
         
         return unsubscribe;
       } catch (error) {
-        console.error("Error updating visitor count:", error);
+        if (!isFirestoreQuotaError(error)) {
+          console.error("Error updating visitor count:", error);
+        } else {
+          console.warn("[Firestore Quota] Visitor count offline fallback, using local value.");
+          try { sessionStorage.setItem('drfix_firestore_quota_exceeded', 'true'); } catch {}
+        }
         return () => {};
       }
     };
@@ -10972,8 +11284,9 @@ function MainContent() {
               <PartnersPage 
                 partners={partners} 
                 settings={settings} 
+                lang={lang}
                 onSelectPartnerForBooking={(partner) => {
-                  setSelectedService(`صيانة بالتنسيق مع الشريك: ${partner.name}`);
+                  setSelectedService(lang === 'ar' ? `صيانة بالتنسيق مع الشريك: ${partner.name}` : `Service via Partner: ${partner.name}`);
                   navigate('/booking');
                 }} 
               />
