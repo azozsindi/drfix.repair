@@ -286,7 +286,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
       return (
         record.status === 'in-progress' ||
         record.status === 'completed' ||
-        steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول') || s.stepKey === 'accepted' || s.stepKey === 'on_the_way')
+        steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول'))
       );
     }
     if (stepNumber === 2) {
@@ -1468,6 +1468,20 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     return `https://api.whatsapp.com/send?phone=${customerWaPhone}&text=${text}`;
   };
 
+  // WhatsApp link to notify customer specifically that technician is on the way with ETA
+  const getOnTheWayCustomerWhatsAppUrl = (currentEta: string = etaTime) => {
+    const customerName = (record.customerName || record.name || 'عميلنا العزيز').trim();
+    const carDetails = `${record.carModel || 'سيارتك'}${record.plateNumber ? ` (${record.plateNumber})` : ''}`;
+    const text = 
+      `السلام عليكم ورحمة الله وبركاته، أهلاً ${customerName} 👋\n` +
+      `معك كابتن الصيانة الفنية من *DR.FIX* 🚗⚡\n\n` +
+      `أنا الآن بالطريق إليك لخدمة صيانة ${carDetails}.\n` +
+      `⏱️ *الوقت المتوقع للوصول بإذن الله:* ${currentEta || 'خلال دقائق معدودة'}\n` +
+      `📍 رقم الطلب / السند: #${bookingNumber}\n\n` +
+      `يرجى التأكد من تجهيز السيارة أو التواجد في الموقع. شكراً لتعاونكم! 🙏`;
+    return `https://api.whatsapp.com/send?phone=${customerWaPhone}&text=${encodeURIComponent(text)}`;
+  };
+
   // Stage 4: إنشاء نص واتساب لمشاركة القطعة مع الإدارة
   const getStage4ManagementMessage = (type: 'order' | 'pickup' | 'general' = 'order') => {
     const carDetails = `${record.carModel || 'سيارة العميل'}${record.carYear ? ' ' + record.carYear : ''}${record.plateNumber ? ' (' + record.plateNumber + ')' : ''}`;
@@ -1837,7 +1851,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               )}
 
               {/* ========================================================================= */}
-              {/* STAGE 1: وصول الفني */}
+              {/* STAGE 1: في الطريق وتأكيد الوصول */}
               {/* ========================================================================= */}
               {workflowStage === 1 && (
                 <div className="space-y-4 bg-white/5 p-4 sm:p-5 rounded-3xl border border-white/10">
@@ -1848,10 +1862,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-black text-white flex items-center gap-1.5">
-                          <span>المرحلة الأولى: وصول الفني</span>
+                          <span>المرحلة 1: الانطلاق للموقع وتأكيد الوصول</span>
                           <span>📍</span>
                         </h4>
-                        <p className="text-[11px] text-gray-400">تأكيد وصول الفني لموقع العميل وبدء فحص السيارة ميدانياً.</p>
+                        <p className="text-[11px] text-gray-400">حدد الوقت المتوقع (ETA) عند التحرك، ثم أكد الوصول عند وصولك لموقع العميل.</p>
                       </div>
                     </div>
 
@@ -1867,85 +1881,197 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         <span>تم تأكيد وصول الفني للموقع بنجاح ✅</span>
                       </div>
                       <p className="text-xs text-gray-300">
-                        تم تسجيل حالة الوصول وبدء الفحص. يمكنك الانتقال مباشرة للخطوة التالية لتصوير فيديو فحص السيارة والعداد.
+                        تم تسجيل حالة الوصول بالوقت الفعلي وبدء المعاينة. يمكنك الآن الانتقال مباشرة للخطوة التالية لتصوير فيديو فحص السيارة والعداد.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setWorkflowStage(2)}
-                        className="px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98"
-                      >
-                        <span>الانتقال إلى: 2. تصوير فيديو للسيارة كامل والعداد 🎥</span>
-                        <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setWorkflowStage(2)}
+                          className="px-4 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98"
+                        >
+                          <span>الانتقال إلى: 2. تصوير فيديو للسيارة كامل والعداد 🎥</span>
+                          <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+                        </button>
+
+                        {/* Option to re-confirm arrival if needed */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('هل تريد إعادة تحديث أو توثيق ملاحظات الوصول؟')) {
+                              handleConfirmArrival();
+                            }
+                          }}
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+                        >
+                          تحديث ملاحظة الوصول
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {/* Optional ETA helper if technician is still on the way */}
-                      {record.status !== 'on_the_way' && (
-                        <div className="p-3 bg-black/30 border border-white/5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <div className="text-gray-300 flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>هل ما زلت في الطريق للموقع؟</span>
+                      {/* Step 1-A: أنا بالطريق (تحديد المدة المتوقعة للوصول) */}
+                      <div className={cn(
+                        "p-3.5 sm:p-4 rounded-2xl border transition-all",
+                        record.status === 'on_the_way'
+                          ? "bg-indigo-950/30 border-indigo-500/30"
+                          : "bg-black/30 border-white/10 hover:border-indigo-500/30"
+                      )}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-black">
+                              أ
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white">1. أنا بالطريق إلى موقع العميل</span>
+                                <span className="text-xs">🚗💨</span>
+                              </div>
+                              <p className="text-[11px] text-gray-400">حدد كم دقيقة تبغالك حتى يوصل إشعار مباشر للعميل والإدارة</p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <select
-                              value={etaTime}
-                              onChange={(e) => setEtaTime(e.target.value)}
-                              className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px]"
-                            >
-                              <option value="15 دقيقة">15 دقيقة</option>
-                              <option value="30 دقيقة">30 دقيقة</option>
-                              <option value="45 دقيقة">45 دقيقة</option>
-                              <option value="ساعة">ساعة</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={handleOnTheWay}
-                              disabled={isOnTheWaySaving}
-                              className="px-2.5 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-all"
-                            >
-                              {isOnTheWaySaving ? 'جاري التحديث...' : 'تسجيل أني بالطريق 🚗'}
-                            </button>
+
+                          {record.status === 'on_the_way' && (
+                            <span className="px-2.5 py-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold rounded-lg flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>أنت مسجل حالياً: بالطريق ({record.estimatedArrival || etaTime})</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Quick preset buttons for ETA */}
+                        <div className="space-y-2 pt-1">
+                          <label className="text-[11px] font-bold text-gray-300 block">
+                            كم دقيقة تبغالك للوصول؟ (اختر بلمسة واحدة أو اكتب):
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              '10 دقائق',
+                              '15 دقيقة',
+                              '20 دقيقة',
+                              '30 دقيقة',
+                              '45 دقيقة',
+                              'ساعة'
+                            ].map((preset) => {
+                              const isSelected = etaTime.includes(preset);
+                              return (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setEtaTime(`متوقع الوصول خلال ${preset}`)}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border",
+                                    isSelected
+                                      ? "bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30 scale-102"
+                                      : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10 hover:text-white"
+                                  )}
+                                >
+                                  {preset}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1">
+                            <div className="sm:col-span-8">
+                              <input
+                                type="text"
+                                value={etaTime}
+                                onChange={(e) => setEtaTime(e.target.value)}
+                                placeholder="مثال: متوقع الوصول خلال 25 دقيقة (بسبب الزحام)..."
+                                className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                            <div className="sm:col-span-4 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={handleOnTheWay}
+                                disabled={isOnTheWaySaving || !etaTime.trim()}
+                                className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98 whitespace-nowrap"
+                              >
+                                {isOnTheWaySaving ? (
+                                  <>
+                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    <span>جاري الحفظ...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>🚗 أنا بالطريق</span>
+                                    {record.status === 'on_the_way' && <span className="text-[10px] opacity-80">(تحديث)</span>}
+                                  </>
+                                )}
+                              </button>
+
+                              {customerWaPhone && (
+                                <a
+                                  href={getOnTheWayCustomerWhatsAppUrl(etaTime)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors shrink-0"
+                                  title="إرسال رسالة واتساب للعميل بوقت الوصول المتوقع"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline text-[11px]">واتساب</span>
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      )}
-
-                      <div>
-                        <label className="text-xs font-bold text-gray-300 block mb-1.5">
-                          ملاحظات الوصول وبدء الفحص (اختياري):
-                        </label>
-                        <textarea
-                          value={stage1Note}
-                          onChange={(e) => setStage1Note(e.target.value)}
-                          placeholder="مثال: تم الوصول لموقع العميل بنجاح، السيارة متوقفة في الموقع وجاري بدء الفحص..."
-                          rows={3}
-                          className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
-                        />
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
-                        <span className="text-[11px] text-gray-400">
-                          الفني المسؤول: <b className="text-gray-200">{currentTechName}</b>
-                        </span>
+                      {/* Step 1-B: تأكيد الوصول للموقع وبدء الفحص */}
+                      <div className="p-3.5 sm:p-4 rounded-2xl bg-black/40 border border-emerald-500/20 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-black">
+                              ب
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-white">2. وصلت للموقع وبدء الفحص</span>
+                                <span className="text-xs">📍✅</span>
+                              </div>
+                              <p className="text-[11px] text-gray-400">عند وقوفك بجانب سيارة العميل، اضغط تأكيد الوصول للانتقال للمرحلة التالية</p>
+                            </div>
+                          </div>
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={handleConfirmArrival}
-                          disabled={isSavingStage1}
-                          className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
-                        >
-                          {isSavingStage1 ? (
-                            <>
-                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>جاري التأكيد...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4" />
-                              <span>📍 تأكيد الوصول ⬅️ الخطوة 2</span>
-                            </>
-                          )}
-                        </button>
+                        <div>
+                          <label className="text-[11px] font-bold text-gray-300 block mb-1">
+                            ملاحظات الوصول (اختياري):
+                          </label>
+                          <textarea
+                            value={stage1Note}
+                            onChange={(e) => setStage1Note(e.target.value)}
+                            placeholder="مثال: تم الوصول لموقع العميل بنجاح، السيارة متوقفة في الموقع وجاري بدء الفحص والمعاينة..."
+                            rows={2}
+                            className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-brand-red transition-colors resize-none"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
+                          <span className="text-[11px] text-gray-400">
+                            الفني المكلف: <b className="text-gray-200">{currentTechName}</b>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={handleConfirmArrival}
+                            disabled={isSavingStage1}
+                            className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
+                          >
+                            {isSavingStage1 ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <span>جاري تأكيد الوصول...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span>📍 تأكيد الوصول الآن ⬅️ الانتقال لتصوير الفيديو</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

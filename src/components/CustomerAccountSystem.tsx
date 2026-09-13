@@ -13,7 +13,8 @@ import {
   signInWithPopup, 
   setPersistence, 
   browserLocalPersistence, 
-  indexedDBLocalPersistence 
+  indexedDBLocalPersistence,
+  onAuthStateChanged
 } from 'firebase/auth';
 import { db, auth, firebaseConfig } from '../firebase';
 import { CustomerProfile, CustomerCar, MaintenanceRecord, sortBookingsNewestFirst } from '../types';
@@ -608,6 +609,14 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         syncCustomerCarsWithBookings(customer).then(updated => {
           if (updated) setCustomer(updated);
         }).catch(() => {});
+      } else {
+        try {
+          const saved = localStorage.getItem('drfix_customer_session');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed) setCustomer(parsed);
+          }
+        } catch {}
       }
     };
     const handleOpenPortal = () => {
@@ -684,7 +693,10 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }).catch(() => {});
 
       setCustomer(loggedUser);
-      localStorage.setItem('drfix_customer_session', JSON.stringify(loggedUser));
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(loggedUser));
+        localStorage.removeItem('drfix_customer_logged_out');
+      } catch {}
 
       // Auto-sync cars from past/current bookings into customer profile
       syncCustomerCarsWithBookings(loggedUser).then(synced => {
@@ -891,6 +903,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCustomer(profile);
       try {
         localStorage.setItem('drfix_customer_session', JSON.stringify(profile));
+        localStorage.removeItem('drfix_customer_logged_out');
         if (profile.phone) {
           localStorage.setItem('drfix_customer_phone', profile.phone);
         }
@@ -966,6 +979,62 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  // 1. Automatic Firebase Auth State Listener (onAuthStateChanged):
+  // Ensures Google-authenticated customers stay logged in seamlessly across browser restarts, tabs, and sleep
+  useEffect(() => {
+    let isMounted = true;
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!isMounted) return;
+      if (firebaseUser) {
+        // If no customer session is loaded OR if current session doesn't match the Google user ID
+        const isAlreadyMatching = customer?.googleUid === firebaseUser.uid || customer?.id === firebaseUser.uid;
+        if (!isAlreadyMatching) {
+          try {
+            await handleGoogleUserSuccess({
+              uid: firebaseUser.uid,
+              displayName: firebaseUser.displayName,
+              email: firebaseUser.email,
+              photoURL: firebaseUser.photoURL,
+              phoneNumber: firebaseUser.phoneNumber
+            });
+          } catch (err) {
+            console.warn('onAuthStateChanged customer auto-sync error:', err);
+          }
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
+  }, [customer?.id, customer?.googleUid]);
+
+  // 2. Secondary Silent Auto-Resume: If customer session in localStorage was cleared (e.g. In-App browser restart),
+  // but customer phone is verified on this device and user didn't explicitly log out, restore their profile from Firestore
+  useEffect(() => {
+    if (customer) return;
+    try {
+      const isExplicitlyLoggedOut = localStorage.getItem('drfix_customer_logged_out') === 'true';
+      if (isExplicitlyLoggedOut) return;
+
+      const savedPhone = cleanSaudiPhone(localStorage.getItem('drfix_customer_phone') || '');
+      if (savedPhone && savedPhone.length >= 9) {
+        getDoc(doc(db, 'customers', savedPhone)).then((snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as CustomerProfile;
+            const cleanCars = deduplicateCarsList(Array.isArray(data.cars) ? data.cars : [], data.removedCars || []);
+            const updated = { ...data, id: snap.id, cars: cleanCars };
+            setCustomer(updated);
+            try {
+              localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
+            } catch {}
+          }
+        }).catch(() => {});
+      }
+    } catch {}
+  }, [customer?.id]);
+
   const register = async (
     name: string, 
     rawPhone: string, 
@@ -1028,8 +1097,17 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       };
 
       await setDoc(customerRef, newProfile);
-      setCustomer(newProfile);
-      localStorage.setItem('drfix_customer_session', JSON.stringify(newProfile));
+      const localProfile: CustomerProfile = {
+        ...newProfile,
+        createdAt: new Date().toISOString() as any,
+        updatedAt: new Date().toISOString() as any
+      };
+      setCustomer(localProfile);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(localProfile));
+        localStorage.removeItem('drfix_customer_logged_out');
+        localStorage.setItem('drfix_customer_phone', phone);
+      } catch {}
 
       // 1. Notify Admin on Telegram & Firestore
       notifyAdminNewCustomerRegistration({
@@ -1064,6 +1142,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCustomer(null);
     try {
       localStorage.removeItem('drfix_customer_session');
+      localStorage.setItem('drfix_customer_logged_out', 'true');
       auth.signOut().catch(() => {});
     } catch {}
     setIsPortalOpen(false);

@@ -2526,7 +2526,7 @@ const BookingForm = ({
           }
         }
 
-        // Sync localStorage session if active customer matches
+        // Sync localStorage session if active customer matches, or auto-activate session for the booking customer
         try {
           const savedSession = localStorage.getItem('drfix_customer_session');
           if (savedSession) {
@@ -2535,7 +2535,22 @@ const BookingForm = ({
               sObj.cars = updatedCars;
               sObj.phone = cleanPhone;
               localStorage.setItem('drfix_customer_session', JSON.stringify(sObj));
+              localStorage.removeItem('drfix_customer_logged_out');
             }
+          } else {
+            // Auto-login newly booking customer so they can view their card & cars immediately
+            const activeProfile = {
+              id: masterDocId,
+              name: finalName,
+              phone: cleanPhone,
+              cars: updatedCars,
+              totalVisits: 1,
+              status: 'active',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('drfix_customer_session', JSON.stringify(activeProfile));
+            localStorage.removeItem('drfix_customer_logged_out');
           }
         } catch {}
 
