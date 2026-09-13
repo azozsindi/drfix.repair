@@ -474,6 +474,22 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   });
   const [copiedMessage, setCopiedMessage] = useState(false);
 
+  // Stage 4: مشاركة طلب أو استلام القطعة مع الإدارة
+  const [stage4ShareDialog, setStage4ShareDialog] = useState<{
+    isOpen: boolean;
+    type: 'order' | 'pickup' | 'general';
+    adminPhone: string;
+    message: string;
+    url: string;
+  }>({
+    isOpen: false,
+    type: 'order',
+    adminPhone: '',
+    message: '',
+    url: ''
+  });
+  const [copiedStage4Share, setCopiedStage4Share] = useState(false);
+
   const inProgressFileInputRef = useRef<HTMLInputElement>(null);
   const completedFileInputRef = useRef<HTMLInputElement>(null);
   const arrivalVideoInputRef = useRef<HTMLInputElement>(null);
@@ -1452,24 +1468,96 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     return `https://api.whatsapp.com/send?phone=${customerWaPhone}&text=${text}`;
   };
 
+  // Stage 4: إنشاء نص واتساب لمشاركة القطعة مع الإدارة
+  const getStage4ManagementMessage = (type: 'order' | 'pickup' | 'general' = 'order') => {
+    const carDetails = `${record.carModel || 'سيارة العميل'}${record.carYear ? ' ' + record.carYear : ''}${record.plateNumber ? ' (' + record.plateNumber + ')' : ''}`;
+    const partDetails = stage4Note.trim() || 'تفاصيل القطعة المطلوبة مسجلة في التقرير الفني والمرفقات.';
+    const photosCount = stage4Photos.length;
+
+    let typeHeadline = '';
+    let actionRequested = '';
+
+    if (type === 'order') {
+      typeHeadline = '📦 طلب توفير / شراء قطعة غيار جديدة';
+      actionRequested = 'يرجى من الإدارة طلب وتوفير هذه القطعة من الموردين أو اعتمادها عاجلاً.';
+    } else if (type === 'pickup') {
+      typeHeadline = '🚗 توجيه لاستلام قطعة الغيار (روح جيبها)';
+      actionRequested = 'يرجى إفادتي بموقع أو موزع القطعة ومبلغها للتوجه لاستلامها وإكمال التركيب.';
+    } else {
+      typeHeadline = '📦 استشارة وتوجيه بخصوص قطعة الغيار';
+      actionRequested = 'يرجى مراجعة تفاصيل القطعة وتزويدي بالتوجيه المناسب (توفيرها من الإدارة أو التوجه لشرائها).';
+    }
+
+    return (
+      `السلام عليكم ورحمة الله وبركاته - إدارة DR.FIX 🛠️\n` +
+      `معكم الفني: ${currentTechName}\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `*${typeHeadline}*\n` +
+      `🔢 *رقم السند:* #${bookingNumber}\n` +
+      `🚘 *السيارة:* ${carDetails}\n` +
+      `👤 *العميل:* ${record.customerName || record.name || 'عميل كريم'}\n` +
+      `🛠️ *الخدمة:* ${record.serviceType || 'صيانة متنقلة'}\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `📝 *بيانات القطعة / الملاحظات:*\n${partDetails}\n` +
+      (photosCount > 0 ? `📸 *المرفقات الميدانية:* تم توثيق (${photosCount}) صور/مقاطع للقطعة.\n` : '') +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `⚡ *المطلوب:* ${actionRequested}\n` +
+      `بانتظار ردكم الكريم للبدء مباشرة 🙏`
+    );
+  };
+
+  const handleOpenStage4ShareModal = (initialType: 'order' | 'pickup' | 'general' = 'order') => {
+    // Determine admin phone: from admin / dispatcher in staffList or default
+    const adminUser = (staffList || []).find(s => s.role === 'super_admin' || s.role === 'dispatcher' || s.role === 'support');
+    const rawAdminPhone = adminUser?.phone || '0554558509';
+    const cleanAdmin = rawAdminPhone.replace(/\D/g, '');
+    const finalAdminWa = cleanAdmin.startsWith('966') 
+      ? cleanAdmin 
+      : cleanAdmin.startsWith('0') 
+        ? '966' + cleanAdmin.slice(1) 
+        : '966' + cleanAdmin;
+
+    const msg = getStage4ManagementMessage(initialType);
+    const url = `https://api.whatsapp.com/send?phone=${finalAdminWa}&text=${encodeURIComponent(msg)}`;
+
+    setStage4ShareDialog({
+      isOpen: true,
+      type: initialType,
+      adminPhone: finalAdminWa,
+      message: msg,
+      url
+    });
+  };
+
+  const handleUpdateStage4ShareType = (newType: 'order' | 'pickup' | 'general') => {
+    const msg = getStage4ManagementMessage(newType);
+    const url = `https://api.whatsapp.com/send?phone=${stage4ShareDialog.adminPhone}&text=${encodeURIComponent(msg)}`;
+    setStage4ShareDialog(prev => ({
+      ...prev,
+      type: newType,
+      message: msg,
+      url
+    }));
+  };
+
   // Helper to determine status badge
   const getStatusBadge = () => {
     switch (record.status) {
       case 'accepted':
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">1. تم القبول ✅</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 whitespace-nowrap">مقبول ✅</span>;
       case 'on_the_way':
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">2. الفني بالطريق 🚗</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 whitespace-nowrap">بالطريق 🚗</span>;
       case 'in-progress':
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-red/15 text-red-200 border border-brand-red/30">3. قيد العمل 🔧</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-red/15 text-red-200 border border-brand-red/30 whitespace-nowrap">قيد العمل 🔧</span>;
       case 'completed':
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">4. مكتمل 🏁</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">مكتمل 🏁</span>;
       default:
-        return <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/10 text-gray-300 border border-white/15">جاهز للقبول ⏳</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-gray-300 border border-white/15 whitespace-nowrap">انتظار ⏳</span>;
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto overscroll-contain pb-12 sm:pb-4">
       <motion.div 
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -1478,7 +1566,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         dir="rtl"
       >
         {/* Compact Header Bar */}
-        <div className="px-4 py-2.5 sm:px-5 sm:py-3 border-b border-white/10 bg-gradient-to-r from-brand-red/15 via-white/5 to-white/5 flex items-center justify-between gap-2.5">
+        <div className="px-3.5 py-2.5 sm:px-5 sm:py-3 border-b border-white/10 bg-gradient-to-r from-brand-red/15 via-white/5 to-white/5 flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red shrink-0 shadow-sm">
               <Wrench className="w-4 h-4" />
@@ -1486,7 +1574,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <h3 className="text-sm sm:text-base font-bold text-white truncate">
-                  السند الفني #{bookingNumber}
+                  السند #{bookingNumber}
                 </h3>
                 {getStatusBadge()}
                 {record.assignedStaffName && (
@@ -1580,14 +1668,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
         </div>
 
         {/* Single Unified Compact Navigation & Stepper Bar (5 مراحل عمل الفني الميداني) */}
-        <div className="px-3 sm:px-4 py-1.5 bg-black/40 border-b border-white/10 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar text-xs">
-          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+        <div className="px-2.5 sm:px-4 py-1.5 bg-black/40 border-b border-white/10 flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar text-xs">
+          <div className="flex items-center gap-1 whitespace-nowrap">
             {/* Step 1: وصول الفني */}
             <button
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(1); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 1 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(1)
@@ -1595,7 +1683,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>1. وصول الفني 📍</span>
+              <span>1. الوصول 📍</span>
               {isStepCompleted(1) && (
                 <Check className="w-3 h-3 text-emerald-400" />
               )}
@@ -1606,7 +1694,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(2); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 2 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(2)
@@ -1614,7 +1702,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>2. فيديو السيارة والعداد 🎥</span>
+              <span>2. فيديو السيارة 🎥</span>
               {isStepCompleted(2) && (
                 <Check className="w-3 h-3 text-emerald-400" />
               )}
@@ -1625,7 +1713,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(3); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 3 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(3)
@@ -1633,7 +1721,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>3. تصوير الخراب أو شرح ⚠️</span>
+              <span>3. الخراب ⚠️</span>
               {isStepCompleted(3) && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
@@ -1642,7 +1730,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(4); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 4 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(4)
@@ -1650,7 +1738,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>4. القطعة الجديدة / بعد الإصلاح 📦</span>
+              <span>4. القطعة الجديدة 📦</span>
               {isStepCompleted(4) && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
@@ -1659,7 +1747,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(5); }}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 5 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(5)
@@ -1667,25 +1755,25 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>5. إتمام العمل والانتهاء 🏁</span>
+              <span>5. الإتمام 🏁</span>
               {isStepCompleted(5) && <Check className="w-3 h-3 text-emerald-400" />}
             </button>
 
-            <div className="h-4 w-[1px] bg-white/15 mx-1 shrink-0" />
+            <div className="h-4 w-[1px] bg-white/15 mx-0.5 shrink-0" />
 
             {/* Tab: سجل خطوات الصيانة */}
             <button
               type="button"
               onClick={() => setActiveTab('timeline')}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 activeTab === 'timeline'
                   ? "bg-brand-red text-white shadow-sm"
                   : "bg-white/5 text-gray-300 hover:text-white"
               )}
             >
               <Clock className="w-3.5 h-3.5" />
-              <span>سجل الخطوات ({steps.length})</span>
+              <span>السجل ({steps.length})</span>
             </button>
 
             {/* Tab: بيانات الطلب والسيارة */}
@@ -1693,14 +1781,14 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => setActiveTab('details')}
               className={cn(
-                "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 activeTab === 'details'
                   ? "bg-brand-red text-white shadow-sm"
                   : "bg-white/5 text-gray-300 hover:text-white"
               )}
             >
               <Car className="w-3.5 h-3.5" />
-              <span>بيانات السند</span>
+              <span>البيانات</span>
             </button>
 
             {/* Tab: إسناد الفني */}
@@ -1709,7 +1797,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                 type="button"
                 onClick={() => setActiveTab('assign')}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                  "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                   activeTab === 'assign'
                     ? "bg-brand-red text-white shadow-sm"
                     : "bg-white/5 text-gray-300 hover:text-white"
@@ -1844,17 +1932,17 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                           type="button"
                           onClick={handleConfirmArrival}
                           disabled={isSavingStage1}
-                          className="px-6 py-3 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                          className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
                         >
                           {isSavingStage1 ? (
                             <>
                               <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>جاري تأكيد الوصول...</span>
+                              <span>جاري التأكيد...</span>
                             </>
                           ) : (
                             <>
                               <Check className="w-4 h-4" />
-                              <span>📍 تأكيد وصول الفني والبدء (الانتقال للخطوة 2)</span>
+                              <span>📍 تأكيد الوصول ⬅️ الخطوة 2</span>
                             </>
                           )}
                         </button>
@@ -2023,25 +2111,25 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setWorkflowStage(1)}
-                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      ⬅️ العودة للخطوة 1 (وصول الفني)
+                      ⬅️ الخطوة 1
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setWorkflowStage(3)}
-                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                       >
-                        تخطي للخطوة 3
+                        تخطي ➡️
                       </button>
 
                       <button
                         type="button"
                         onClick={handleSaveStage2Video}
                         disabled={isSavingStage2}
-                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                        className="px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
                       >
                         {isSavingStage2 ? (
                           <>
@@ -2051,7 +2139,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         ) : (
                           <>
                             <Check className="w-4 h-4" />
-                            <span>حفظ فيديو السيارة ➡️ الانتقال للخطوة 3 (الخراب)</span>
+                            <span>حفظ الفيديو ➡️ الخطوة 3</span>
                           </>
                         )}
                       </button>
@@ -2219,25 +2307,25 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setWorkflowStage(2)}
-                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                     >
-                      ⬅️ العودة للخطوة 2 (فيديو السيارة)
+                      ⬅️ الخطوة 2
                     </button>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setWorkflowStage(4)}
-                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                       >
-                        تخطي للخطوة 4
+                        تخطي ➡️
                       </button>
 
                       <button
                         type="button"
                         onClick={handleSaveStage3Fault}
                         disabled={isSavingStage3 || isProcessingImages || isProcessingVideo}
-                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                        className="px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
                       >
                         {isSavingStage3 ? (
                           <>
@@ -2247,7 +2335,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         ) : (
                           <>
                             <Check className="w-4 h-4" />
-                            <span>حفظ توثيق الخراب ➡️ الانتقال للخطوة 4 (القطعة الجديدة)</span>
+                            <span>حفظ الخراب ➡️ الخطوة 4</span>
                           </>
                         )}
                       </button>
@@ -2412,28 +2500,41 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
                   {/* Actions footer */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setWorkflowStage(3)}
-                      className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
-                    >
-                      ⬅️ العودة للخطوة 3 (شرح الخراب)
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setWorkflowStage(3)}
+                        className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        ⬅️ الخطوة 3
+                      </button>
 
-                    <div className="flex items-center gap-2">
+                      {/* زر مشاركة مع الإدارة (لطلب القطعة أو التوجيه بشرائها) */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenStage4ShareModal('order')}
+                        className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-98"
+                        title="مشاركة تفاصيل القطعة مع الإدارة عبر الواتساب لطلبها أو توجيهك لاستلامها"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>مشاركة مع الإدارة 💬</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
                         onClick={() => setWorkflowStage(5)}
-                        className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                        className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                       >
-                        تخطي للخطوة 5
+                        تخطي ➡️
                       </button>
 
                       <button
                         type="button"
                         onClick={handleSaveStage4NewPart}
                         disabled={isSavingStage4 || isProcessingImages || isProcessingVideo}
-                        className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                        className="px-4 py-2 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-brand-red/25 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
                       >
                         {isSavingStage4 ? (
                           <>
@@ -2443,7 +2544,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         ) : (
                           <>
                             <Check className="w-4 h-4" />
-                            <span>حفظ توثيق القطعة ➡️ الانتقال للخطوة 5 (إتمام العمل)</span>
+                            <span>حفظ القطعة ➡️ الخطوة 5</span>
                           </>
                         )}
                       </button>
@@ -2631,10 +2732,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         <button
                           type="button"
                           onClick={() => completedFileInputRef.current?.click()}
-                          className="p-4 bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-500/40 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                          className="p-3 sm:p-4 bg-emerald-600/20 hover:bg-emerald-600/30 border-2 border-emerald-500/40 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-98 transition-all whitespace-nowrap"
                         >
-                          <Camera className="w-5 h-5 text-emerald-400" />
-                          <span>📸 تصوير السيارة بعد اكتمال الصيانة</span>
+                          <Camera className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>📸 تصوير السيارة بعد الإصلاح</span>
                         </button>
 
                         <button
@@ -2643,10 +2744,10 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                             setFastVideoTargetStage(5);
                             setShowFastCameraModal(true);
                           }}
-                          className="p-4 bg-white/5 hover:bg-white/10 border-2 border-white/10 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 transition-all"
+                          className="p-3 sm:p-4 bg-white/5 hover:bg-white/10 border-2 border-white/10 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-98 transition-all whitespace-nowrap"
                         >
-                          <Video className="w-5 h-5 text-emerald-400" />
-                          <span>🎥 فيديو ختامي لتجربة التشغيل والجاهزية</span>
+                          <Video className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>🎥 فيديو ختامي وتشغيل</span>
                         </button>
                       </div>
 
@@ -2712,26 +2813,26 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setWorkflowStage(4)}
-                          className="px-3 py-2 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer"
+                          className="px-2.5 py-1.5 text-xs text-gray-400 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
                         >
-                          ⬅️ العودة للخطوة 4 (القطعة الجديدة)
+                          ⬅️ الخطوة 4
                         </button>
 
                         <button
                           type="button"
                           onClick={handleCompleteService}
                           disabled={isCompleting || isProcessingImages || isProcessingVideo}
-                          className="px-7 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 shadow-xl shadow-emerald-600/30 cursor-pointer disabled:opacity-50 transition-all active:scale-98"
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-xl shadow-emerald-600/30 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
                         >
                           {isCompleting ? (
                             <>
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>جاري إكمال المهمة وإشعار الإدارة...</span>
+                              <span>جاري الإكمال...</span>
                             </>
                           ) : (
                             <>
-                              <CheckCheck className="w-5 h-5" />
-                              <span>🏁 إكمال المهمة وإغلاق السند وإشعار الإدارة والعميل ✅</span>
+                              <CheckCheck className="w-4 h-4" />
+                              <span>🏁 إكمال المهمة وإغلاق السند ✅</span>
                             </>
                           )}
                         </button>
@@ -3554,6 +3655,186 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
                   >
                     <span>متابعة مراحل السند ➡️</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Stage 4: مشاركة طلب أو استلام القطعة مع الإدارة Modal */}
+      <AnimatePresence>
+        {stage4ShareDialog.isOpen && (
+          <div 
+            onClick={() => setStage4ShareDialog(prev => ({ ...prev, isOpen: false }))}
+            className="fixed inset-0 z-70 bg-black/85 flex items-center justify-center p-2.5 sm:p-4 backdrop-blur-md overscroll-contain"
+          >
+            <motion.div 
+              initial={{ scale: 0.92, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-900 border border-blue-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4 text-right relative overflow-hidden my-auto max-h-[94dvh] overflow-y-auto overscroll-contain"
+              dir="rtl"
+            >
+              <div className="absolute -top-16 -right-16 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center shadow-lg">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-1.5">
+                      <span>مشاركة القطعة مع الإدارة</span>
+                      <span className="text-xs text-blue-400">#{bookingNumber}</span>
+                    </h3>
+                    <p className="text-[11px] text-gray-400">إرسال تفاصيل القطعة عبر الواتساب للإدارة لطلبها أو توجيهك لاستلامها</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStage4ShareDialog(prev => ({ ...prev, isOpen: false }))}
+                  className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* اختيار نوع التنسيق مع الإدارة */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-300 block">
+                  حدد الغرض من التواصل مع الإدارة:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStage4ShareType('order')}
+                    className={cn(
+                      "p-2.5 rounded-xl text-xs font-bold text-right flex flex-col gap-1 border transition-all cursor-pointer",
+                      stage4ShareDialog.type === 'order'
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/40 ring-1 ring-blue-500/50"
+                        : "bg-white/5 text-gray-400 border-white/10 hover:text-white hover:bg-white/10"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <span>📦</span>
+                        <span>اطلبها لي</span>
+                      </span>
+                      {stage4ShareDialog.type === 'order' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </div>
+                    <span className="text-[10px] font-normal text-gray-400">تقوم الإدارة بشرائها وتوفيرها لك</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateStage4ShareType('pickup')}
+                    className={cn(
+                      "p-2.5 rounded-xl text-xs font-bold text-right flex flex-col gap-1 border transition-all cursor-pointer",
+                      stage4ShareDialog.type === 'pickup'
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/40 ring-1 ring-amber-500/50"
+                        : "bg-white/5 text-gray-400 border-white/10 hover:text-white hover:bg-white/10"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <span>🚗</span>
+                        <span>روح جيبها</span>
+                      </span>
+                      {stage4ShareDialog.type === 'pickup' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                    </div>
+                    <span className="text-[10px] font-normal text-gray-400">توجيه الفني لموقع القطعة لاستلامها</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* رقم واتساب الإدارة / المستلم */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 flex items-center justify-between">
+                  <span>رقم هاتف / واتساب الإدارة:</span>
+                  <span className="text-[10px] text-gray-500">يمكنك تعديله إذا أردت إرساله لرقم إدارة آخر</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={stage4ShareDialog.adminPhone}
+                    onChange={(e) => {
+                      const newPhone = e.target.value;
+                      const clean = newPhone.replace(/\D/g, '');
+                      const wa = clean.startsWith('966') ? clean : clean.startsWith('0') ? '966' + clean.slice(1) : '966' + clean;
+                      const msg = stage4ShareDialog.message;
+                      setStage4ShareDialog(prev => ({
+                        ...prev,
+                        adminPhone: newPhone,
+                        url: `https://api.whatsapp.com/send?phone=${wa}&text=${encodeURIComponent(msg)}`
+                      }));
+                    }}
+                    placeholder="9665xxxxxxxx"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white dir-ltr font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* معاينة الرسالة */}
+              <div className="bg-black/50 border border-white/10 rounded-2xl p-3 text-xs text-gray-300 space-y-2 max-h-44 overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[11px] text-gray-400 font-bold">
+                  <span>نص الرسالة الموجهة للإدارة:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(stage4ShareDialog.message);
+                      setCopiedStage4Share(true);
+                      setTimeout(() => setCopiedStage4Share(false), 2500);
+                    }}
+                    className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-[11px] cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-lg border border-blue-500/20 transition-colors"
+                  >
+                    {copiedStage4Share ? <Check className="w-3 h-3 text-blue-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedStage4Share ? 'تم النسخ!' : 'نسخ النص'}</span>
+                  </button>
+                </div>
+                <p className="whitespace-pre-line text-[11px] leading-relaxed font-sans text-gray-200 select-text">
+                  {stage4ShareDialog.message}
+                </p>
+              </div>
+
+              {/* أزرار الإجراءات */}
+              <div className="space-y-2 pt-1">
+                <a
+                  href={stage4ShareDialog.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer transition-all active:scale-98 whitespace-nowrap"
+                >
+                  <MessageCircle className="w-4 h-4 fill-current" />
+                  <span>
+                    {stage4ShareDialog.type === 'order' ? 'إرسال طلب القطعة للإدارة عبر الواتساب 📦' : 'إرسال طلب التوجيه بالاستلام للإدارة 🚗'}
+                  </span>
+                </a>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(stage4ShareDialog.message);
+                      setCopiedStage4Share(true);
+                      setTimeout(() => setCopiedStage4Share(false), 2500);
+                    }}
+                    className="flex-1 py-2 px-3 bg-white/10 hover:bg-white/15 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedStage4Share ? 'تم النسخ' : 'نسخ الرسالة'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStage4ShareDialog(prev => ({ ...prev, isOpen: false }))}
+                    className="flex-1 py-2 px-3 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    <span>إغلاق</span>
                   </button>
                 </div>
               </div>
