@@ -1795,55 +1795,20 @@ interface Offer {
   createdAt: Timestamp;
 }
 
-const STATIC_OFFERS: Offer[] = [
-  {
-    id: 'off-1',
-    title: 'عرض الصيانة الدورية وتغيير الزيت',
-    titleEn: 'Regular Maintenance & Oil Change Offer',
-    price: '149 ريال',
-    subtitle: 'ريال شامل الضريبة والغسيل',
-    subtitleEn: 'SAR inclusive of tax & wash',
-    features: ['تغيير زيت وفلتر أصلي', 'فحص شامل 25 نقطة', 'غسيل ساطع للسيارة مجاناً', 'ضمان معتمد 3 أشهر'],
-    featuresEn: ['Genuine oil & filter change', '25-point comprehensive check', 'Free express car wash', '3-month warranty'],
-    icon: 'zap',
-    active: true,
-    createdAt: Timestamp.now()
-  },
-  {
-    id: 'off-2',
-    title: 'باقة الفحص الشامل وبرمجة الكمبيوتر',
-    titleEn: 'Comprehensive Diagnostics & Computer Scan',
-    price: '99 ريال',
-    subtitle: 'ريال فقط لفترة محدودة',
-    subtitleEn: 'SAR only for limited time',
-    features: ['فحص كمبيوتر بأحدث الأجهزة', 'كشف أعطال الماكينة والجير', 'فحص الحساسات والكهرباء', 'تقرير إلكتروني فوري عبر واتساب'],
-    featuresEn: ['Latest computer scan tools', 'Engine & gearbox fault check', 'Sensors & electric system check', 'Instant WhatsApp digital report'],
-    icon: 'tag',
-    active: true,
-    createdAt: Timestamp.now()
-  },
-  {
-    id: 'off-3',
-    title: 'باقة صيانة التكييف وتعبئة الفريون',
-    titleEn: 'AC Service & Original Freon Refill',
-    price: '199 ريال',
-    subtitle: 'ريال شامل الفحص وتغيير الفلتر',
-    subtitleEn: 'SAR inclusive of check & filter',
-    features: ['فحص ضغط وتنسيم دائرة التبريد', 'تعبئة فريون أمريكي أصلي', 'تنظيف ثلاجة المكيف والمروحة', 'تعقيم مجاري الهواء'],
-    featuresEn: ['Pressure & leak test', 'Original US freon refill', 'Evaporator core & blower cleaning', 'Air duct sanitization'],
-    icon: 'zap',
-    active: true,
-    createdAt: Timestamp.now()
-  }
-];
+const STATIC_OFFERS: Offer[] = [];
 
 const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) => {
   const [offers, setOffers] = useState<Offer[]>(() => {
     try {
       const cached = localStorage.getItem('drfix_cached_offers');
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((o: any) => !o.id?.startsWith('off-'));
+        }
+      }
     } catch {}
-    return STATIC_OFFERS;
+    return [];
   });
   const [loading, setLoading] = useState(false);
   const { t, lang } = useLanguage();
@@ -1869,28 +1834,7 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
     return unsubscribe;
   }, []);
 
-  const allOffers = React.useMemo(() => {
-    const seen = new Set<string>();
-    const merged: Offer[] = [];
-
-    offers.forEach(o => {
-      const key = o.id || o.title;
-      if (!seen.has(key)) {
-        seen.add(key);
-        merged.push(o);
-      }
-    });
-
-    STATIC_OFFERS.forEach(staticO => {
-      const key = staticO.id || staticO.title;
-      if (!seen.has(key) && !merged.some(m => m.title === staticO.title)) {
-        seen.add(key);
-        merged.push(staticO);
-      }
-    });
-
-    return merged.length > 0 ? merged : STATIC_OFFERS;
-  }, [offers]);
+  const allOffers = offers;
 
   if (loading || allOffers.length === 0) return null;
 
@@ -2100,9 +2044,9 @@ const BookingForm = ({
   const [locationError, setLocationError] = useState<string | null>(null);
   const [showLocationHelp, setShowLocationHelp] = useState(false);
 
-  // Booking Date & Time Slot Selection States
+  // Booking Date Selection States
   const [selectedServiceDate, setSelectedServiceDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('09:00 ص - 11:00 ص');
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
   const [isImmediateBooking, setIsImmediateBooking] = useState<boolean>(false);
   
   const { t, lang } = useLanguage();
@@ -2622,7 +2566,7 @@ const BookingForm = ({
         const safeLoc = escapeTelegramHtml(locationName || 'جدة');
         const safeDesc = data.description ? escapeTelegramHtml(data.description) : 'بدون تفاصيل إضافية';
         const safeTime = escapeTelegramHtml(new Date().toLocaleTimeString('ar-SA'));
-        const safeSlot = isImmediateBooking ? '⚡ خدمة فورية عاجلة' : escapeTelegramHtml(`${selectedServiceDate} (${selectedTimeSlot})`);
+        const safeSlot = isImmediateBooking ? '⚡ خدمة فورية عاجلة' : escapeTelegramHtml(selectedTimeSlot ? `${selectedServiceDate} (${selectedTimeSlot})` : selectedServiceDate);
 
         const tgText = `🔔 <b>حجز جديد مؤكد في DR.FIX!</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
@@ -5907,7 +5851,7 @@ const AdminDashboard = ({
               <div className="glass-card p-6 border-brand-red/20">
                 <div className="text-gray-500 text-sm mb-2">إجمالي العروض</div>
                 <div className="text-4xl font-display font-black text-brand-red">
-                  {offers.length + STATIC_OFFERS.filter(so => !offers.some(o => o.title === so.title)).length}
+                  {offers.length}
                 </div>
                 <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
                   <div className="h-full bg-brand-red" style={{ width: '50%' }} />
@@ -6408,33 +6352,39 @@ const AdminDashboard = ({
                                     </div>
                                   </td>
                                   <td className="px-6 py-4">
-                                    <div className="text-sm font-bold text-white">{record.serviceType}</div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-xs font-bold text-white inline-flex items-center gap-1.5 max-w-full">
+                                        <Wrench className="w-3.5 h-3.5 text-brand-red shrink-0" />
+                                        <span className="truncate max-w-[220px]">{record.serviceType || 'صيانة متنقلة'}</span>
+                                      </span>
+                                    </div>
                                     {record.notes && (
-                                      <div className="text-xs text-gray-400 italic line-clamp-1 max-w-xs mt-0.5" title={record.notes}>
-                                        "{record.notes}"
+                                      <div className="mt-1.5 flex items-start gap-1.5 text-xs text-gray-300 bg-white/5 border border-white/5 rounded-lg px-2.5 py-1 max-w-xs" title={record.notes}>
+                                        <FileText className="w-3 h-3 text-amber-400/80 shrink-0 mt-0.5" />
+                                        <span className="line-clamp-2 leading-relaxed break-words">{record.notes}</span>
                                       </div>
                                     )}
-                                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                                       {record.assignedStaffName ? (
                                         <div className="inline-flex items-center gap-1">
                                           <button
                                             type="button"
                                             onClick={() => handleOpenTimeline(record, 'timeline')}
-                                            className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                            className="min-h-[28px] py-1 px-2.5 text-xs font-bold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-lg inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 whitespace-nowrap"
                                             title="الفني الميداني المسند - اضغط لفتح التوثيق ومراحل العمل"
                                           >
-                                            <UserCheck className="w-2.5 h-2.5 text-emerald-400" />
-                                            <span>الفني: {record.assignedStaffName}</span>
+                                            <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                            <span className="truncate max-w-[140px]">الفني: {record.assignedStaffName}</span>
                                           </button>
                                           {record.assignedStaffPhone && (
                                             <a
                                               href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="p-1 text-emerald-400 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/40 rounded-full border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                              className="w-7 h-7 text-emerald-400 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/30 rounded-lg border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer shrink-0"
                                               title={`مراسلة الفني (${record.assignedStaffName}) عبر واتساب وإرسال تفاصيل المهمة`}
                                             >
-                                              <MessageCircle className="w-2.5 h-2.5 fill-current" />
+                                              <MessageCircle className="w-3.5 h-3.5 fill-current" />
                                             </a>
                                           )}
                                         </div>
@@ -6442,10 +6392,10 @@ const AdminDashboard = ({
                                         <button
                                           type="button"
                                           onClick={() => handleOpenTimeline(record, 'assign')}
-                                          className="text-[10px] font-bold text-white hover:text-gray-200 bg-white/10 hover:bg-white/20 border border-white/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1 cursor-pointer transition-all"
+                                          className="min-h-[28px] py-1 px-2.5 text-xs font-bold text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/15 rounded-lg inline-flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 whitespace-nowrap"
                                           title="إسناد الطلب لفني صيانة ميداني"
                                         >
-                                          <Plus className="w-2.5 h-2.5" />
+                                          <Plus className="w-3.5 h-3.5 shrink-0" />
                                           <span>+ إسناد لفني</span>
                                         </button>
                                       ) : null}
@@ -6536,29 +6486,31 @@ const AdminDashboard = ({
                                           <MessageSquare className="w-4 h-4" />
                                         </a>
                                       )}
+                                      {/* زر فيو لمتابعة الفني ومراحل العمل */}
                                       <button 
                                         type="button"
                                         onClick={() => handleOpenTimeline(record, 'timeline')}
-                                        className="p-2 text-indigo-400 hover:text-white hover:bg-indigo-500/20 rounded-lg transition-colors cursor-pointer relative"
-                                        title="توثيق ومراحل العمل وصور الفحص الميداني 📸"
+                                        className="h-8 px-2.5 bg-brand-red/15 hover:bg-brand-red/30 text-amber-300 border border-brand-red/35 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                                        title="فيو: متابعة مراحل العمل وتوثيق الفني أين وصل"
                                       >
-                                        <Camera className="w-4 h-4" />
+                                        <Eye className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                                        <span>فيو</span>
                                         {(record.serviceSteps?.length || 0) > 0 && (
-                                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-indigo-500 text-white rounded-full text-[9px] flex items-center justify-center font-bold">
+                                          <span className="px-1.5 py-0.5 bg-brand-red text-white rounded text-[10px] font-bold leading-none">
                                             {record.serviceSteps!.length}
                                           </span>
                                         )}
                                       </button>
                                       <button 
                                         onClick={() => handleSelectBookingDetails(record)}
-                                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer shrink-0"
                                         title="عرض التفاصيل الكاملة"
                                       >
-                                        <Eye className="w-4 h-4" />
+                                        <FileText className="w-4 h-4" />
                                       </button>
                                       <button 
                                         onClick={() => handleEdit('booking', record)}
-                                        className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer shrink-0"
                                         title="تعديل الحجز"
                                       >
                                         <Edit3 className="w-4 h-4" />
@@ -6566,7 +6518,7 @@ const AdminDashboard = ({
                                       <button 
                                         type="button"
                                         onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
-                                        className="p-2 text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-brand-red hover:bg-white/10 rounded-lg transition-colors cursor-pointer shrink-0"
                                         title="حذف هذا الحجز"
                                       >
                                         <Trash2 className="w-4 h-4" />
@@ -6581,7 +6533,7 @@ const AdminDashboard = ({
                       </div>
 
                       {/* Mobile Cards View (Optimized for Mobile App PWA) */}
-                      <div className="md:hidden divide-y divide-white/5">
+                      <div className="md:hidden divide-y divide-white/10">
                         {displayedBookings.map((record) => {
                           const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
                           const waPhone = cleanPhone.startsWith('966') ? cleanPhone : cleanPhone.startsWith('0') ? '966' + cleanPhone.slice(1) : '966' + cleanPhone;
@@ -6591,27 +6543,74 @@ const AdminDashboard = ({
                           const isSelected = selectedBookingIds.has(record.id);
 
                           return (
-                            <div key={record.id} className={cn("p-4 space-y-3 transition-colors", isSelected ? "bg-brand-red/10 border-r-4 border-brand-red" : "bg-black/20")}>
+                            <div key={record.id} className={cn("p-3.5 sm:p-4 space-y-3 transition-colors", isSelected ? "bg-brand-red/10 border-r-4 border-brand-red" : "bg-black/20")}>
+                              {/* زر فيو لمتابعة العمل وحالة الفني أين وصل */}
+                              <div className="pb-2.5 border-b border-white/10">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenTimeline(record, 'timeline')}
+                                  className="w-full min-h-[42px] py-2 px-3 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 active:scale-98 text-white rounded-xl font-bold flex items-center justify-between gap-2 shadow-md shadow-brand-red/25 border border-red-400/40 transition-all cursor-pointer overflow-hidden select-none"
+                                  title="فيو: متابعة مراحل العمل وتوثيق الفني أين وصل"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Eye className="w-4 h-4 text-amber-300 shrink-0 animate-pulse" />
+                                    <span className="font-black text-white text-xs sm:text-sm whitespace-nowrap">فيو</span>
+                                    <span className="text-[11px] sm:text-xs text-white/90 font-medium truncate">متابعة الفني والعمل</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[11px] bg-black/40 px-2 py-1 rounded-lg border border-white/10 text-amber-300 font-bold shrink-0 whitespace-nowrap">
+                                    <span>
+                                      {record.status === 'on_the_way' ? '🚗 بالطريق' :
+                                       record.status === 'in-progress' ? '🔧 قيد العمل' :
+                                       record.status === 'completed' ? '🏁 مكتمل' :
+                                       record.status === 'accepted' ? '✅ تم القبول' :
+                                       record.status === 'cancelled' ? '❌ ملغي' : '🆕 جديد'}
+                                    </span>
+                                    {record.serviceSteps && record.serviceSteps.length > 0 && (
+                                      <span className="text-white bg-white/20 px-1.5 py-0.5 rounded text-[10px] font-bold leading-none">
+                                        {record.serviceSteps.length}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              </div>
+
                               <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-2.5 min-w-0 flex-1">
                                   <input 
                                     type="checkbox"
                                     checked={isSelected}
                                     onChange={() => handleToggleSelectBooking(record.id)}
-                                    className="w-4 h-4 mt-1 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red"
+                                    className="w-4 h-4 mt-1 rounded border-white/20 bg-black/40 text-brand-red focus:ring-brand-red cursor-pointer accent-brand-red shrink-0"
                                     title="تحديد هذا الحجز"
                                   />
-                                  <div>
-                                    <div className="font-bold text-white text-base flex items-center gap-1.5">
-                                      <span>{record.carModel}</span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-bold text-white text-sm sm:text-base flex items-center gap-1.5 flex-wrap">
+                                      <span className="truncate">{record.carModel}</span>
                                       {record.bookingId && (
-                                        <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300">
+                                        <span className="text-[10px] font-mono bg-white/10 px-1.5 py-0.5 rounded text-gray-300 shrink-0">
                                           {record.bookingId}
                                         </span>
                                       )}
                                     </div>
-                                    <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                      <Clock className="w-3 h-3 text-gray-500" />
+                                    <div className="flex items-center gap-1.5 text-xs text-gray-300 mt-1 flex-wrap">
+                                      <span className="font-bold text-white flex items-center gap-1 shrink-0">
+                                        <User className="w-3 h-3 text-gray-400" />
+                                        {record.customerName || record.name || 'عميل'}
+                                      </span>
+                                      <span className="text-gray-500">•</span>
+                                      <span className="font-mono text-gray-400 text-[11px]" dir="ltr">{record.customerPhone}</span>
+                                      {record.location && (
+                                        <>
+                                          <span className="text-gray-500">•</span>
+                                          <span className="text-gray-400 flex items-center gap-0.5 truncate max-w-[130px]" title={record.location}>
+                                            <MapPin className="w-3 h-3 text-brand-red shrink-0" />
+                                            {record.location}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
+                                      <Clock className="w-3 h-3 text-gray-500 shrink-0" />
                                       {rDate.toLocaleDateString('ar-SA')}
                                     </div>
                                   </div>
@@ -6620,7 +6619,7 @@ const AdminDashboard = ({
                                   value={record.status}
                                   onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
                                   className={cn(
-                                    "text-xs font-bold px-3 py-1 rounded-full bg-black/60 border outline-none cursor-pointer",
+                                    "text-xs font-bold px-2.5 py-1 rounded-full bg-black/60 border outline-none cursor-pointer shrink-0",
                                     record.status === 'completed' ? "text-green-500 border-green-500/30 bg-green-500/10" :
                                     record.status === 'accepted' ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" :
                                     record.status === 'on_the_way' ? "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" :
@@ -6640,33 +6639,36 @@ const AdminDashboard = ({
                                 </select>
                               </div>
 
-                              <div className="bg-white/5 p-3 rounded-xl space-y-1 text-xs">
-                                <div className="flex justify-between text-gray-300">
-                                  <span className="text-gray-500">الخدمة:</span>
-                                  <span className="font-bold text-white">{record.serviceType}</span>
+                              <div className="bg-white/5 p-3 rounded-xl space-y-2 text-xs border border-white/5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-gray-400 font-medium shrink-0">الخدمة:</span>
+                                  <span className="px-2.5 py-1 bg-white/10 border border-white/10 rounded-lg font-bold text-white text-xs inline-flex items-center gap-1.5 min-w-0 max-w-[210px] sm:max-w-none">
+                                    <Wrench className="w-3.5 h-3.5 text-brand-red shrink-0" />
+                                    <span className="truncate">{record.serviceType || 'صيانة متنقلة'}</span>
+                                  </span>
                                 </div>
-                                <div className="flex justify-between items-center text-gray-300 pt-1.5 border-t border-white/5">
-                                  <span className="text-gray-500">الفني الميداني:</span>
+                                <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-white/5">
+                                  <span className="text-gray-400 font-medium shrink-0">الفني الميداني:</span>
                                   {record.assignedStaffName ? (
-                                    <div className="inline-flex items-center gap-1">
+                                    <div className="inline-flex items-center gap-1.5 min-w-0">
                                       <button
                                         type="button"
                                         onClick={() => handleOpenTimeline(record, 'timeline')}
-                                        className="font-bold text-emerald-300 text-[11px] flex items-center gap-1 bg-emerald-500/15 hover:bg-emerald-500/25 px-2 py-0.5 rounded-lg border border-emerald-500/30 cursor-pointer"
+                                        className="min-h-[30px] py-1 px-2.5 font-bold text-emerald-300 text-xs flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 rounded-lg border border-emerald-500/30 cursor-pointer transition-all active:scale-95 whitespace-nowrap min-w-0"
                                         title="عرض مراحل العمل وتوثيق الصور"
                                       >
-                                        <UserCheck className="w-3 h-3 text-emerald-400" />
-                                        <span>{record.assignedStaffName}</span>
+                                        <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                        <span className="truncate max-w-[120px] sm:max-w-[160px]">الفني: {record.assignedStaffName}</span>
                                       </button>
                                       {record.assignedStaffPhone && (
                                         <a
                                           href={generateTechnicianAssignmentWhatsAppUrl(record, record.assignedStaffPhone, record.assignedStaffName)}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="p-1 text-emerald-400 hover:text-white bg-emerald-500/20 hover:bg-emerald-500/40 rounded-lg border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                          className="w-7 h-7 text-emerald-400 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/30 rounded-lg border border-emerald-500/30 transition-colors inline-flex items-center justify-center cursor-pointer shrink-0"
                                           title={`مراسلة الفني (${record.assignedStaffName}) عبر واتساب`}
                                         >
-                                          <MessageCircle className="w-3 h-3 fill-current" />
+                                          <MessageCircle className="w-3.5 h-3.5 fill-current" />
                                         </a>
                                       )}
                                     </div>
@@ -6674,22 +6676,27 @@ const AdminDashboard = ({
                                     <button
                                       type="button"
                                       onClick={() => handleOpenTimeline(record, 'assign')}
-                                      className="text-white hover:text-gray-200 font-bold text-[11px] flex items-center gap-1 bg-white/10 px-2 py-0.5 rounded-lg border border-white/20 cursor-pointer"
+                                      className="min-h-[30px] py-1 px-2.5 text-white/90 hover:text-white font-bold text-xs flex items-center gap-1.5 bg-white/10 hover:bg-white/15 rounded-lg border border-white/20 cursor-pointer transition-all active:scale-95 whitespace-nowrap"
                                     >
-                                      <Plus className="w-3 h-3" />
+                                      <Plus className="w-3.5 h-3.5 shrink-0" />
                                       <span>+ إسناد لفني</span>
                                     </button>
                                   ) : null}
                                 </div>
                                 {record.notes && (
-                                  <div className="text-gray-400 italic pt-1 border-t border-white/5">
-                                    "{record.notes}"
+                                  <div className="pt-1.5 border-t border-white/5 flex items-start gap-2 bg-black/20 p-2.5 rounded-lg border border-white/5 text-gray-300">
+                                    <FileText className="w-3.5 h-3.5 text-amber-400/90 shrink-0 mt-0.5" />
+                                    <div className="space-y-0.5 min-w-0 flex-1">
+                                      <div className="text-[10px] text-gray-400 font-bold">الملاحظات:</div>
+                                      <div className="text-xs leading-relaxed text-gray-200 break-words">{record.notes}</div>
+                                    </div>
                                   </div>
                                 )}
                               </div>
 
-                              <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                                <div className="flex items-center gap-1.5 flex-wrap">
+                              <div className="pt-2 border-t border-white/5 space-y-2">
+                                {/* الصف الأول: أزرار التواصل والحالة السريعة */}
+                                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                                   {!isTechnician && (
                                     <>
                                       <a
@@ -6697,7 +6704,7 @@ const AdminDashboard = ({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
-                                        className="px-2.5 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                        className="h-8 px-2.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                         title="الفني بالطريق وإرسال واتساب"
                                       >
                                         🚗 بالطريق
@@ -6707,25 +6714,25 @@ const AdminDashboard = ({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={() => handleUpdateStatus(record.id, 'accepted')}
-                                        className="px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer"
+                                        className="h-8 px-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                         title="قبول الحجز وإرسال واتساب"
                                       >
                                         ✅ قبول
                                       </a>
-                                      <a 
-                                        href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-2.5 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                                      >
-                                        <MessageCircle className="w-3.5 h-3.5" />
-                                        واتساب
-                                      </a>
                                     </>
                                   )}
                                   <a 
+                                    href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="h-8 px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                    واتساب
+                                  </a>
+                                  <a 
                                     href={`tel:${record.customerPhone}`}
-                                    className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                    className="h-8 px-2.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                   >
                                     <PhoneCall className="w-3.5 h-3.5" />
                                     اتصال
@@ -6735,7 +6742,7 @@ const AdminDashboard = ({
                                       href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="px-2.5 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                      className="h-8 px-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                     >
                                       <Navigation className="w-3.5 h-3.5" />
                                       GPS
@@ -6743,58 +6750,45 @@ const AdminDashboard = ({
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-1">
-                                  {/* Field Photo & Step Documentation */}
-                                  <button 
-                                    type="button"
-                                    onClick={() => handleOpenTimeline(record, 'timeline')}
-                                    className={cn(
-                                      "p-2 rounded-xl cursor-pointer relative transition-all",
-                                      record.serviceSteps && record.serviceSteps.length > 0
-                                        ? "text-brand-red bg-brand-red/15 border border-brand-red/30"
-                                        : "text-gray-400 hover:text-white bg-white/5"
-                                    )}
-                                    title="مراحل العمل وتوثيق الصور الميدانية"
-                                  >
-                                    <Camera className="w-4 h-4" />
-                                    {record.serviceSteps && record.serviceSteps.length > 0 && (
-                                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-brand-red text-white text-[9px] rounded-full flex items-center justify-center font-bold">
-                                        {record.serviceSteps.length}
-                                      </span>
-                                    )}
-                                  </button>
-
-                                  <a
-                                    href={getWhatsAppStatusUrl(record, record.status)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-2 text-emerald-400 hover:text-white bg-emerald-500/10 border border-emerald-500/20 rounded-xl cursor-pointer"
-                                    title="إرسال إشعار الحالة للعميل عبر الواتساب"
-                                  >
-                                    <MessageSquare className="w-4 h-4" />
-                                  </a>
+                                {/* الصف الثاني: إجراءات الإدارة المنسقة بأحجام متطابقة */}
+                                <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-white/5">
                                   <button 
                                     onClick={() => handleSelectBookingDetails(record)}
-                                    className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
-                                    title="عرض التفاصيل"
+                                    className="h-8 px-3 text-gray-200 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                                    title="عرض التفاصيل الكاملة"
                                   >
-                                    <Eye className="w-4 h-4" />
+                                    <FileText className="w-3.5 h-3.5 text-gray-400" />
+                                    <span>التفاصيل</span>
                                   </button>
-                                  <button 
-                                    onClick={() => handleEdit('booking', record)}
-                                    className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-xl cursor-pointer"
-                                    title="تعديل الحجز"
-                                  >
-                                    <Edit3 className="w-4 h-4" />
-                                  </button>
-                                  <button 
-                                    type="button"
-                                    onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
-                                    className="p-2 text-gray-400 hover:text-brand-red bg-white/5 rounded-xl cursor-pointer"
-                                    title="حذف الحجز"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+
+                                  <div className="flex items-center gap-1.5">
+                                    {!isTechnician && (
+                                      <a
+                                        href={getWhatsAppStatusUrl(record, record.status)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-8 h-8 flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-colors cursor-pointer shrink-0 active:scale-95"
+                                        title="إرسال إشعار الحالة للعميل عبر الواتساب"
+                                      >
+                                        <MessageSquare className="w-4 h-4" />
+                                      </a>
+                                    )}
+                                    <button 
+                                      onClick={() => handleEdit('booking', record)}
+                                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer shrink-0 active:scale-95"
+                                      title="تعديل الحجز"
+                                    >
+                                      <Edit3 className="w-4 h-4" />
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
+                                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-brand-red bg-white/5 hover:bg-brand-red/10 border border-white/10 rounded-lg cursor-pointer shrink-0 active:scale-95"
+                                      title="حذف الحجز"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -10058,8 +10052,9 @@ const AdminDashboard = ({
                     onClick={() => setTimelineBookingRecord(selectedBookingDetails)}
                     className="w-full py-3.5 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all border border-red-500/40"
                   >
-                    <Camera className="w-4 h-4 text-white" />
-                    <span>مراحل العمل وتوثيق الصور الميدانية ({selectedBookingDetails.serviceSteps?.length || 0} مرحلة) 📸</span>
+                    <Eye className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+                    <span className="font-black">فيو:</span>
+                    <span>متابعة مراحل العمل وتوثيق الفني أين وصل ({selectedBookingDetails.serviceSteps?.length || 0} مرحلة) 📸</span>
                   </button>
                 </div>
 

@@ -347,7 +347,30 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
               </a>
             ) : null}
 
-            {/* 4. Car & Odometer Video 1-Tap (Prominent on Mobile) */}
+            {/* 4. Stage 1: Departure & Arrival Confirmation (Prominent on Mobile) */}
+            <button
+              type="button"
+              onClick={() => onOpenTimeline(activeSpotlightJob, 'add_step', 1)}
+              className={cn(
+                "col-span-2 sm:flex-1 min-h-[44px] py-2.5 px-3 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98 shadow-lg border whitespace-nowrap",
+                activeSpotlightJob.status === 'on_the_way'
+                  ? "bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 text-white border-indigo-400/50 shadow-indigo-600/30 ring-2 ring-indigo-400/40 animate-pulse"
+                  : activeSpotlightJob.serviceSteps?.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول'))
+                    ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-600/30"
+                    : "bg-gradient-to-r from-indigo-800 via-indigo-700 to-blue-800 hover:brightness-110 text-white border-indigo-400/40 shadow-indigo-600/25"
+              )}
+            >
+              <MapPin className="w-4 h-4 text-amber-300 shrink-0" />
+              <span>
+                {activeSpotlightJob.status === 'on_the_way'
+                  ? '📍 المرحلة 1: تأكيد الوصول للموقع'
+                  : activeSpotlightJob.serviceSteps?.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول'))
+                    ? 'المرحلة 1: بيانات الوصول ✅'
+                    : '🚗 المرحلة 1: الانطلاق والوصول 📍'}
+              </span>
+            </button>
+
+            {/* 5. Car & Odometer Video 1-Tap (Stage 2) */}
             <button
               type="button"
               onClick={() => {
@@ -358,11 +381,11 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
               }}
               className="col-span-2 sm:flex-1 min-h-[44px] py-2.5 px-3 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-brand-red/30 transition-all cursor-pointer active:scale-98 border border-red-400/40 ring-1 ring-white/10 whitespace-nowrap"
             >
-              <Video className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+              <Video className="w-4 h-4 text-amber-300 shrink-0" />
               <span>فيديو السيارة والعداد 🎥</span>
             </button>
 
-            {/* 5. Timeline Documentation & Photos */}
+            {/* 6. Timeline Documentation & Photos */}
             <button
               type="button"
               onClick={() => onOpenTimeline(activeSpotlightJob, 'timeline')}
@@ -384,7 +407,10 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
               {/* Option A: On the way */}
               <button
                 type="button"
-                onClick={() => handleQuickStatusTransition(activeSpotlightJob, 'on_the_way')}
+                onClick={() => {
+                  handleQuickStatusTransition(activeSpotlightJob, 'on_the_way');
+                  onOpenTimeline(activeSpotlightJob, 'add_step', 1);
+                }}
                 className={cn(
                   "py-2.5 px-2 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap",
                   activeSpotlightJob.status === 'on_the_way'
@@ -653,17 +679,34 @@ export const TechnicianWorkspace: React.FC<TechnicianWorkspaceProps> = ({
                     </a>
                   ) : null}
 
-                  {/* Quick Arrival Video Action */}
+                  {/* Stage 1: Departure & Arrival */}
+                  <button
+                    type="button"
+                    onClick={() => onOpenTimeline(record, 'add_step', 1)}
+                    className={cn(
+                      "p-2.5 rounded-xl transition-all cursor-pointer border",
+                      record.status === 'on_the_way'
+                        ? "bg-indigo-600 text-white border-indigo-400/60 shadow-md shadow-indigo-600/30 animate-pulse"
+                        : record.serviceSteps?.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول'))
+                          ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                          : "bg-indigo-500/15 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/25"
+                    )}
+                    title="المرحلة 1: الانطلاق للموقع وتأكيد الوصول"
+                  >
+                    <MapPin className="w-4 h-4" />
+                  </button>
+
+                  {/* Stage 2: Quick Inspection Video Action */}
                   <button
                     type="button"
                     onClick={() => {
                       if (record.status !== 'in-progress') {
                         handleQuickStatusTransition(record, 'in-progress');
                       }
-                      onOpenTimeline(record, 'timeline');
+                      onOpenTimeline(record, 'add_step', 2);
                     }}
                     className="p-2.5 rounded-xl bg-brand-red/15 hover:bg-brand-red/30 text-amber-300 border border-brand-red/30 transition-all cursor-pointer"
-                    title="فيديو فحص واستلام السيارة عند الوصول"
+                    title="المرحلة 2: فيديو فحص واستلام السيارة عند الوصول"
                   >
                     <Video className="w-4 h-4" />
                   </button>

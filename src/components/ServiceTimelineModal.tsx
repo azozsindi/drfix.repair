@@ -248,6 +248,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
   // Determine starting tab
   const getInitialTab = () => {
+    if (initialStage) return 'workflow';
     if (initialTab === 'assign' && !isTechnician) return 'assign';
     if (initialTab === 'timeline') return 'timeline';
     if (initialTab === 'details') return 'details';
@@ -261,6 +262,8 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
 
   const steps: ServiceStepLog[] = record.serviceSteps || [];
   const totalPhotosCount = useMemo(() => steps.reduce((sum, s) => sum + (s.photos?.length || 0), 0), [steps]);
+  const hasArrivalStep = useMemo(() => steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول')), [steps]);
+  const arrivalStepLog = useMemo(() => steps.find(s => s.stepKey === 'arrival' || s.title?.includes('وصول')), [steps]);
 
   // Existing inspection video if present in any step
   const existingInspectionVideo = useMemo(() => {
@@ -284,9 +287,8 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
     if (record.status === 'completed') return true;
     if (stepNumber === 1) {
       return (
-        record.status === 'in-progress' ||
-        record.status === 'completed' ||
-        steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول'))
+        steps.some(s => s.stepKey === 'arrival' || s.title?.includes('وصول')) ||
+        record.status === 'completed'
       );
     }
     if (stepNumber === 2) {
@@ -344,6 +346,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
   const [etaTime, setEtaTime] = useState(record.estimatedArrival || 'متوقع الوصول خلال 30 دقيقة');
   const [onTheWayNote, setOnTheWayNote] = useState('');
   const [isOnTheWaySaving, setIsOnTheWaySaving] = useState(false);
+  const [showStage1Edit, setShowStage1Edit] = useState(false);
 
   // Stage 2 State: تصوير فيديو للسيارة كامل والعداد 🎥
   const [stage2Photos, setStage2Photos] = useState<{ 
@@ -1689,7 +1692,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
               type="button"
               onClick={() => { setActiveTab('workflow'); setWorkflowStage(1); }}
               className={cn(
-                "px-2 py-1 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
+                "px-2.5 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 text-[11px] sm:text-xs",
                 workflowStage === 1 && activeTab === 'workflow'
                   ? "bg-brand-red text-white shadow-sm ring-1 ring-brand-red"
                   : isStepCompleted(1)
@@ -1697,7 +1700,7 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     : "bg-white/5 text-gray-400 hover:text-white"
               )}
             >
-              <span>1. الوصول 📍</span>
+              <span>1. الانطلاق والوصول 📍</span>
               {isStepCompleted(1) && (
                 <Check className="w-3 h-3 text-emerald-400" />
               )}
@@ -1874,40 +1877,50 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                     </span>
                   </div>
 
-                  {isStepCompleted(1) || record.status === 'in-progress' || record.status === 'completed' ? (
-                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl space-y-3">
-                      <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>تم تأكيد وصول الفني للموقع بنجاح ✅</span>
+                  {/* If arrival was previously confirmed */}
+                  {hasArrivalStep && (
+                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/25 rounded-2xl space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs sm:text-sm">
+                          <CheckCircle2 className="w-4 h-4 shrink-0" />
+                          <span>تم تأكيد وصول الفني لموقع العميل بنجاح ✅</span>
+                        </div>
+                        {arrivalStepLog?.recordedAt && (
+                          <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                            {new Date(arrivalStepLog.recordedAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-300">
-                        تم تسجيل حالة الوصول بالوقت الفعلي وبدء المعاينة. يمكنك الآن الانتقال مباشرة للخطوة التالية لتصوير فيديو فحص السيارة والعداد.
-                      </p>
+
+                      {arrivalStepLog?.note && (
+                        <p className="text-xs text-gray-300 bg-black/30 p-2.5 rounded-xl border border-white/5">
+                          "{arrivalStepLog.note}"
+                        </p>
+                      )}
+
                       <div className="flex flex-wrap items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => setWorkflowStage(2)}
-                          className="px-4 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98"
+                          className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-brand-red to-red-600 hover:brightness-110 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-98"
                         >
-                          <span>الانتقال إلى: 2. تصوير فيديو للسيارة كامل والعداد 🎥</span>
+                          <span>الانتقال للمرحلة 2: تصوير فيديو السيارة والعداد 🎥</span>
                           <ChevronRight className="w-3.5 h-3.5 rotate-180" />
                         </button>
 
-                        {/* Option to re-confirm arrival if needed */}
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm('هل تريد إعادة تحديث أو توثيق ملاحظات الوصول؟')) {
-                              handleConfirmArrival();
-                            }
-                          }}
-                          className="px-3 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-medium cursor-pointer transition-colors"
+                          onClick={() => setShowStage1Edit(prev => !prev)}
+                          className="px-3 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-xl text-xs font-medium cursor-pointer transition-colors border border-white/10"
                         >
-                          تحديث ملاحظة الوصول
+                          {showStage1Edit ? 'إخفاء تفاصيل التعديل ✕' : 'عرض / تعديل بيانات الانطلاق والوصول ✏️'}
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  )}
+
+                  {/* The interactive Stage 1 Form (Always visible if not yet arrived, or toggled on when modifying) */}
+                  {(!hasArrivalStep || showStage1Edit) && (
                     <div className="space-y-4">
                       {/* Step 1-A: أنا بالطريق (تحديد المدة المتوقعة للوصول) */}
                       <div className={cn(
@@ -2048,29 +2061,41 @@ export const ServiceTimelineModal: React.FC<ServiceTimelineModalProps> = ({
                           />
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
                           <span className="text-[11px] text-gray-400">
                             الفني المكلف: <b className="text-gray-200">{currentTechName}</b>
                           </span>
 
-                          <button
-                            type="button"
-                            onClick={handleConfirmArrival}
-                            disabled={isSavingStage1}
-                            className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap"
-                          >
-                            {isSavingStage1 ? (
-                              <>
-                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                <span>جاري تأكيد الوصول...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Check className="w-4 h-4" />
-                                <span>📍 تأكيد الوصول الآن ⬅️ الانتقال لتصوير الفيديو</span>
-                              </>
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            {showStage1Edit && (
+                              <button
+                                type="button"
+                                onClick={() => setShowStage1Edit(false)}
+                                className="px-3 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-medium cursor-pointer transition-colors border border-white/10"
+                              >
+                                إلغاء
+                              </button>
                             )}
-                          </button>
+
+                            <button
+                              type="button"
+                              onClick={handleConfirmArrival}
+                              disabled={isSavingStage1}
+                              className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 cursor-pointer disabled:opacity-50 transition-all active:scale-98 whitespace-nowrap min-h-[44px]"
+                            >
+                              {isSavingStage1 ? (
+                                <>
+                                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  <span>جاري تأكيد الوصول...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-4 h-4" />
+                                  <span>📍 تأكيد الوصول الآن ⬅️ الانتقال لتصوير الفيديو</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
