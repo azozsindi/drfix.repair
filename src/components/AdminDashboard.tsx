@@ -1,22 +1,22 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigate } from 'react-router-dom';
-import {
-  ResponsiveContainer, 
-  LineChart, 
-  Line, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  AreaChart, 
-  Area,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip
-} from 'recharts';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { 
+  AdminTabId, 
+  PATH_TO_TAB, 
+  TAB_TO_PATH, 
+  ADMIN_NAV_ITEMS 
+} from './admin/types';
+import { AdminSidebar } from './admin/AdminSidebar';
+import { AdminTopbar } from './admin/AdminTopbar';
+import { AdminCommandPalette } from './admin/AdminCommandPalette';
+import { AdminOverviewView } from './admin/AdminOverviewView';
+import { AdminServicesView } from './admin/AdminServicesView';
+import { AdminOffersView } from './admin/AdminOffersView';
+import { AdminGalleryView } from './admin/AdminGalleryView';
+import { AdminReviewsView } from './admin/AdminReviewsView';
+
+import { AdminTrendChart, AdminDonutChart, AdminBarChart } from './admin/AdminCharts';
 import { 
   collection, 
   addDoc, 
@@ -104,6 +104,7 @@ import {
   Twitter,
   Globe,
   ArrowRight,
+  BarChart,
   X
 } from 'lucide-react';
 import { ReportsView } from './ReportsView';
@@ -239,10 +240,73 @@ const AdminDashboard = ({
     window.addEventListener('firestore-quota-exceeded', handleQuota);
     return () => window.removeEventListener('firestore-quota-exceeded', handleQuota);
   }, []);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Collapsible sidebar state (persisted to localStorage)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('drfix_admin_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('drfix_admin_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Mobile sidebar drawer state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Command palette state
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+  // Keyboard shortcut listener for Cmd+K / Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Compute activeTab from URL pathname or searchParams
+  const activeTab: AdminTabId = useMemo(() => {
+    const path = location.pathname.toLowerCase().replace(/\/$/, '') || '/admin';
+    if (PATH_TO_TAB[path]) {
+      return PATH_TO_TAB[path];
+    }
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      if (tabParam === 'dashboard') return 'overview';
+      if (tabParam === 'staff') return 'team';
+      if (tabParam === 'testimonials') return 'reviews';
+      if (tabParam === 'manual') return 'help';
+      if (tabParam === 'content') return 'services';
+      if (tabParam in TAB_TO_PATH) return tabParam as AdminTabId;
+    }
+    return 'overview';
+  }, [location.pathname, location.search]);
+
+  const setActiveTab = (tabId: AdminTabId) => {
+    const targetPath = TAB_TO_PATH[tabId] || '/admin';
+    navigate(targetPath);
+  };
+
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'calendar' | 'customers' | 'contracts' | 'testimonials' | 'notifications' | 'analytics' | 'reports' | 'content' | 'settings' | 'staff' | 'partners' | 'manual'>('dashboard');
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     type: 'batch_bookings' | 'batch_offers' | 'single';
@@ -2140,32 +2204,40 @@ const AdminDashboard = ({
   const allowedNavTabs = isTechnician ? [
     { id: 'bookings', label: lang === 'ar' ? 'مهامي الميدانية 🔧' : 'My Field Tasks', icon: Wrench, allowed: true },
     { id: 'calendar', label: lang === 'ar' ? 'جدول مواعيدي 📅' : 'My Schedule', icon: CalendarCheck, allowed: true },
+    { id: 'help', label: lang === 'ar' ? 'دليل الفني الميداني 📖' : 'Field Manual', icon: BookOpen, allowed: true },
     { id: 'manual', label: lang === 'ar' ? 'دليل الفني الميداني 📖' : 'Field Manual', icon: BookOpen, allowed: true },
   ] : [
-    { id: 'dashboard', label: lang === 'ar' ? 'الإحصائيات ونظرة عامة' : 'Dashboard & Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
+    { id: 'overview', label: lang === 'ar' ? 'الرئيسية ونظرة عامة' : 'Dashboard Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
+    { id: 'dashboard', label: lang === 'ar' ? 'الرئيسية ونظرة عامة' : 'Dashboard Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
     { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
     { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
     { id: 'customers', label: lang === 'ar' ? 'العملاء وسجل السيارات' : 'Customers & Vehicles', icon: User, allowed: userPermissions.canManageCustomers !== false },
     { id: 'contracts', label: lang === 'ar' ? 'إدارة العقود (ورش وشركات)' : 'Contracts (Workshops & Fleets)', icon: FileCheck, allowed: userPermissions.canManageContracts !== false },
     { id: 'reports', label: lang === 'ar' ? 'التقارير وسندات الصيانة (Word & PDF)' : 'Reports & Work Orders (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
     { id: 'analytics', label: lang === 'ar' ? 'التحليلات ومؤشرات الأداء' : 'Analytics & KPIs', icon: TrendingUp, allowed: userPermissions.canViewAnalytics !== false },
+    { id: 'team', label: lang === 'ar' ? 'فريق العمل والصلاحيات' : 'Staff & Permissions', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
     { id: 'staff', label: lang === 'ar' ? 'فريق العمل والصلاحيات' : 'Staff & Permissions', icon: ShieldCheck, allowed: userPermissions.canManageStaff !== false },
+    { id: 'services', label: lang === 'ar' ? 'إدارة الخدمات' : 'Services Catalog', icon: FileText, allowed: userPermissions.canManageContent !== false },
+    { id: 'offers', label: lang === 'ar' ? 'إدارة العروض الخاصة' : 'Special Offers', icon: Tag, allowed: userPermissions.canManageContent !== false },
+    { id: 'gallery', label: lang === 'ar' ? 'إدارة المعرض والوسائط' : 'Media Gallery', icon: Camera, allowed: userPermissions.canManageContent !== false },
     { id: 'content', label: lang === 'ar' ? 'إدارة المحتوى والعروض' : 'Content & Offers', icon: FileText, allowed: userPermissions.canManageContent !== false },
     { id: 'partners', label: lang === 'ar' ? 'شركاء النجاح' : 'Success Partners', icon: Handshake, allowed: userPermissions.canManageContent !== false },
+    { id: 'reviews', label: lang === 'ar' ? 'التقييمات والآراء' : 'Reviews & Feedback', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
     { id: 'testimonials', label: lang === 'ar' ? 'التقييمات والآراء' : 'Reviews & Feedback', icon: MessageSquare, allowed: userPermissions.canManageTestimonials !== false },
     { id: 'notifications', label: lang === 'ar' ? 'إشعارات FCM وتيليجرام' : 'FCM Push & Telegram', icon: Bell, allowed: userPermissions.canManageNotifications !== false },
     { id: 'settings', label: lang === 'ar' ? 'الإعدادات العامة والهوية' : 'General Settings', icon: Settings, allowed: userPermissions.canManageSettings !== false },
+    { id: 'help', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
     { id: 'manual', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
   ].filter(tab => tab.allowed);
 
   // Enforce auto-redirect: technicians can NEVER land on unauthorized admin tabs
   useEffect(() => {
     if (isTechnician) {
-      if (activeTab !== 'bookings' && activeTab !== 'calendar' && activeTab !== 'manual') {
+      if (activeTab !== 'bookings' && activeTab !== 'calendar' && activeTab !== 'manual' && activeTab !== 'help') {
         setActiveTab('bookings');
       }
     } else if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
-      setActiveTab(allowedNavTabs[0].id as any);
+      setActiveTab('overview');
     }
   }, [currentStaffUser, isTechnician, activeTab]);
 
@@ -2174,443 +2246,128 @@ const AdminDashboard = ({
   }
 
   return (
-    <section id="admin" className="py-6 sm:py-12 bg-brand-black border-t border-white/5 min-h-screen w-full max-w-full overflow-x-hidden box-border">
-      <div className="w-full max-w-[1550px] mx-auto px-2.5 sm:px-4 md:px-6 lg:px-8 box-border overflow-hidden">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 sm:gap-6 mb-6 sm:mb-8 w-full max-w-full box-border">
-          <div>
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-display font-black italic mb-1.5">
-              {isTechnician ? (
-                lang === 'ar' ? (
-                  <>لوحة <span className="text-brand-red">الفني الميداني</span> 🔧</>
-                ) : (
-                  <>Field <span className="text-brand-red">Technician Hub</span> 🔧</>
-                )
-              ) : lang === 'ar' ? (
-                <>لوحة تحكم <span className="text-brand-red">المركز والعمليات</span></>
-              ) : (
-                <>Center & <span className="text-brand-red">Operations Hub</span></>
-              )}
-            </h2>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-400 text-xs sm:text-sm">
-              <span>
-                {isTechnician
-                  ? (lang === 'ar' ? 'متابعة المهام الميدانية وتوثيق الفحص المباشر' : 'Track field tasks & inspect vehicles')
-                  : (lang === 'ar' ? 'إدارة الحجوزات والمواعيد والعملاء' : 'Manage bookings, schedules & customers')}
-              </span>
-              <span className="w-1.5 h-1.5 bg-brand-red rounded-full hidden sm:inline-block" />
-              <span className="bg-white/5 px-2 py-0.5 rounded text-gray-300 font-mono font-bold text-[11px] sm:text-xs">
-                {isTechnician 
-                  ? (lang === 'ar' ? `${accessibleRecords.length} مهمة مسندة إليك` : `${accessibleRecords.length} assigned tasks`) 
-                  : (lang === 'ar' ? `${records.length} حجز إجمالي` : `${records.length} total bookings`)}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full lg:w-auto justify-start lg:justify-end max-w-full">
-            {/* Logged-in Staff Badge */}
-            <div className="flex items-center gap-2 px-2.5 py-1.5 bg-white/5 border border-white/10 rounded-xl max-w-full">
-              <div className="w-7 h-7 rounded-lg bg-brand-red/20 border border-brand-red/30 flex items-center justify-center text-brand-red font-bold text-xs shrink-0">
-                {currentStaffUser?.fullName?.charAt(0) || 'D'}
-              </div>
-              <div className="text-right min-w-0">
-                <div className="text-xs font-bold text-white truncate max-w-[120px] sm:max-w-[160px]">
-                  {currentStaffUser?.fullName || (lang === 'ar' ? 'المدير العام' : 'General Manager')}
-                </div>
-                <div className="text-[10px] text-brand-red font-semibold truncate">
-                  {lang === 'ar'
-                    ? (currentStaffUser?.roleTitleAr || (currentStaffUser?.role === 'super_admin' ? 'مدير عام' : 'موظف'))
-                    : (currentStaffUser?.roleTitleEn || (currentStaffUser?.role === 'super_admin' ? 'Super Admin' : 'Staff'))}
-                </div>
-              </div>
-            </div>
+    <div 
+      className="min-h-screen bg-[#090A0C] flex flex-row w-full text-[#F5F6F8] overflow-x-hidden selection:bg-[#F52B35] selection:text-white"
+      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+    >
+      {/* 1. Permanent, Dedicated Sidebar */}
+      <AdminSidebar
+        currentTab={activeTab}
+        onSelectTab={(tabId) => setActiveTab(tabId)}
+        lang={lang}
+        currentStaffUser={currentStaffUser}
+        onLogout={onLogout}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapse}
+        isMobileOpen={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        badges={{
+          pendingBookings: records.filter(r => r.status === 'pending' || r.status === 'new').length,
+          newReviews: testimonials.filter(t => !t.reply).length,
+          unreadAlerts: records.filter(r => r.status === 'pending' || r.status === 'new').length
+        }}
+        allowedTabs={isTechnician ? ['bookings', 'calendar', 'help'] : undefined}
+      />
 
-            {/* Language Toggle in Admin Dashboard */}
-            <LanguageToggle />
+      {/* 2. Main Content Column beside the Sidebar */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen bg-[#090A0C]">
+        {/* Topbar */}
+        <AdminTopbar
+          currentTab={activeTab}
+          lang={lang}
+          onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          onQuickNewBooking={() => setIsAdding(true)}
+          onNavigateToTab={(tab) => setActiveTab(tab)}
+          currentStaffUser={currentStaffUser}
+          unreadAlertsCount={records.filter(r => r.status === 'pending' || r.status === 'new').length}
+          canManageBookings={!isTechnician && userPermissions.canManageBookings !== false}
+        />
 
-            <button 
-              onClick={() => window.location.href = '/'}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-white/5 border border-white/10 rounded-xl font-bold text-xs sm:text-sm hover:bg-white/10 transition-all text-gray-300 cursor-pointer"
-              title={lang === 'ar' ? 'العودة إلى واجهة الموقع الرئيسية' : 'Back to main website'}
-            >
-              <ArrowRight className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'الموقع' : 'Site'}</span>
-            </button>
-            
-            {/* Sound alert toggle */}
-            <button
-              onClick={() => {
-                const nextVal = !(settingsForm.enableSoundAlerts ?? true);
-                setSettingsForm(prev => ({ ...prev, enableSoundAlerts: nextVal }));
-                if (nextVal) {
-                  playNotificationSound();
-                }
-              }}
-              className={cn(
-                "p-2 sm:p-2.5 border rounded-xl transition-all cursor-pointer",
-                settingsForm.enableSoundAlerts !== false 
-                  ? "bg-brand-red/10 border-brand-red/30 text-brand-red" 
-                  : "bg-white/5 border-white/10 text-gray-500 hover:text-white hover:bg-white/10"
-              )}
-              title={settingsForm.enableSoundAlerts !== false ? (lang === 'ar' ? "الصوت مفعل للحجوزات الجديدة (اضغط للتعطيل)" : "Sound alert enabled (Click to mute)") : (lang === 'ar' ? "تفعيل الصوت التنبيهي" : "Enable sound chime")}
-            >
-              {settingsForm.enableSoundAlerts !== false ? <Volume2 className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> : <VolumeX className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
-            </button>
+        {/* Global Quick Search Command Palette (Ctrl+K) */}
+        <AdminCommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          onNavigateToTab={(tab) => setActiveTab(tab)}
+          onQuickNewBooking={() => setIsAdding(true)}
+          lang={lang}
+        />
 
-            {/* App Download Link (Google Drive / APK) */}
-            <a
-              href={settingsForm.appDownloadUrl || settings.appDownloadUrl || "https://drive.google.com/drive/folders/1dfh85Zi8ZELc7EfUkIPcTlPJjiM9kflh?usp=sharing"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-              title={lang === 'ar' ? "تحميل تطبيق الجوال (Google Drive / APK)" : "Download Mobile App"}
-            >
-              <Download className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{lang === 'ar' ? "تحميل التطبيق" : "Download App"}</span>
-            </a>
-
-            {/* PWA Install Button */}
-            <button
-              onClick={handleInstallPWA}
-              className={cn(
-                "hidden sm:flex items-center gap-1.5 px-3 py-2 border rounded-xl font-bold text-xs transition-all cursor-pointer",
-                isPWAInstalled 
-                  ? "bg-green-500/10 border-green-500/20 text-green-400" 
-                  : "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
-              )}
-              title={lang === 'ar' ? "تثبيت لوحة التحكم كتطبيق مستقل على جوالك أو جهازك" : "Install dashboard as standalone PWA application"}
-            >
-              <Download className="w-4 h-4 text-brand-red" />
-              <span>{isPWAInstalled ? (lang === 'ar' ? "مثبت ✓" : "Installed ✓") : (lang === 'ar' ? "تثبيت تطبيق (PWA)" : "Install App")}</span>
-            </button>
-
-            {!isTechnician && typeof Notification !== 'undefined' && (
-              <button 
-                onClick={() => {
-                  if (notificationPermission === 'default') {
-                    Notification.requestPermission().then(setNotificationPermission);
-                  } else if (notificationPermission === 'granted') {
-                    new Notification("تنبيه تجريبي 🚗", {
-                      body: lang === 'ar' ? "التنبيهات تعمل بنجاح في متصفحك!" : "Notifications active in your browser!",
-                      icon: settings.logoUrl || "/favicon.ico"
-                    });
-                  } else {
-                    alert(lang === 'ar' ? "التنبيهات محظورة في متصفحك. يرجى تفعيلها من إعدادات المتصفح." : "Notifications blocked in your browser.");
-                  }
-                }}
-                className={cn(
-                  "p-2 sm:p-2.5 border rounded-xl transition-all cursor-pointer",
-                  notificationPermission === 'granted' ? "bg-green-500/10 border-green-500/20 text-green-500" : 
-                  notificationPermission === 'denied' ? "bg-red-500/10 border-red-500/20 text-red-500" :
-                  "bg-white/5 border-white/10 text-white hover:bg-white/10"
-                )}
-                title={notificationPermission === 'granted' ? (lang === 'ar' ? "التنبيهات مفعلة (اضغط للتجربة)" : "Notifications active") : (lang === 'ar' ? "تفعيل التنبيهات" : "Enable browser notifications")}
-              >
-                {notificationPermission === 'granted' ? <Bell className="w-4 h-4 sm:w-4.5 sm:h-4.5" /> : <AlertCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5" />}
-              </button>
-            )}
-
-            {!isTechnician && userPermissions.canManageBookings !== false && (
-              <button 
-                onClick={() => setIsAdding(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 bg-brand-red rounded-xl font-bold italic hover:bg-red-700 transition-all shadow-lg shadow-brand-red/20 cursor-pointer text-white text-xs sm:text-sm"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>{lang === 'ar' ? 'إضافة حجز' : 'Add Booking'}</span>
-              </button>
-            )}
-
-            <button 
-              onClick={onLogout}
-              className="p-2 sm:p-2.5 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-gray-400 hover:text-white cursor-pointer"
-              title={lang === 'ar' ? "تسجيل الخروج" : "Logout"}
-            >
-              <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Main Navigation Tabs with Smooth Horizontal Controls for Laptops & Mobiles */}
-        <div className="relative mb-6 sm:mb-8 group w-full max-w-full overflow-hidden">
-          {/* Scroll Right Button (in RTL, scrolls back to start) */}
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('admin-nav-tabs-scroll');
-              if (el) el.scrollBy({ left: 260, behavior: 'smooth' });
-            }}
-            className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-brand-dark/95 border border-white/20 text-white shadow-xl items-center justify-center hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer"
-            title="تمرير التبويبات لليمين"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-
-          {/* Scroll Left Button (in RTL, scrolls forward to end) */}
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('admin-nav-tabs-scroll');
-              if (el) el.scrollBy({ left: -260, behavior: 'smooth' });
-            }}
-            className="hidden md:flex absolute -left-3.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-brand-dark/95 border border-white/20 text-white shadow-xl items-center justify-center hover:bg-brand-red hover:border-brand-red transition-all cursor-pointer"
-            title="تمرير التبويبات لليسار"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          <div 
-            id="admin-nav-tabs-scroll"
-            className="flex overflow-x-auto gap-1.5 sm:gap-2 bg-white/5 p-1.5 sm:p-2 rounded-2xl border border-white/10 scroll-smooth custom-tabs-scrollbar w-full max-w-full no-scrollbar"
-          >
-            {allowedNavTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={cn(
-                  "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl font-bold transition-all shrink-0 text-xs sm:text-sm whitespace-nowrap cursor-pointer",
-                  activeTab === tab.id 
-                    ? "bg-brand-red text-white shadow-lg shadow-brand-red/20 scale-[1.02]" 
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                )}
-              >
-                <tab.icon className="w-4 h-4 shrink-0" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Firestore Quota Notice Banner */}
-        {quotaExceededInfo && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-bold text-sm sm:text-base text-amber-300">
-                    {lang === 'ar' ? 'تنبيه: استهلاك الحصة اليومية المجانية لقاعدة البيانات (Firestore Quota Limit)' : 'Notice: Free Daily Read Quota Exceeded'}
-                  </h4>
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    {lang === 'ar' ? 'البيانات تعمل محلياً (Offline Cache)' : 'Working via Offline Cache'}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-300 leading-relaxed max-w-3xl">
-                  {lang === 'ar' 
-                    ? 'وصلت قاعدة البيانات للحد الأقصى اليومي المجاني (50,000 عملية قراءة/يومياً). سيتم تجديد الحصة تلقائياً غداً، أو يمكنك الترقية لتجنب أي توقف. بيانات الحجوزات والفنيين معروضة حالياً من النسخة المحلية.'
-                    : 'Your database reached the free daily Spark limit (50k daily reads). Quota automatically resets tomorrow, or you can upgrade. Local cached data is being displayed.'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-              <a
-                href="https://console.firebase.google.com/project/hr-system-2026/firestore/databases/ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601/data?openUpgradeDialog=true"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition-colors"
-              >
-                <span>{lang === 'ar' ? 'ترقية الخطة في Firebase' : 'Upgrade Plan'}</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-              <button
-                onClick={() => setQuotaExceededInfo(null)}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer"
-                title={lang === 'ar' ? 'إخفاء' : 'Dismiss'}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        <AnimatePresence mode="wait">
-          {!isTechnician && activeTab === 'dashboard' && (
+        {/* Main Content View Container */}
+        <div className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-6">
+          {/* Firestore Quota Notice Banner */}
+          {quotaExceededInfo && (
             <motion.div 
-              key="dashboard"
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="space-y-8"
+              className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
             >
-              {/* Quick Actions */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
-                <button onClick={() => setIsAdding(true)} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center cursor-pointer">
-                  <PlusCircle className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">حجز جديد</span>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-sm sm:text-base text-amber-300">
+                      {lang === 'ar' ? 'تنبيه: استهلاك الحصة اليومية المجانية لقاعدة البيانات (Firestore Quota Limit)' : 'Notice: Free Daily Read Quota Exceeded'}
+                    </h4>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {lang === 'ar' ? 'البيانات تعمل محلياً (Offline Cache)' : 'Working via Offline Cache'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-300 leading-relaxed max-w-3xl">
+                    {lang === 'ar' 
+                      ? 'وصلت قاعدة البيانات للحد الأقصى اليومي المجاني (50,000 عملية قراءة/يومياً). سيتم تجديد الحصة تلقائياً غداً، أو يمكنك الترقية لتجنب أي توقف. بيانات الحجوزات والفنيين معروضة حالياً من النسخة المحلية.'
+                      : 'Your database reached the free daily Spark limit (50k daily reads). Quota automatically resets tomorrow, or you can upgrade. Local cached data is being displayed.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <a
+                  href="https://console.firebase.google.com/project/hr-system-2026/firestore/databases/ai-studio-remixremixdrfix-e1e9871e-7d4a-4013-91c4-cbaa38ac0601/data?openUpgradeDialog=true"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition-colors"
+                >
+                  <span>{lang === 'ar' ? 'ترقية الخطة في Firebase' : 'Upgrade Plan'}</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  onClick={() => setQuotaExceededInfo(null)}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer"
+                  title={lang === 'ar' ? 'إخفاء' : 'Dismiss'}
+                >
+                  <X className="w-4 h-4" />
                 </button>
-                <button onClick={() => setActiveTab('contracts')} className="p-4 glass-card border-brand-red/20 flex flex-col items-center justify-center gap-2 hover:bg-brand-red/5 transition-all group text-center cursor-pointer">
-                  <FileCheck className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">إدارة العقود</span>
-                </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('offers'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
-                  <Tag className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">إدارة العروض الخاصة</span>
-                </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('services'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
-                  <Wrench className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">إدارة الخدمات</span>
-                </button>
-                <button onClick={() => { setActiveTab('content'); setContentTab('gallery'); }} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
-                  <Camera className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">إدارة المعرض</span>
-                </button>
-                <button onClick={() => setActiveTab('partners')} className="p-4 glass-card border-white/5 flex flex-col items-center justify-center gap-2 hover:bg-white/5 transition-all group text-center cursor-pointer">
-                  <Handshake className="w-6 h-6 text-brand-red group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-bold italic">شركاء النجاح</span>
-                </button>
               </div>
+            </motion.div>
+          )}
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Stats Cards */}
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">إجمالي الحجوزات</div>
-                <div className="text-4xl font-display font-black text-brand-red">{records.length}</div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '70%' }} />
-                </div>
-              </div>
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">الحجوزات المكتملة</div>
-                <div className="text-4xl font-display font-black text-emerald-400">
-                  {records.filter(r => r.status === 'completed').length}
-                </div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500" style={{ width: `${records.length > 0 ? Math.round((records.filter(r => r.status === 'completed').length / records.length) * 100) : 0}%` }} />
-                </div>
-              </div>
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">الطلبات النشطة</div>
-                <div className="text-4xl font-display font-black text-brand-red">
-                  {records.filter(r => r.status === 'in-progress' || r.status === 'pending').length}
-                </div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '40%' }} />
-                </div>
-              </div>
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">التعليقات الجديدة</div>
-                <div className="text-4xl font-display font-black text-brand-red">
-                  {testimonials.filter(t => !t.reply).length}
-                </div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '25%' }} />
-                </div>
-              </div>
-
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">إجمالي العروض</div>
-                <div className="text-4xl font-display font-black text-brand-red">
-                  {offers.length}
-                </div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '50%' }} />
-                </div>
-              </div>
-
-              <div className="glass-card p-6 border-brand-red/20">
-                <div className="text-gray-500 text-sm mb-2">صور المعرض</div>
-                <div className="text-4xl font-display font-black text-brand-red">
-                  {gallery.length + STATIC_GALLERY.filter(sg => !gallery.some(g => g.title === sg.title)).length}
-                </div>
-                <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-red" style={{ width: '60%' }} />
-                </div>
-              </div>
-
-              <div className="md:col-span-3 glass-card p-6 border-white/5">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-lg font-bold">آخر الحجوزات</h3>
-                  <button 
-                    onClick={() => setActiveTab('bookings')}
-                    className="text-brand-red text-sm font-bold hover:underline"
-                  >
-                    عرض الكل
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {records.slice(0, 5).map((record) => (
-                    <div key={record.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-brand-red/10 rounded-lg flex items-center justify-center text-brand-red">
-                          <Car className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-sm">{record.carModel}</div>
-                          <div className="text-xs text-gray-500">{record.serviceType}</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono text-gray-400">
-                          {record.bookingId ? `#${record.bookingId}` : 'طلب صيانة'}
-                        </div>
-                        <div className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-1",
-                          record.status === 'completed' ? "text-green-500 bg-green-500/10" :
-                          record.status === 'in-progress' ? "text-blue-500 bg-blue-500/10" :
-                          "text-white bg-white/10 border border-white/20"
-                        )}>
-                          {record.status === 'completed' ? 'مكتمل' : 
-                           record.status === 'in-progress' ? 'قيد العمل' : 'قيد الانتظار'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {records.length === 0 && (
-                    <div className="text-center py-8 text-gray-500 text-sm italic">لا توجد حجوزات حالياً</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Charts */}
-              <div className="md:col-span-2 glass-card p-6 border-white/5">
-                <h3 className="text-lg font-bold mb-6">حركة الحجوزات (آخر 7 أيام)</h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={getChartData()}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="name" stroke="#666" />
-                      <YAxis stroke="#666" />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
-                        itemStyle={{ color: '#FF0000' }}
-                      />
-                      <Line type="monotone" dataKey="bookings" stroke="#FF0000" strokeWidth={3} dot={{ fill: '#FF0000' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="glass-card p-6 border-white/5">
-                <h3 className="text-lg font-bold mb-6">الخدمات الأكثر طلباً</h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={getServiceStats()}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {getServiceStats().map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#111', border: '1px solid #333' }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+          <AnimatePresence mode="wait">
+            {/* 1. Overview Page */}
+            {!isTechnician && (activeTab === 'overview' || activeTab === 'dashboard') && (
+              <motion.div
+                key="overview"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.18 }}
+              >
+                <AdminOverviewView
+                  records={records}
+                  testimonials={testimonials}
+                  offers={offers}
+                  services={services}
+                  gallery={gallery}
+                  partners={partners}
+                  contracts={contracts}
+                  lang={lang}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onOpenNewBookingModal={() => setIsAdding(true)}
+                  onSelectBookingDetails={(record) => setSelectedBookingDetails(record)}
+                />
+              </motion.div>
+            )}
 
           {activeTab === 'bookings' && (
             <motion.div 
@@ -3786,7 +3543,7 @@ const AdminDashboard = ({
               className="space-y-8"
             >
               {/* Financial & Performance KPIs */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                 {(() => {
                   const completedBookings = records.filter(r => r.status === 'completed').length;
                   const inProgressBookings = records.filter(r => r.status === 'in-progress' || r.status === 'on_the_way').length;
@@ -3795,151 +3552,101 @@ const AdminDashboard = ({
 
                   return (
                     <>
-                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">إجمالي الحجوزات</div>
-                        <div className="text-3xl font-black font-display text-white">{records.length} <span className="text-sm font-normal text-brand-red">طلب</span></div>
-                        <div className="mt-3 flex items-center gap-1 text-xs text-brand-red">
+                      <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl relative overflow-hidden">
+                        <div className="text-xs text-[#A1A6B2] mb-1 font-medium">{lang === 'ar' ? 'إجمالي الحجوزات' : 'Total Bookings'}</div>
+                        <div className="text-3xl font-black font-display text-white">{records.length} <span className="text-sm font-normal text-[#FF414A]">{lang === 'ar' ? 'طلب' : 'orders'}</span></div>
+                        <div className="mt-3 flex items-center gap-1.5 text-xs text-[#FF414A]">
                           <TrendingUp className="w-3.5 h-3.5" />
-                          <span>جميع الطلبات المسجلة في النظام</span>
+                          <span>{lang === 'ar' ? 'جميع الطلبات المسجلة في النظام' : 'All recorded requests'}</span>
                         </div>
                       </div>
 
-                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">الحجوزات المكتملة</div>
-                        <div className="text-3xl font-black font-display text-emerald-400">{completedBookings} <span className="text-sm font-normal text-gray-400">حجز</span></div>
-                        <div className="mt-3 text-xs text-gray-400">تمت خدمتهم بنجاح</div>
+                      <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl relative overflow-hidden">
+                        <div className="text-xs text-[#A1A6B2] mb-1 font-medium">{lang === 'ar' ? 'الحجوزات المكتملة' : 'Completed Bookings'}</div>
+                        <div className="text-3xl font-black font-display text-emerald-400">{completedBookings} <span className="text-sm font-normal text-gray-400">{lang === 'ar' ? 'حجز' : 'done'}</span></div>
+                        <div className="mt-3 text-xs text-gray-400">{lang === 'ar' ? 'تمت خدمتهم بنجاح' : 'Successfully completed'}</div>
                       </div>
 
-                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">نسبة إنجاز الحجوزات</div>
-                        <div className="text-3xl font-black font-display text-green-400">{completionRate}%</div>
-                        <div className="mt-3 text-xs text-gray-400">{completedBookings} من أصل {records.length}</div>
+                      <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl relative overflow-hidden">
+                        <div className="text-xs text-[#A1A6B2] mb-1 font-medium">{lang === 'ar' ? 'نسبة إنجاز الحجوزات' : 'Completion Rate'}</div>
+                        <div className="text-3xl font-black font-display text-emerald-400">{completionRate}%</div>
+                        <div className="mt-3 text-xs text-gray-400">{completedBookings} {lang === 'ar' ? `من أصل ${records.length}` : `of ${records.length}`}</div>
                       </div>
 
-                      <div className="glass-card p-6 border-white/5 relative overflow-hidden">
-                        <div className="text-xs text-gray-400 mb-1">قيد العمل والانتظار</div>
-                        <div className="text-3xl font-black font-display text-white">{inProgressBookings + newOrPendingBookings} <span className="text-sm font-normal text-gray-400">طلب</span></div>
-                        <div className="mt-3 text-xs text-blue-400">بحاجة للمتابعة والتنفيذ</div>
+                      <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl relative overflow-hidden">
+                        <div className="text-xs text-[#A1A6B2] mb-1 font-medium">{lang === 'ar' ? 'قيد العمل والانتظار' : 'Active Pipeline'}</div>
+                        <div className="text-3xl font-black font-display text-white">{inProgressBookings + newOrPendingBookings} <span className="text-sm font-normal text-gray-400">{lang === 'ar' ? 'طلب' : 'active'}</span></div>
+                        <div className="mt-3 text-xs text-amber-400">{lang === 'ar' ? 'بحاجة للمتابعة والتنفيذ' : 'Requires operational follow-up'}</div>
                       </div>
                     </>
                   );
                 })()}
               </div>
 
-              {/* 7-Day Volume Trend Chart */}
+              {/* 7-Day Volume Trend Chart & Donut Distribution */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 glass-card p-6 border-white/5">
-                  <div className="flex items-center justify-between mb-6">
+                <div className="lg:col-span-2 p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl space-y-4">
+                  <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-lg font-bold text-white">منحنى حركة الحجوزات (آخر 7 أيام)</h3>
-                      <p className="text-xs text-gray-400">تتبع يومي لعدد الطلبات والحجوزات</p>
+                      <h3 className="text-base sm:text-lg font-bold text-white">{lang === 'ar' ? 'منحنى حركة الحجوزات (آخر 7 أيام)' : 'Bookings Volume Trend (Last 7 Days)'}</h3>
+                      <p className="text-xs text-[#A1A6B2]">{lang === 'ar' ? 'تتبع يومي لعدد الطلبات والحجوزات المسجلة' : 'Daily incoming maintenance orders'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-brand-red" />
-                      <span className="text-xs text-gray-400">عدد الحجوزات</span>
+                      <span className="w-3 h-3 rounded-full bg-[#F52B35]" />
+                      <span className="text-xs text-[#A1A6B2]">{lang === 'ar' ? 'عدد الحجوزات' : 'Bookings'}</span>
                     </div>
                   </div>
-                  <div className="h-[280px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={getChartData()}>
-                        <defs>
-                          <linearGradient id="bookingsGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#E31837" stopOpacity={0.4}/>
-                            <stop offset="95%" stopColor="#E31837" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                        <XAxis dataKey="name" stroke="#666" />
-                        <YAxis stroke="#666" allowDecimals={false} />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px' }}
-                          formatter={(val: any) => [`${val} حجز`, 'الحجوزات']}
-                        />
-                        <Area type="monotone" dataKey="bookings" stroke="#E31837" strokeWidth={3} fillOpacity={1} fill="url(#bookingsGrad)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                  <div className="w-full">
+                    <AdminTrendChart data={getChartData()} dataKey="bookings" color="#F52B35" unitLabel={lang === 'ar' ? 'حجز' : 'bookings'} />
                   </div>
                 </div>
 
-                {/* Service Categories Distribution Pie */}
-                <div className="glass-card p-6 border-white/5">
-                  <h3 className="text-lg font-bold text-white mb-1">الخدمات الأكثر طلباً</h3>
-                  <p className="text-xs text-gray-400 mb-6">توزيع الحجوزات حسب نوع الصيانة</p>
-                  <div className="h-[220px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={getServiceStats()}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={75}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {getServiceStats().map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="space-y-1.5 mt-2 max-h-[100px] overflow-y-auto no-scrollbar">
-                    {getServiceStats().map((s, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
-                          <span className="text-gray-300">{s.name}</span>
-                        </div>
-                        <span className="font-bold text-white">{s.value}</span>
-                      </div>
-                    ))}
+                {/* Service Categories Distribution Donut */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl space-y-4">
+                  <h3 className="text-base sm:text-lg font-bold text-white mb-1">{lang === 'ar' ? 'الخدمات الأكثر طلباً' : 'Top Services Distribution'}</h3>
+                  <p className="text-xs text-[#A1A6B2] mb-4">{lang === 'ar' ? 'توزيع الحجوزات حسب نوع الصيانة' : 'Booking distribution by service category'}</p>
+                  <div className="w-full">
+                    <AdminDonutChart data={getServiceStats()} centerLabel={lang === 'ar' ? 'الخدمات' : 'Services'} />
                   </div>
                 </div>
               </div>
 
-              {/* Status Breakdown & Top Car Makes */}
+              {/* Status Breakdown & Top Car Makes Bar Chart */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Status Pipeline */}
-                <div className="glass-card p-6 border-white/5 space-y-4">
-                  <h3 className="text-lg font-bold text-white">توزيع حالات الحجوزات والعمليات</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {/* Status Pipeline Grid */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl space-y-4">
+                  <h3 className="text-base sm:text-lg font-bold text-white">{lang === 'ar' ? 'توزيع حالات الحجوزات والعمليات' : 'Order Status Breakdown'}</h3>
+                  <p className="text-xs text-[#A1A6B2]">{lang === 'ar' ? 'متابعة مسار الصيانة من الطلب حتى الإنجاز' : 'Live maintenance status pipeline'}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
                     {getStatusStats().map((st, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-black/40 border border-white/5">
-                        <div className="text-xs text-gray-400 mb-1">{st.label}</div>
+                      <div key={idx} className="p-3.5 rounded-xl bg-[#0C0E12] border border-white/[0.06]">
+                        <div className="text-xs text-[#A1A6B2] mb-1">{st.label}</div>
                         <div className="text-2xl font-black" style={{ color: st.color }}>{st.count}</div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Top Car Makes Serviced */}
-                <div className="glass-card p-6 border-white/5 space-y-4">
-                  <h3 className="text-lg font-bold text-white">أكثر أنواع وماركات السيارات طلباً</h3>
-                  <div className="space-y-3">
-                    {getTopCarMakes().map((car, idx) => {
-                      const totalC = records.length || 1;
-                      const pct = Math.round((car.count / totalC) * 100);
-                      return (
-                        <div key={idx} className="space-y-1">
-                          <div className="flex justify-between text-xs font-bold">
-                            <span className="text-white">{car.make}</span>
-                            <span className="text-gray-400">{car.count} حجز ({pct}%)</span>
-                          </div>
-                          <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
-                            <div 
-                              className="h-full bg-brand-red rounded-full transition-all duration-500" 
-                              style={{ width: `${Math.max(pct, 5)}%` }} 
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {getTopCarMakes().length === 0 && (
-                      <div className="py-6 text-center text-xs text-gray-500">لا توجد بيانات كافية للسيارات بعد</div>
+                {/* Top Car Makes Serviced (AdminBarChart) */}
+                <div className="p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base sm:text-lg font-bold text-white">{lang === 'ar' ? 'أكثر ماركات السيارات طلباً' : 'Top Vehicle Makes Serviced'}</h3>
+                      <p className="text-xs text-[#A1A6B2]">{lang === 'ar' ? 'مقارنة الطلبات حسب الشركة المصنعة للسيارة' : 'Demand distribution by vehicle manufacturer'}</p>
+                    </div>
+                  </div>
+                  <div className="w-full pt-2">
+                    {getTopCarMakes().length > 0 ? (
+                      <AdminBarChart
+                        data={getTopCarMakes().map(c => ({ name: c.make, count: c.count }))}
+                        dataKey="count"
+                        nameKey="name"
+                        color="#F52B35"
+                        unitLabel={lang === 'ar' ? 'طلب' : 'orders'}
+                        height={220}
+                      />
+                    ) : (
+                      <div className="py-12 text-center text-xs text-[#A1A6B2]">{lang === 'ar' ? 'لا توجد بيانات كافية للسيارات بعد' : 'No vehicle data recorded yet'}</div>
                     )}
                   </div>
                 </div>
@@ -3955,6 +3662,63 @@ const AdminDashboard = ({
               exit={{ opacity: 0, y: -15 }}
             >
               <ReportsView records={isTechnician ? accessibleRecords : records} />
+            </motion.div>
+          )}
+
+          {/* Dedicated Services Management Page */}
+          {!isTechnician && activeTab === 'services' && (
+            <motion.div
+              key="services"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.18 }}
+            >
+              <AdminServicesView
+                services={services}
+                lang={lang}
+                onAddService={() => { setEditingItem(null); setContentTab('services'); setIsAdding(true); }}
+                onEditService={(s) => handleEdit('service', s)}
+                onDeleteService={(id) => handleDelete('services', id)}
+              />
+            </motion.div>
+          )}
+
+          {/* Dedicated Special Offers Page */}
+          {!isTechnician && activeTab === 'offers' && (
+            <motion.div
+              key="offers"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.18 }}
+            >
+              <AdminOffersView
+                offers={offers}
+                lang={lang}
+                onAddOffer={() => { setEditingItem(null); setContentTab('offers'); setIsAdding(true); }}
+                onEditOffer={(o) => handleEdit('offer', o)}
+                onDeleteOffer={(id) => handleDelete('offers', id)}
+                onDeleteAllOffers={handleDeleteAllOffers}
+              />
+            </motion.div>
+          )}
+
+          {/* Dedicated Media Gallery Page */}
+          {!isTechnician && activeTab === 'gallery' && (
+            <motion.div
+              key="gallery"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.18 }}
+            >
+              <AdminGalleryView
+                gallery={gallery}
+                lang={lang}
+                onAddImage={() => { setEditingItem(null); setContentTab('gallery'); setIsAdding(true); }}
+                onDeleteImage={(id) => handleDelete('gallery', id)}
+              />
             </motion.div>
           )}
 
@@ -4265,7 +4029,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'testimonials' && (
+          {!isTechnician && (activeTab === 'testimonials' || activeTab === 'reviews') && (
             <motion.div 
               key="testimonials"
               initial={{ opacity: 0 }}
@@ -6265,7 +6029,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'staff' && (
+          {!isTechnician && (activeTab === 'staff' || activeTab === 'team') && (
             <motion.div
               key="staff"
               initial={{ opacity: 0, y: 20 }}
@@ -6319,7 +6083,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {activeTab === 'manual' && (
+          {(activeTab === 'manual' || activeTab === 'help') && (
             <motion.div
               key="manual"
               initial={{ opacity: 0, y: 20 }}
@@ -6910,8 +6674,9 @@ const AdminDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
-    </section>
+    </div>
   );
 };
 

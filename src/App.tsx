@@ -132,6 +132,8 @@ import { cn } from './lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from './lib/phoneUtils';
 import { useScrollLock } from './lib/scrollLock';
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
+import { LanguageProvider, useLanguage, LanguageToggle, type Language } from './context/LanguageContext';
+
 
 // Code-Splitting: Lazy Loaded Admin Dashboard, Routes, and Modals
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
@@ -280,69 +282,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   console.error('Firestore Error: ', JSON.stringify(errInfo));
 }
 
-// Language Context
-type Language = 'ar' | 'en';
-interface LanguageContextType {
-  lang: Language;
-  setLang: (lang: Language) => void;
-  t: any;
-}
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const useLanguage = () => {
-  const context = useContext(LanguageContext);
-  if (!context) throw new Error('useLanguage must be used within a LanguageProvider');
-  return context;
-};
-
-const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
-  const [lang, setLangState] = useState<Language>(() => {
-    try {
-      const saved = localStorage.getItem('drfix_lang') as Language;
-      return saved === 'en' || saved === 'ar' ? saved : 'ar';
-    } catch {
-      return 'ar';
-    }
-  });
-
-  const setLang = (newLang: Language) => {
-    setLangState(newLang);
-    try {
-      localStorage.setItem('drfix_lang', newLang);
-    } catch {}
-  };
-
-  const t = translations[lang] || translations.ar;
-
-  useEffect(() => {
-    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = lang;
-  }, [lang]);
-
-  return (
-    <LanguageContext.Provider value={{ lang, setLang, t }}>
-      {children}
-    </LanguageContext.Provider>
-  );
-};
-
-const LanguageToggle = ({ className }: { className?: string }) => {
-  const { lang, setLang } = useLanguage();
-  return (
-    <button
-      type="button"
-      onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
-      className={cn(
-        "px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-brand-red/40 text-xs font-bold transition-all flex items-center gap-2 text-white cursor-pointer group shadow-sm shrink-0",
-        className
-      )}
-      title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى اللغة العربية'}
-    >
-      <Globe className="w-3.5 h-3.5 text-brand-red group-hover:rotate-12 transition-transform" />
-      <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
-    </button>
-  );
-};
 
 // --- UI Components ---
 
@@ -4705,6 +4645,26 @@ function MainContent() {
     );
   }
 
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const isLoginRoute = location.pathname.startsWith('/login');
+
+  if (isAdminRoute || isLoginRoute) {
+    return (
+      <div className="min-h-screen min-h-[100dvh] bg-[#090A0C] text-[#F5F6F8] flex flex-col w-full overflow-x-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <DynamicStyles settings={settings} />
+        <main className="flex-1 w-full min-h-screen">
+          <Routes>
+            <Route path="/admin" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/admin/*" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
+            <Route path="/login/*" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-brand-black text-white flex flex-col" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <DynamicStyles settings={settings} />
@@ -4747,18 +4707,12 @@ function MainContent() {
           } />
           <Route path="/booking" element={<BookingForm selectedService={selectedService} settings={settings} />} />
           <Route path="/history" element={<Navigate to="/" replace />} />
-          <Route path="/admin" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
-          <Route path="/admin/*" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
-          <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
-          <Route path="/login/*" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
         </Routes>
       </main>
 
       <Footer settings={settings} isAdmin={isAdminLoggedIn} />
       
-      {location.pathname !== '/admin' && location.pathname !== '/login' && (
-        <MobileQuickBar settings={settings} />
-      )}
+      <MobileQuickBar settings={settings} />
       
       <AnimatePresence>
         {showInstallPrompt && (
