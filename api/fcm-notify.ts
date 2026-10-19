@@ -87,14 +87,24 @@ export default async function handler(req: any, res: any) {
       try { payload = JSON.parse(payload); } catch {}
     }
 
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({ ok: false, message: 'Invalid request body' });
+    }
+
+    const title = (payload.title || '').trim();
+    const body = (payload.body || '').trim();
+
+    // Reject notifications with completely empty content
+    if (!title && !body) {
+      return res.status(400).json({ ok: false, message: 'Notification title or body must not be empty' });
+    }
+
     const {
-      title = 'DR.FIX | إشعار جديد 🚗',
-      body = 'وصلك إشعار فوري جديد من نظام DR.FIX',
       url = '/admin',
       targetTokens = [],
       bookingId,
       serverKey = process.env.FIREBASE_SERVER_KEY || ''
-    } = payload || {};
+    } = payload;
 
     const apiKey = firebaseConfig.apiKey;
     let tokensToSend: { id: string; token: string }[] = [];

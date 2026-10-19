@@ -1,13 +1,13 @@
 {
-  "name": "Dr. Fix | لوحة تحكم الإدارة",
-  "short_name": "Dr. Fix Admin",
-  "description": "تطبيق إدارة الحجوزات والخدمات والعملاء لمركز Dr. Fix لصيانة السيارات",
-  "start_url": "/admin",
+  "name": "DR.FIX | ميكانيكي متنقل في جدة",
+  "short_name": "DR.FIX",
+  "description": "خدمات صيانة وإصلاح السيارات المتنقلة عند موقعك في جدة. احجز خدمة ميكانيكي متنقل بسرعة وسهولة.",
+  "start_url": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "minimal-ui",
   "orientation": "portrait-primary",
   "background_color": "#0A0A0A",
-  "theme_color": "#E60000",
+  "theme_color": "#0A0A0A",
   "dir": "rtl",
   "lang": "ar",
   "categories": ["business", "productivity", "utilities"],
@@ -37,24 +37,24 @@
   ],
   "shortcuts": [
     {
-      "name": "الحجوزات الجديدة",
-      "short_name": "الحجوزات",
-      "description": "عرض وإدارة طلبات الحجز المباشرة",
-      "url": "/admin?tab=bookings",
-      "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
-    },
-    {
       "name": "حجز موعد صيانة",
       "short_name": "حجز جديد",
-      "description": "إنشاء حجز صيانة سيارة للعميل",
+      "description": "طلب خدمة ميكانيكي متنقل فوري",
       "url": "/#booking",
       "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
-      "name": "سجل الصيانة",
-      "short_name": "سجل الصيانة",
-      "description": "البحث في فواتير وتقارير الصيانة",
-      "url": "/history",
+      "name": "سجل ومتابعة الصيانة",
+      "short_name": "متابعة الطلب",
+      "description": "الاستعلام عن حالة حجز الصيانة",
+      "url": "/#status",
+      "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "لوحة إدارة DR.FIX",
+      "short_name": "الإدارة",
+      "description": "لوحة تحكم إدارة الحجوزات للمسؤولين",
+      "url": "/admin",
       "icons": [{ "src": "/logo.png", "sizes": "96x96", "type": "image/png" }]
     }
   ]

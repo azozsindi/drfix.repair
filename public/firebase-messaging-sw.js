@@ -21,10 +21,21 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[DR.FIX FCM-SW] Received background message:', payload);
   
-  const notificationTitle = payload.notification?.title || payload.data?.title || 'DR.FIX | إشعار جديد 🚗';
-  const notificationBody = payload.notification?.body || payload.data?.body || 'وصلك تنبيه جديد من نظام DR.FIX. اضغط للمتابعة.';
+  if (!payload) return;
+
+  const title = (payload.notification?.title || payload.data?.title || '').trim();
+  const body = (payload.notification?.body || payload.data?.body || '').trim();
+
+  // Strict Validation: Never display empty or ghost notifications
+  if (!title && !body) {
+    console.log('[DR.FIX FCM-SW] Skipped notification: title and body are empty');
+    return;
+  }
+
+  const notificationTitle = title || 'DR.FIX | تنبيه صيانة 🚗';
+  const notificationBody = body;
   const clickUrl = payload.data?.url || payload.data?.click_action || '/admin';
-  const tag = payload.data?.tag || `drfix-fcm-${Date.now()}`;
+  const tag = payload.data?.tag || `drfix-fcm-${payload.data?.bookingId || Date.now()}`;
 
   const notificationOptions = {
     body: notificationBody,
@@ -34,8 +45,8 @@ messaging.onBackgroundMessage((payload) => {
     lang: 'ar',
     tag: tag,
     renotify: true,
-    requireInteraction: true,
-    vibrate: [200, 100, 200, 100, 300],
+    requireInteraction: false,
+    vibrate: [200, 100, 200],
     data: {
       url: clickUrl,
       bookingId: payload.data?.bookingId,
@@ -44,62 +55,12 @@ messaging.onBackgroundMessage((payload) => {
     actions: [
       {
         action: 'open_dashboard',
-        title: 'فتح اللوحة 📋'
-      },
-      {
-        action: 'dismiss',
-        title: 'إغلاق ✕'
+        title: 'عرض التفاصيل'
       }
     ]
   };
 
   return self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// Fallback: Standard Web Push Event (for direct server push or external triggers)
-self.addEventListener('push', (event) => {
-  if (!event.data) return;
-
-  try {
-    const data = event.data.json();
-    const title = data.notification?.title || data.title || 'DR.FIX | إشعار جديد 🚗';
-    const body = data.notification?.body || data.body || 'وصلك إشعار فوري جديد من نظام DR.FIX';
-    const clickUrl = data.data?.url || data.url || '/admin';
-    const tag = data.data?.tag || data.tag || `drfix-push-${Date.now()}`;
-
-    const options = {
-      body: body,
-      icon: data.notification?.icon || '/logo-custom.png',
-      badge: '/favicon-96x96.png',
-      dir: 'rtl',
-      lang: 'ar',
-      tag: tag,
-      renotify: true,
-      requireInteraction: true,
-      vibrate: [200, 100, 200, 100, 300],
-      data: {
-        url: clickUrl,
-        timestamp: Date.now()
-      },
-      actions: [
-        { action: 'open_dashboard', title: 'عرض التفاصيل' }
-      ]
-    };
-
-    event.waitUntil(self.registration.showNotification(title, options));
-  } catch (err) {
-    const text = event.data.text();
-    event.waitUntil(
-      self.registration.showNotification('DR.FIX | تنبيه فوري 🚗', {
-        body: text || 'وصلك إشعار من النظام',
-        icon: '/logo-custom.png',
-        badge: '/favicon-96x96.png',
-        dir: 'rtl',
-        lang: 'ar',
-        data: { url: '/admin' }
-      })
-    );
-  }
 });
 
 // Handle Notification Clicks (Focus or Open Target Page)

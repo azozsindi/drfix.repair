@@ -248,6 +248,13 @@ export async function unregisterFcmDevice(): Promise<boolean> {
  * Send an immediate test notification locally on the browser to verify service worker & permissions
  */
 export async function sendLocalTestNotification(title: string, body: string): Promise<boolean> {
+  const cleanTitle = (title || '').trim();
+  const cleanBody = (body || '').trim();
+  if (!cleanTitle && !cleanBody) {
+    console.warn('[DR.FIX] Ignored local notification with empty title and body');
+    return false;
+  }
+
   if (typeof window === 'undefined' || !('Notification' in window)) return false;
 
   if (Notification.permission !== 'granted') {
@@ -261,8 +268,8 @@ export async function sendLocalTestNotification(title: string, body: string): Pr
       const reg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js') || 
                   await navigator.serviceWorker.ready;
       if (reg && 'showNotification' in reg) {
-        await (reg as any).showNotification(title, {
-          body,
+        await (reg as any).showNotification(cleanTitle || 'DR.FIX | تنبيه تجريبي 🚗', {
+          body: cleanBody,
           icon: '/logo-custom.png',
           badge: '/favicon-96x96.png',
           dir: 'rtl',
@@ -277,8 +284,8 @@ export async function sendLocalTestNotification(title: string, body: string): Pr
     }
 
     // Direct Notification fallback
-    new Notification(title, {
-      body,
+    new Notification(cleanTitle || 'DR.FIX | تنبيه تجريبي 🚗', {
+      body: cleanBody,
       icon: '/logo-custom.png',
       badge: '/favicon-96x96.png',
       dir: 'rtl',
@@ -306,6 +313,15 @@ export function setupForegroundFcmListener(
 
     const unsubscribe = onMessage(messaging, (payload) => {
       console.log('[DR.FIX] Foreground FCM message received:', payload);
+      
+      const title = (payload.notification?.title || payload.data?.title || '').trim();
+      const body = (payload.notification?.body || payload.data?.body || '').trim();
+      
+      // Ignore empty/silent messages
+      if (!title && !body) {
+        return;
+      }
+
       playNewBookingSound();
 
       // Dispatch local toast/event for the UI

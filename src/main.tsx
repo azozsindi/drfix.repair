@@ -7,20 +7,16 @@ import { initGlobalScrollLockObserver } from './lib/scrollLock';
 // Initialize global scroll lock observer to prevent background movement when any screen/modal is open
 initGlobalScrollLockObserver();
 
-// Unregister any active service worker and clear stale caches to prevent old code flash
+// Clean up any legacy service workers, while preserving the official FCM background service worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     for (const registration of registrations) {
-      registration.unregister();
+      const scriptUrl = registration.active?.scriptURL || registration.installing?.scriptURL || registration.waiting?.scriptURL || '';
+      if (scriptUrl.includes('/sw.js') && !scriptUrl.includes('firebase-messaging-sw')) {
+        registration.unregister().catch(() => {});
+      }
     }
-  });
-}
-if ('caches' in window) {
-  caches.keys().then((names) => {
-    for (const name of names) {
-      caches.delete(name);
-    }
-  });
+  }).catch(() => {});
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -126,8 +126,6 @@ export const AdminFcmManager: React.FC<AdminFcmManagerProps> = ({
         success: true,
         message: 'تم تفعيل إشعارات DR.FIX بنجاح على هذا الجهاز! تم تسجيل رمز الجهاز في النظام.'
       });
-      // Trigger a welcoming local test notification
-      sendLocalTestNotification('مرحباً بك في إشعارات DR.FIX 🚗', 'تم تفعيل التنبيهات الفورية بنجاح على هذا الجهاز.');
     } else {
       setTestResult({
         success: false,

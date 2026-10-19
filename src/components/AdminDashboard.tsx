@@ -666,11 +666,9 @@ const AdminDashboard = ({
 
   useEffect(() => {
     if (isAdmin) {
-      // Request notification permission
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        Notification.requestPermission().then(permission => {
-          setNotificationPermission(permission);
-        });
+      // Read notification permission state without prompting automatically
+      if (typeof Notification !== 'undefined') {
+        setNotificationPermission(Notification.permission);
       }
 
       // Maintenance
