@@ -905,10 +905,79 @@ export interface AppSettings {
   telegramChatId?: string;
   enableSoundAlerts?: boolean;
   appDownloadUrl?: string;
+  // Firebase Cloud Messaging (FCM)
+  enableFcmNotifications?: boolean;
+  fcmVapidKey?: string;
+  fcmServerKey?: string;
+  fcmServiceAccountJson?: string;
+  lastTestNotificationSentAt?: string;
   // Privacy Policy & Terms of Service (PDPL Compliant)
   privacyPolicyText?: string;
   termsOfServiceText?: string;
   showPrivacyPolicy?: boolean;
   showTermsOfService?: boolean;
 }
+
+export interface FcmDeviceToken {
+  id: string;
+  token: string;
+  userId: string;
+  userName: string;
+  userRole?: string;
+  platform?: string;
+  browser?: string;
+  os?: string;
+  deviceType?: 'mobile' | 'tablet' | 'desktop';
+  userAgent?: string;
+  isActive: boolean;
+  createdAt: any;
+  updatedAt: any;
+  lastActiveAt?: any;
+}
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  siteName: "Dr.Fix",
+  heroTitle: "نصلح سيارتك",
+  heroSubtitle: "في مكانك",
+  heroBadge: "",
+  heroImageUrl: "/hero-custom.jpg",
+  logoUrl: "/logo-custom.png",
+  phone: "0546870807",
+  whatsapp: "966546870807",
+  email: "info@drfix.repair",
+  appDownloadUrl: "https://drive.google.com/drive/folders/1dfh85Zi8ZELc7EfUkIPcTlPJjiM9kflh?usp=sharing",
+  snapchat: "https://www.snapchat.com",
+  tiktok: "https://www.tiktok.com",
+  instagram: "https://www.instagram.com",
+  twitter: "https://x.com",
+  heroButtonText: "احجز الآن",
+  heroImageBadgeTitle: "خدمة متنقلة وسريعة",
+  heroImageBadgeSubtitle: "نصلك أينما كنت بجدة",
+  tickerText: "",
+  primaryColor: "#E31837",
+  accentColor: "#0A0A0A",
+  borderRadius: "1rem",
+  fontFamily: "Cairo",
+  secondaryFont: "Inter",
+  buttonStyle: "solid",
+  showHeroImageBadge: true,
+  showServices: true,
+  showOffers: true,
+  showGallery: true,
+  showTestimonials: true,
+  showContact: true,
+  showStats: true,
+  showPartners: true,
+  enableCustomerAccounts: true,
+  enableFcmNotifications: true,
+  fcmVapidKey: "",
+  fcmServerKey: "",
+  fcmServiceAccountJson: "",
+  showPrivacyPolicy: true,
+  showTermsOfService: true,
+  copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX",
+  privacyPolicyText: "",
+  termsOfServiceText: ""
+};
+
 

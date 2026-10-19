@@ -131,6 +131,29 @@ export default async function handler(req: any, res: any) {
     });
 
     const result = await tgRes.json();
+
+    // Trigger FCM Web Push Notification in parallel
+    try {
+      const fcmHandler = (await import('./fcm-notify')).default;
+      const fakeReq = {
+        method: 'POST',
+        body: {
+          title: 'حجز صيانة جديد 🚗',
+          body: `وصل طلب صيانة جديد #${bId} (${car}). اضغط لعرض تفاصيل الحجز.`,
+          url: `/admin`,
+          bookingId: bId,
+          eventType: 'new_booking'
+        }
+      };
+      const fakeRes = {
+        setHeader: () => {},
+        status: () => ({ json: () => {}, end: () => {} })
+      };
+      fcmHandler(fakeReq, fakeRes).catch((err: any) => console.warn('FCM trigger error:', err));
+    } catch (fcmErr) {
+      console.warn('FCM dispatch failed in notify-booking:', fcmErr);
+    }
+
     return res.status(200).json({ ok: true, result });
   } catch (error: any) {
     console.error('Error in notify-booking handler:', error);

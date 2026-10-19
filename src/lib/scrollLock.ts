@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 /**
  * Universal Modal Body Scroll Lock Manager
  * Prevents background screen / body scrolling when any modal, drawer, or dialog is open.
- * Supports iOS Safari, Android Chrome, and Desktop browsers with nested modal reference counting.
+ * Preserves scroll position on iOS Safari, Android Chrome, and Desktop browsers.
  */
 
 let activeLockCount = 0;
@@ -12,14 +12,18 @@ let previousHtmlOverflow = '';
 let previousBodyOverscroll = '';
 let previousHtmlOverscroll = '';
 let previousTouchAction = '';
+let lockedScrollY = 0;
 
 export function lockBodyScroll(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
   activeLockCount++;
   if (activeLockCount === 1) {
     const html = document.documentElement;
     const body = document.body;
+
+    // Record exact current scroll position before modifying styles
+    lockedScrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
 
     // Save previous inline styles
     previousHtmlOverflow = html.style.overflow;
@@ -40,7 +44,7 @@ export function lockBodyScroll(): void {
 }
 
 export function unlockBodyScroll(): void {
-  if (typeof document === 'undefined') return;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
   activeLockCount = Math.max(0, activeLockCount - 1);
   if (activeLockCount === 0) {
@@ -55,6 +59,15 @@ export function unlockBodyScroll(): void {
     html.style.overscrollBehavior = previousHtmlOverscroll;
     body.style.overscrollBehavior = previousBodyOverscroll;
     body.style.touchAction = previousTouchAction;
+
+    // Restore exact scroll position if browser drifted
+    if (Math.abs(window.scrollY - lockedScrollY) > 2) {
+      window.scrollTo({
+        top: lockedScrollY,
+        left: 0,
+        behavior: 'instant' as ScrollBehavior
+      });
+    }
   }
 }
 
@@ -83,13 +96,11 @@ export function initGlobalScrollLockObserver(): void {
   isObserverInitialized = true;
 
   const checkDomForModals = () => {
-    // Look for active modal overlays (excluding pointer-events-none or non-modal overlays)
     const activeModals = document.querySelectorAll(
       '.fixed.inset-0:not(.pointer-events-none):not([aria-hidden="true"]), [role="dialog"], .modal-backdrop'
     );
 
     const hasVisibleModal = Array.from(activeModals).some((el) => {
-      // Must not be display none or hidden
       const style = window.getComputedStyle(el);
       return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     });
@@ -121,7 +132,6 @@ export function initGlobalScrollLockObserver(): void {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // If user is touching directly on the dark backdrop overlay (not inside the scrollable content)
       if (
         target.classList?.contains('fixed') &&
         target.classList?.contains('inset-0') &&

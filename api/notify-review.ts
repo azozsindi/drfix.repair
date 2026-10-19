@@ -59,6 +59,28 @@ export default async function handler(req: any, res: any) {
     });
 
     const result = await tgRes.json();
+
+    // Trigger FCM Notification for Reviews
+    try {
+      const fcmHandler = (await import('./fcm-notify')).default;
+      const fakeReq = {
+        method: 'POST',
+        body: {
+          title: 'تقييم جديد في DR.FIX ⭐',
+          body: `وصل تقييم جديد (${review?.rating || 5}/5 نجوم). اضغط لمشاهدة التقييم.`,
+          url: '/admin',
+          eventType: 'review'
+        }
+      };
+      const fakeRes = {
+        setHeader: () => {},
+        status: () => ({ json: () => {}, end: () => {} })
+      };
+      fcmHandler(fakeReq, fakeRes).catch((err: any) => console.warn('FCM review notify error:', err));
+    } catch (fcmErr) {
+      console.warn('FCM review dispatch failed:', fcmErr);
+    }
+
     return res.status(200).json({ ok: true, result });
   } catch (error: any) {
     console.error('Error in notify-review handler:', error);

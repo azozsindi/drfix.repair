@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -9,6 +8,26 @@
   --color-brand-red: #E31837;
   --color-brand-black: #0A0A0A;
   --color-brand-dark: #1A1A1A;
+}
+
+/* Global scroll offset for fixed navigation headers */
+[id] {
+  scroll-margin-top: 5.5rem;
+}
+@media (min-width: 768px) {
+  [id] {
+    scroll-margin-top: 6.5rem;
+  }
+}
+
+/* Accessibility: Respect Reduced Motion Preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes ticker-slide {

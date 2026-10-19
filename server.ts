@@ -10,6 +10,7 @@ import statusRedirectHandler from './api/status-redirect';
 import accountingHandler from './api/accounting';
 import notifyCustomerRegistrationHandler from './api/notify-customer-registration';
 import uploadVideoHandler from './api/upload-video';
+import fcmNotifyHandler from './api/fcm-notify';
 
 async function startServer() {
   const app = express();
@@ -45,6 +46,11 @@ async function startServer() {
   // Server-side New Booking Notification Trigger
   app.all('/api/notify-booking', async (req, res) => {
     await notifyBookingHandler(req, res);
+  });
+
+  // Firebase Cloud Messaging (FCM) Instant Notification Dispatcher
+  app.all('/api/fcm-notify', async (req, res) => {
+    await fcmNotifyHandler(req, res);
   });
 
   // Server-side Review Notification Trigger

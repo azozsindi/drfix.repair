@@ -180,6 +180,29 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    // Trigger FCM Web Push Notification for status update
+    try {
+      const fcmHandler = (await import('./fcm-notify')).default;
+      const fakeReq = {
+        method: 'POST',
+        body: {
+          title: 'تحديث حالة الطلب 🔧',
+          body: `تم تحديث حالة طلب الصيانة #${targetData.bookingId || targetData.id}. اضغط لمتابعة التفاصيل.`,
+          url: `/admin`,
+          bookingId: targetData.bookingId || targetData.id,
+          eventType: 'status_update'
+        }
+      };
+      const fakeRes = {
+        setHeader: () => {},
+        status: () => ({ json: () => {}, end: () => {} })
+      };
+      fcmHandler(fakeReq, fakeRes).catch((err: any) => console.warn('FCM status update trigger error:', err));
+    } catch (fcmErr) {
+      console.warn('FCM dispatch failed in status-redirect:', fcmErr);
+    }
+
+
     // If client requested JSON
     if (req.headers.accept?.includes('application/json') && !req.query.redirect) {
       return res.status(200).json({
