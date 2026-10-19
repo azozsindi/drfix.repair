@@ -119,6 +119,7 @@ import { AdminContractsManager } from './components/AdminContractsManager';
 import { SystemManual } from './components/SystemManual';
 import { TechnicianWorkspace } from './components/TechnicianWorkspace';
 import { BookingTimeSlotPicker } from './components/BookingTimeSlotPicker';
+import { BookingCtaSection } from './components/BookingCtaSection';
 import { InteractiveLocationPicker } from './components/InteractiveLocationPicker';
 import { ServiceWorkflowGuideModal } from './components/ServiceWorkflowGuideModal';
 import { LegalModal, DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
@@ -1107,14 +1108,8 @@ const Navbar = ({
 
   const handleBookNow = () => {
     setIsOpen(false);
-    if (location.pathname === '/') {
-      const element = document.getElementById('booking');
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else {
-      navigate('/booking');
-    }
+    navigate('/booking');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -1297,12 +1292,8 @@ const MobileQuickBar = ({ settings }: { settings: AppSettings }) => {
   const { t } = useLanguage();
 
   const handleBookClick = () => {
-    if (location.pathname === '/') {
-      const el = document.getElementById('booking');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      navigate('/booking');
-    }
+    navigate('/booking');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const whatsappNumber = (settings.whatsapp || '966546870807').replace(/\+/g, '').replace(/[^0-9]/g, '');
@@ -1380,14 +1371,8 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
   }, [isImageModalOpen]);
 
   const handleBookNow = () => {
-    if (location.pathname === '/') {
-      const element = document.getElementById('booking');
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else {
-      navigate('/booking');
-    }
+    navigate('/booking');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -2680,6 +2665,26 @@ const BookingForm = ({
           className="glass-card p-4 sm:p-6 md:p-10 lg:p-12 border-brand-red/20 shadow-2xl relative"
           style={{ transformStyle: 'preserve-3d' }}
         >
+          {/* Back to Home Link */}
+          <div className="mb-6 pb-4 border-b border-white/10 flex items-center justify-start">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs sm:text-sm font-bold transition-all border border-white/10 cursor-pointer shadow-sm group"
+            >
+              {lang === 'ar' ? (
+                <>
+                  <ArrowRight className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-brand-red" />
+                  <span>العودة للرئيسية</span>
+                </>
+              ) : (
+                <>
+                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-brand-red" />
+                  <span>Back to Home</span>
+                </>
+              )}
+            </Link>
+          </div>
+
           <div className={cn("text-center mb-10 md:mb-12", lang === 'en' && "md:text-left")}>
             <h2 className="text-2xl md:text-3xl font-display font-black mb-4 italic">
               {t.booking.title} <span className="text-brand-red">{t.booking.titleAccent}</span>
@@ -3023,10 +3028,17 @@ const BookingForm = ({
                     <Clock className="w-4 h-4" />
                     <span>{lang === 'ar' ? 'متابعة حالة الحجز في كرت الصيانة' : 'Track Booking in Service Card'}</span>
                   </button>
+                  <Link
+                    to="/"
+                    onClick={() => setIsSubmitted(false)}
+                    className="px-4 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>{lang === 'ar' ? 'العودة للرئيسية 🏠' : 'Back to Home 🏠'}</span>
+                  </Link>
                   <button 
                     type="button"
                     onClick={() => setIsSubmitted(false)}
-                    className="px-4 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                    className="px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-gray-300 hover:text-white font-bold text-xs sm:text-sm transition-all cursor-pointer"
                   >
                     {t.booking.close}
                   </button>
@@ -11324,27 +11336,15 @@ function MainContent() {
 
   const handleServiceSelect = (serviceType: string) => {
     setSelectedService(serviceType);
-    if (location.pathname === '/') {
-      const element = document.getElementById('booking');
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else {
-      navigate('/booking');
-    }
+    navigate('/booking');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOfferSelect = (offer: Offer) => {
     const offerTitle = lang === 'ar' ? offer.title : (offer.titleEn || offer.title);
     setSelectedService(`عرض خاص: ${offerTitle} (${offer.price})`);
-    if (location.pathname === '/') {
-      const element = document.getElementById('booking');
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      }
-    } else {
-      navigate('/booking');
-    }
+    navigate('/booking');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const isAuthOrAdminRoute = location.pathname === '/login' || 
@@ -11390,7 +11390,7 @@ function MainContent() {
               {(settings.showOffers !== false) && <Offers onOfferSelect={handleOfferSelect} />}
               {(settings.showGallery !== false) && <Gallery />}
               <Process />
-              <BookingForm selectedService={selectedService} settings={settings} />
+              <BookingCtaSection lang={lang} whatsapp={settings.whatsapp} />
               {(settings.showTestimonials !== false) && <Testimonials />}
               <FAQ />
             </>

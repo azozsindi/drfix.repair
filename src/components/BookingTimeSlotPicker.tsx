@@ -94,7 +94,7 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
         </div>
 
         {/* Clean Date Cards Grid / Slider */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-1.5 sm:gap-2">
           {datePresets.map((preset) => {
             const isSelected = activeDate === preset.dateStr;
             return (
@@ -102,16 +102,16 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
                 key={preset.dateStr}
                 type="button"
                 onClick={() => handleDateChange(preset.dateStr)}
-                className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 min-h-[64px] ${
+                className={`p-2 sm:p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-0.5 sm:gap-1 min-h-[58px] sm:min-h-[64px] active:scale-95 touch-manipulation select-none ${
                   isSelected
                     ? 'bg-brand-red border-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/30'
-                    : 'bg-black/40 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20'
+                    : 'bg-black/40 border-white/10 text-gray-300 hover:bg-white/10 hover:border-white/20 active:bg-white/10'
                 }`}
               >
-                <span className={`text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-gray-200'}`}>
+                <span className={`text-[11px] sm:text-xs font-bold leading-tight ${isSelected ? 'text-white' : 'text-gray-200'}`}>
                   {preset.label}
                 </span>
-                <span className={`text-[11px] font-mono leading-none ${isSelected ? 'text-white/90 font-bold' : 'text-gray-400'}`}>
+                <span className={`text-[10px] sm:text-[11px] font-mono leading-none ${isSelected ? 'text-white/90 font-bold' : 'text-gray-400'}`}>
                   {preset.sublabel}
                 </span>
               </button>
