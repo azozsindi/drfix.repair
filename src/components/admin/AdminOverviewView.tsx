@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { 
   PlusCircle, 
   FileCheck, 
@@ -21,7 +22,8 @@ import {
   Layers,
   Phone,
   Eye,
-  FileText
+  FileText,
+  Globe
 } from 'lucide-react';
 import { AdminTrendChart, AdminBarChart } from './AdminCharts';
 import { MaintenanceRecord, Partner, Contract } from '../../types';
@@ -173,6 +175,14 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            to="/"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm"
+            title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
+          >
+            <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
+            <span>{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Site'}</span>
+          </Link>
           <button
             type="button"
             onClick={onOpenNewBookingModal}

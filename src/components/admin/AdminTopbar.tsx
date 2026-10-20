@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Menu, 
   Search, 
@@ -9,7 +10,8 @@ import {
   Wifi, 
   CheckCircle2, 
   Clock, 
-  ExternalLink 
+  ExternalLink,
+  Globe
 } from 'lucide-react';
 import { AdminTabId, ADMIN_NAV_ITEMS } from './types';
 import { LanguageToggle } from '../../context/LanguageContext';
@@ -93,6 +95,18 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
             ⌘K
           </kbd>
         </button>
+
+        {/* Back to Website Button */}
+        <Link
+          to="/"
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.12] hover:border-[#F52B35]/60 text-white text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95"
+          title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
+        >
+          <Globe className="w-3.5 h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold whitespace-nowrap">
+            {lang === 'ar' ? 'الرجوع للموقع' : 'Back to Site'}
+          </span>
+        </Link>
 
         {/* Language Switcher */}
         <LanguageToggle className="bg-[#141720] border-white/[0.08]" />

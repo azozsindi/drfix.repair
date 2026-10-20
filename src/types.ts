@@ -877,6 +877,7 @@ export interface AppSettings {
   heroBadge?: string;
   heroButtonText?: string;
   heroImageUrl?: string;
+  heroImageFit?: 'cover' | 'contain';
   heroImageBadgeTitle?: string;
   heroImageBadgeSubtitle?: string;
   showHeroImageBadge?: boolean;
@@ -941,6 +942,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   heroSubtitle: "في مكانك",
   heroBadge: "",
   heroImageUrl: "/hero-custom.jpg",
+  heroImageFit: "cover",
   logoUrl: "/logo-custom.png",
   phone: "0546870807",
   whatsapp: "966546870807",

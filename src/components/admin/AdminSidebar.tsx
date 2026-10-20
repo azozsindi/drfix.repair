@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -7,7 +8,8 @@ import {
   X, 
   Shield, 
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Globe
 } from 'lucide-react';
 import { StaffUser } from '../../types';
 import { 
@@ -200,6 +202,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </div>
           );
         })}
+      </div>
+
+      {/* Back to Website Link */}
+      <div className="px-3 pt-3 border-t border-white/[0.08] bg-[#090A0C]/40 shrink-0">
+        <Link
+          to="/"
+          onClick={onCloseMobile}
+          className={cn(
+            "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] hover:border-[#F52B35]/50 transition-all group shadow-sm",
+            isCollapsed && "justify-center px-2"
+          )}
+          title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
+        >
+          <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          {!isCollapsed && (
+            <div className="flex items-center justify-between w-full min-w-0">
+              <span className="truncate">{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Website'}</span>
+              <ExternalLink className="w-3 h-3 text-[#A1A6B2]/50 group-hover:text-white shrink-0" />
+            </div>
+          )}
+        </Link>
       </div>
 
       {/* User Footer Profile & Quick Logout */}

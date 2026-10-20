@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, ArrowRight, CornerDownLeft, Plus, FileText, Bell } from 'lucide-react';
+import { Search, X, ArrowRight, CornerDownLeft, Plus, FileText, Bell, Globe } from 'lucide-react';
 import { AdminTabId, ADMIN_NAV_ITEMS } from './types';
 import { useScrollLock } from '../../lib/scrollLock';
 import { cn } from '../../lib/utils';
@@ -23,6 +24,7 @@ export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const isRtl = lang === 'ar';
 
   useScrollLock(isOpen);
@@ -155,6 +157,17 @@ export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
             >
               <Bell className="w-3.5 h-3.5" />
               <span>{lang === 'ar' ? 'إشعارات FCM' : 'FCM Push'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                navigate('/');
+              }}
+              className="px-2.5 py-1 rounded-lg bg-[#F52B35]/15 hover:bg-[#F52B35]/25 border border-[#F52B35]/30 text-white font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+            >
+              <Globe className="w-3.5 h-3.5 text-[#F52B35]" />
+              <span>{lang === 'ar' ? 'الرجوع للموقع' : 'Back to Website'}</span>
             </button>
           </div>
         )}

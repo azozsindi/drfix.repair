@@ -10,6 +10,7 @@ import statusRedirectHandler from './api/status-redirect';
 import accountingHandler from './api/accounting';
 import notifyCustomerRegistrationHandler from './api/notify-customer-registration';
 import uploadVideoHandler from './api/upload-video';
+import uploadImageHandler from './api/upload-image';
 import fcmNotifyHandler from './api/fcm-notify';
 
 async function startServer() {
@@ -81,6 +82,11 @@ async function startServer() {
   // Inspection Video Upload Endpoint
   app.all('/api/upload-video', async (req, res) => {
     await uploadVideoHandler(req, res);
+  });
+
+  // Image Upload Endpoint (Hero banner, logos, gallery)
+  app.all('/api/upload-image', async (req, res) => {
+    await uploadImageHandler(req, res);
   });
 
   // Serve uploaded media (videos, inspection files) statically

@@ -241,7 +241,29 @@ export const PATH_TO_TAB: Record<string, AdminTabId> = {
   '/admin/notifications': 'notifications',
   '/admin/settings': 'settings',
   '/admin/help': 'help',
-  '/admin/manual': 'help'
+  '/admin/manual': 'help',
+
+  // Direct administrative route: /ADMINDRFIX (case-normalized to lowercase)
+  '/admindrfix': 'overview',
+  '/admindrfix/': 'overview',
+  '/admindrfix/bookings': 'bookings',
+  '/admindrfix/calendar': 'calendar',
+  '/admindrfix/customers': 'customers',
+  '/admindrfix/contracts': 'contracts',
+  '/admindrfix/reports': 'reports',
+  '/admindrfix/analytics': 'analytics',
+  '/admindrfix/team': 'team',
+  '/admindrfix/staff': 'team',
+  '/admindrfix/services': 'services',
+  '/admindrfix/offers': 'offers',
+  '/admindrfix/gallery': 'gallery',
+  '/admindrfix/partners': 'partners',
+  '/admindrfix/reviews': 'reviews',
+  '/admindrfix/testimonials': 'reviews',
+  '/admindrfix/notifications': 'notifications',
+  '/admindrfix/settings': 'settings',
+  '/admindrfix/help': 'help',
+  '/admindrfix/manual': 'help'
 };
 
 export const TAB_TO_PATH: Record<AdminTabId, string> = {

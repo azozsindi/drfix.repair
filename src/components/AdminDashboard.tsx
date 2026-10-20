@@ -282,9 +282,13 @@ const AdminDashboard = ({
 
   // Compute activeTab from URL pathname or searchParams
   const activeTab: AdminTabId = useMemo(() => {
-    const path = location.pathname.toLowerCase().replace(/\/$/, '') || '/admin';
-    if (PATH_TO_TAB[path]) {
-      return PATH_TO_TAB[path];
+    const rawPath = location.pathname.toLowerCase().replace(/\/$/, '') || '/admin';
+    if (PATH_TO_TAB[rawPath]) {
+      return PATH_TO_TAB[rawPath];
+    }
+    const normalizedPath = rawPath.replace(/^\/admindrfix/, '/admin') || '/admin';
+    if (PATH_TO_TAB[normalizedPath]) {
+      return PATH_TO_TAB[normalizedPath];
     }
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab');
@@ -300,7 +304,10 @@ const AdminDashboard = ({
   }, [location.pathname, location.search]);
 
   const setActiveTab = (tabId: AdminTabId) => {
-    const targetPath = TAB_TO_PATH[tabId] || '/admin';
+    const isSpecialAdminRoute = location.pathname.toLowerCase().startsWith('/admindrfix');
+    const basePath = isSpecialAdminRoute ? '/ADMINDRFIX' : '/admin';
+    const subPath = TAB_TO_PATH[tabId]?.replace(/^\/admin/, '') || '';
+    const targetPath = subPath ? `${basePath}${subPath}` : basePath;
     navigate(targetPath);
   };
 
@@ -595,6 +602,7 @@ const AdminDashboard = ({
     heroBadge: settings.heroBadge || '',
     heroButtonText: settings.heroButtonText || 'احجز الآن',
     heroImageUrl: settings.heroImageUrl || '',
+    heroImageFit: settings.heroImageFit || 'cover',
     heroImageBadgeTitle: settings.heroImageBadgeTitle || 'خدمة متنقلة وسريعة',
     heroImageBadgeSubtitle: settings.heroImageBadgeSubtitle || 'نصلك أينما كنت بجدة',
     showHeroImageBadge: settings.showHeroImageBadge ?? true,
@@ -699,6 +707,7 @@ const AdminDashboard = ({
       heroBadge: settings.heroBadge || '',
       heroButtonText: settings.heroButtonText || 'احجز الآن',
       heroImageUrl: settings.heroImageUrl || '',
+      heroImageFit: settings.heroImageFit || 'cover',
       heroImageBadgeTitle: settings.heroImageBadgeTitle || 'خدمة متنقلة وسريعة',
       heroImageBadgeSubtitle: settings.heroImageBadgeSubtitle || 'نصلك أينما كنت بجدة',
       showHeroImageBadge: settings.showHeroImageBadge ?? true,
@@ -1051,13 +1060,55 @@ const AdminDashboard = ({
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'gallery' | 'settings' | 'hero') => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'gallery' | 'settings' | 'hero') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const origSizeBytes = file.size;
     const origSizeFormatted = formatBytes(origSizeBytes);
 
+    // Primary: Server-side clean upload via /api/upload-image (avoids Firestore 1MB quota limits)
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.imageUrl) {
+          const metaInfo: UploadedImageInfo = {
+            name: file.name,
+            origSize: origSizeFormatted,
+            origSizeBytes,
+            compSize: formatBytes(data.size || origSizeBytes),
+            compSizeBytes: data.size || origSizeBytes,
+            origDim: 'ملف خادم أصلي',
+            compDim: 'رابط مباشر وثابت',
+            savings: 'سريع وخفيف'
+          };
+
+          setUploadedImageMeta(prev => ({
+            ...prev,
+            [type === 'settings' ? 'logo' : type]: metaInfo
+          }));
+
+          if (type === 'gallery') {
+            setGalleryForm(prev => ({ ...prev, imageUrl: data.imageUrl }));
+          } else if (type === 'hero') {
+            setSettingsForm(prev => ({ ...prev, heroImageUrl: data.imageUrl }));
+          } else {
+            setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Server upload endpoint not responding, falling back to client compression:', err);
+    }
+
+    // Fallback: Client-side compression
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result as string;
@@ -1069,9 +1120,9 @@ const AdminDashboard = ({
       const origDim = tempImg.naturalWidth ? `${tempImg.naturalWidth} × ${tempImg.naturalHeight} بكسل` : 'غير محدد';
 
       // Optimized dimensions according to image role
-      const maxWidth = type === 'settings' ? 600 : type === 'hero' ? 1400 : 1000;
-      const maxHeight = type === 'settings' ? 600 : type === 'hero' ? 900 : 800;
-      const quality = type === 'settings' ? 0.85 : 0.75;
+      const maxWidth = type === 'settings' ? 500 : type === 'hero' ? 1200 : 900;
+      const maxHeight = type === 'settings' ? 500 : type === 'hero' ? 800 : 700;
+      const quality = type === 'settings' ? 0.8 : 0.7;
       const isPng = file.type === 'image/png' || base64String.startsWith('data:image/png');
 
       const compressed = await compressImage(base64String, maxWidth, maxHeight, quality, type === 'settings' && isPng);
@@ -2122,12 +2173,7 @@ const AdminDashboard = ({
       stats[sType] = (stats[sType] || 0) + 1;
     });
     if (Object.keys(stats).length === 0) {
-      return [
-        { name: 'فحص كمبيوتر', value: 12 },
-        { name: 'كهرباء وبطاريات', value: 8 },
-        { name: 'ميكانيكا متنقلة', value: 15 },
-        { name: 'صيانة دورية', value: 6 }
-      ];
+      return [];
     }
     return Object.entries(stats).map(([name, value]) => ({ name, value }));
   };
@@ -2242,7 +2288,7 @@ const AdminDashboard = ({
   }, [currentStaffUser, isTechnician, activeTab]);
 
   if (!isAdmin) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
   return (
@@ -5277,19 +5323,22 @@ const AdminDashboard = ({
                             </div>
 
                             {/* Live Preview Box with Badge Overlay */}
-                            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/60 shadow-xl max-w-2xl mx-auto">
-                              <div className="aspect-[16/9] sm:aspect-[21/9] w-full relative">
+                            <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black/90 shadow-2xl max-w-2xl mx-auto">
+                              <div className="aspect-[16/9] sm:aspect-[21/9] w-full relative flex items-center justify-center bg-neutral-950">
                                 <img 
                                   src={settingsForm.heroImageUrl || "/hero-custom.jpg"} 
                                   alt="Hero Preview" 
-                                  className="w-full h-full object-cover"
+                                  className={cn(
+                                    "w-full h-full transition-all duration-300",
+                                    settingsForm.heroImageFit === 'contain' ? 'object-contain' : 'object-cover object-center'
+                                  )}
                                   referrerPolicy="no-referrer"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
                                 
                                 {/* Floating Badge Preview */}
                                 {settingsForm.showHeroImageBadge !== false && (
-                                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 bg-brand-black/90 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2.5 shadow-lg">
+                                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 bg-brand-black/90 backdrop-blur-md border border-white/20 rounded-xl px-3 py-1.5 flex items-center gap-2.5 shadow-lg pointer-events-none">
                                     <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-ping" />
                                     <div className="text-right">
                                       <div className="text-xs font-bold text-white">
@@ -5302,48 +5351,93 @@ const AdminDashboard = ({
                                   </div>
                                 )}
 
-                                <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-bold text-gray-300 border border-white/10">
+                                <div className="absolute top-3 left-3 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-[11px] font-bold text-gray-300 border border-white/10 pointer-events-none">
                                   معاينة حية للصورة الحالية
                                 </div>
                               </div>
                             </div>
 
-                            {/* Preset Quick Select Library */}
-                            <div className="space-y-3">
+                            {/* Hero Image Fit / Display Mode */}
+                            <div className="space-y-2 pt-2 border-t border-white/5">
+                              <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                                <span>📐 طريقة ضبط وملاءمة الصورة (حل مشكلة قص الأطراف):</span>
+                                <span className="text-[11px] text-brand-red font-semibold">
+                                  {settingsForm.heroImageFit === 'contain' ? 'إظهار كامل المكينة بدون أي قص' : 'تغطية وتعبئة كامل الإطار'}
+                                </span>
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setSettingsForm({ ...settingsForm, heroImageFit: 'cover' })}
+                                  className={cn(
+                                    "p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1",
+                                    (settingsForm.heroImageFit !== 'contain')
+                                      ? "bg-brand-red/15 border-brand-red text-white shadow-md ring-1 ring-brand-red/30"
+                                      : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+                                  )}
+                                >
+                                  <div className="text-xs font-bold flex items-center justify-between">
+                                    <span>تغطية وتعبئة كاملة (Cover)</span>
+                                    {(settingsForm.heroImageFit !== 'contain') && <Check className="w-3.5 h-3.5 text-brand-red" />}
+                                  </div>
+                                  <p className="text-[10px] text-gray-400">ملء الإطار بالكامل بتنسيق سينمائي عريض</p>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setSettingsForm({ ...settingsForm, heroImageFit: 'contain' })}
+                                  className={cn(
+                                    "p-3 rounded-xl border text-right transition-all cursor-pointer flex flex-col gap-1",
+                                    settingsForm.heroImageFit === 'contain'
+                                      ? "bg-brand-red/15 border-brand-red text-white shadow-md ring-1 ring-brand-red/30"
+                                      : "bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10"
+                                  )}
+                                >
+                                  <div className="text-xs font-bold flex items-center justify-between">
+                                    <span>إظهار كامل المكينة والسيارة (Contain)</span>
+                                    {settingsForm.heroImageFit === 'contain' && <Check className="w-3.5 h-3.5 text-brand-red" />}
+                                  </div>
+                                  <p className="text-[10px] text-gray-400">عرض كامل تفاصيل الصورة والمحرك دون أي قص إطلاقاً</p>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Preset Quick Select Library (Authentic High-Res Car & Engine Photos) */}
+                            <div className="space-y-3 pt-2 border-t border-white/5">
                               <label className="text-xs font-bold text-gray-300 block">
-                                ⚡ اختر صورة جاهزة بنقرة واحدة من المكتبة:
+                                ⚡ صور معتمدة لمحركات وسيارات جاهزة بنقرة واحدة:
                               </label>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 {[
                                   {
-                                    title: 'صورة DR.FIX الحالية (المعتمدة)',
-                                    url: '/hero-custom.jpg',
-                                    badge: 'الهوية الرسمية'
+                                    title: 'محرك ومكينة سيارة رئيسية بدقة عالية',
+                                    url: '/images/car-engine-main.jpg',
+                                    badge: 'محرك رئيسي'
                                   },
                                   {
-                                    title: 'ورشة وميكانيك حديث',
-                                    url: 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&q=80&w=1000',
-                                    badge: 'ورشة متكاملة'
+                                    title: 'صيانة وفحص محرك وميكانيكا دقيقة',
+                                    url: '/images/car-engine-repair.jpg',
+                                    badge: 'فحص ميكانيكا'
                                   },
                                   {
-                                    title: 'صيانة متنقلة وفحص محركات',
-                                    url: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&q=80&w=1000',
-                                    badge: 'صيانة متنقلة'
-                                  },
-                                  {
-                                    title: 'فحص وتشخيص كمبيوتر',
-                                    url: 'https://images.unsplash.com/photo-1517524008697-84bbe3c3fd98?auto=format&fit=crop&q=80&w=1000',
+                                    title: 'فحص وتشخيص كمبيوتر وبرمجة الحساسات',
+                                    url: '/images/car-computer-diagnostics.jpg',
                                     badge: 'فحص كمبيوتر'
                                   },
                                   {
-                                    title: 'ميكانيكي وفحص دقيق',
-                                    url: 'https://images.unsplash.com/photo-1580273916550-e323be2ae537?auto=format&fit=crop&q=80&w=1000',
-                                    badge: 'فني محترف'
+                                    title: 'صيانة متنقلة وفحص شامل ميداني بجدة',
+                                    url: '/images/mobile-mechanic-service.jpg',
+                                    badge: 'خدمة ميدانية'
                                   },
                                   {
-                                    title: 'صيانة دورية وزيوت',
-                                    url: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=1000',
-                                    badge: 'صيانة سريعة'
+                                    title: 'ورشة ميكانيكا متكاملة ومعدات متطورة',
+                                    url: '/images/car-workshop-modern.jpg',
+                                    badge: 'ورشة حديثة'
+                                  },
+                                  {
+                                    title: 'صورة DR.FIX الحالية (الهوية الرسمية)',
+                                    url: '/hero-custom.jpg',
+                                    badge: 'الهوية المعتمدة'
                                   }
                                 ].map((preset, idx) => {
                                   const isSelected = (settingsForm.heroImageUrl || '/hero-custom.jpg') === preset.url;

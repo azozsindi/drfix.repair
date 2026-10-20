@@ -353,13 +353,22 @@ const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void;
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, lang } = useLanguage();
+
+  const getRedirectTarget = () => {
+    const from = (location.state as any)?.from;
+    if (from && typeof from === 'string' && (from.startsWith('/admin') || from.toLowerCase().startsWith('/admindrfix'))) {
+      return from;
+    }
+    return '/ADMINDRFIX';
+  };
 
   useEffect(() => {
     if (isAdmin) {
-      navigate('/admin', { replace: true });
+      navigate(getRedirectTarget(), { replace: true });
     }
-  }, [isAdmin, navigate]);
+  }, [isAdmin, navigate, location.state]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -386,7 +395,7 @@ const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void;
       };
       onLogin(masterUser);
       setIsSubmitting(false);
-      navigate('/admin', { replace: true });
+      navigate(getRedirectTarget(), { replace: true });
       return;
     }
 
@@ -417,7 +426,7 @@ const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void;
 
           onLogin(staffData);
           setIsSubmitting(false);
-          navigate('/admin', { replace: true });
+          navigate(getRedirectTarget(), { replace: true });
           return;
         }
       }
@@ -571,6 +580,7 @@ interface AppSettings {
   heroBadge?: string;
   heroButtonText?: string;
   heroImageUrl?: string;
+  heroImageFit?: 'cover' | 'contain';
   heroImageBadgeTitle?: string;
   heroImageBadgeSubtitle?: string;
   showHeroImageBadge?: boolean;
@@ -613,6 +623,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   heroSubtitle: "في مكانك",
   heroBadge: "",
   heroImageUrl: "/hero-custom.jpg",
+  heroImageFit: "cover",
   logoUrl: "/logo-custom.png",
   phone: "0546870807",
   whatsapp: "966546870807",
@@ -989,16 +1000,13 @@ const Navbar = ({
   const { t, lang } = useLanguage();
   const { customer, setIsPortalOpen, setIsAuthOpen } = useCustomer();
 
-  const logoClicksRef = useRef(0);
-  const lastLogoClickTimeRef = useRef(0);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Secret keyboard shortcut: Alt + L or Ctrl + Shift + A
       if ((e.altKey && (e.key === 'L' || e.key === 'l')) ||
           (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a'))) {
         e.preventDefault();
-        navigate(isAdmin ? '/admin' : '/login');
+        navigate(isAdmin ? '/ADMINDRFIX' : '/login');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1006,27 +1014,9 @@ const Navbar = ({
   }, [isAdmin, navigate]);
 
   const handleLogoClick = (e: React.MouseEvent) => {
-    // In maintenance mode, prevent default navigation to avoid page jitter during clicks
+    // In maintenance mode, prevent default navigation for unauthenticated users
     if (isMaintenance && !isAdmin) {
       e.preventDefault();
-    }
-
-    const now = Date.now();
-    if (now - lastLogoClickTimeRef.current > 2500) {
-      logoClicksRef.current = 1;
-    } else {
-      logoClicksRef.current += 1;
-    }
-    lastLogoClickTimeRef.current = now;
-
-    // Secret: 5 rapid clicks on logo opens /login (or /admin if already logged in)
-    if (logoClicksRef.current >= 5) {
-      logoClicksRef.current = 0;
-      e.preventDefault();
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(60);
-      }
-      navigate(isAdmin ? '/admin' : '/login');
     }
   };
 
@@ -1450,7 +1440,16 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             <img 
               src={settings.heroImageUrl || "/hero-custom.jpg"} 
               alt="Dr. Fix Car Maintenance" 
-              className="w-full h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] object-cover object-center bg-neutral-950 transition-transform duration-500 group-hover:scale-105"
+              className={cn(
+                "w-full h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] bg-neutral-950 transition-transform duration-500 group-hover:scale-105",
+                settings.heroImageFit === 'contain' ? 'object-contain' : 'object-cover object-center'
+              )}
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                if (!target.src.endsWith('/hero-custom.jpg')) {
+                  target.src = '/hero-custom.jpg';
+                }
+              }}
               referrerPolicy="no-referrer"
               loading="eager"
               decoding="async"
@@ -4355,6 +4354,7 @@ function MainContent() {
               heroButtonText: data.heroButtonText || DEFAULT_APP_SETTINGS.heroButtonText,
               logoUrl: data.logoUrl || DEFAULT_APP_SETTINGS.logoUrl,
               heroImageUrl: data.heroImageUrl || DEFAULT_APP_SETTINGS.heroImageUrl,
+              heroImageFit: data.heroImageFit || DEFAULT_APP_SETTINGS.heroImageFit,
               whatsapp: data.whatsapp || DEFAULT_APP_SETTINGS.whatsapp,
               phone: data.phone || DEFAULT_APP_SETTINGS.phone,
               tickerText: data.tickerText,
@@ -4588,7 +4588,7 @@ function MainContent() {
     } catch (e) {
       console.warn('Storage set failed:', e);
     }
-    navigate('/admin', { replace: true });
+    navigate('/ADMINDRFIX', { replace: true });
   };
 
   const handleAdminLogout = () => {
@@ -4621,7 +4621,11 @@ function MainContent() {
   const isAuthOrAdminRoute = location.pathname === '/login' || 
                              location.pathname.startsWith('/login/') || 
                              location.pathname === '/admin' || 
-                             location.pathname.startsWith('/admin/');
+                             location.pathname.startsWith('/admin/') ||
+                             location.pathname === '/ADMINDRFIX' ||
+                             location.pathname.startsWith('/ADMINDRFIX/') ||
+                             location.pathname.toLowerCase() === '/admindrfix' ||
+                             location.pathname.toLowerCase().startsWith('/admindrfix/');
 
   const isMaintenanceActive = Boolean(settings.maintenanceMode && !isAdminLoggedIn);
 
@@ -4645,7 +4649,9 @@ function MainContent() {
     );
   }
 
-  const isAdminRoute = location.pathname.startsWith('/admin');
+  const isAdminRoute = location.pathname.startsWith('/admin') ||
+                       location.pathname.startsWith('/ADMINDRFIX') ||
+                       location.pathname.toLowerCase().startsWith('/admindrfix');
   const isLoginRoute = location.pathname.startsWith('/login');
 
   if (isAdminRoute || isLoginRoute) {
@@ -4656,9 +4662,13 @@ function MainContent() {
           <Routes>
             <Route path="/admin" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
             <Route path="/admin/*" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/ADMINDRFIX" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/ADMINDRFIX/*" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/admindrfix" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
+            <Route path="/admindrfix/*" element={<Suspense fallback={<ComponentLoadingFallback />}><AdminDashboard isAdmin={isAdminLoggedIn} onLogout={handleAdminLogout} settings={settings} currentStaffUser={currentStaffUser} /></Suspense>} />
             <Route path="/login" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
             <Route path="/login/*" element={<LoginPage onLogin={handleAdminLoginSuccess} isAdmin={isAdminLoggedIn} />} />
-            <Route path="*" element={<Navigate to="/admin" replace />} />
+            <Route path="*" element={<Navigate to="/ADMINDRFIX" replace />} />
           </Routes>
         </main>
       </div>
