@@ -1440,8 +1440,10 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             <img 
               src={settings.heroImageUrl || "/hero-custom.jpg"} 
               alt="Dr. Fix Car Maintenance" 
+              width={1200}
+              height={675}
               className={cn(
-                "w-full h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] bg-neutral-950 transition-transform duration-500 group-hover:scale-105",
+                "w-full aspect-[16/10] sm:aspect-auto h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] bg-neutral-950 transition-transform duration-500 group-hover:scale-105",
                 settings.heroImageFit === 'contain' ? 'object-contain' : 'object-cover object-center'
               )}
               onError={(e) => {
@@ -3587,8 +3589,9 @@ const FAQ = () => {
   );
 };
 
-const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdmin?: boolean }) => {
+const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppSettings; isAdmin?: boolean; visitorCount?: number }) => {
   const [visitors, setVisitors] = useState<number | null>(() => {
+    if (typeof visitorCount === 'number') return visitorCount;
     try {
       const cached = localStorage.getItem('drfix_cached_visitors');
       if (cached) return Number(cached);
@@ -3602,65 +3605,37 @@ const Footer = React.memo(({ settings, isAdmin }: { settings: AppSettings; isAdm
   const { t, lang } = useLanguage();
 
   useEffect(() => {
+    if (typeof visitorCount === 'number') {
+      setVisitors(visitorCount);
+    }
+  }, [visitorCount]);
+
+  useEffect(() => {
     if (sessionStorage.getItem('drfix_firestore_quota_exceeded') === 'true') {
       return;
     }
 
-    const updateVisitors = async () => {
+    const recordVisit = async () => {
       const statsRef = doc(db, 'stats', 'global');
-      
       try {
-        const statsDoc = await getDoc(statsRef);
-        
-        if (!statsDoc.exists()) {
-          // Create initial doc
-          await setDoc(statsRef, { visitorCount: 1 });
-          setVisitors(1);
-          try { localStorage.setItem('drfix_cached_visitors', '1'); } catch {}
-        } else {
-          // Check if already counted in this session
-          const hasVisited = sessionStorage.getItem('hasVisited');
-          if (!hasVisited) {
-            await updateDoc(statsRef, {
-              visitorCount: increment(1)
-            });
-            sessionStorage.setItem('hasVisited', 'true');
-          }
+        const hasVisited = sessionStorage.getItem('hasVisited');
+        if (!hasVisited) {
+          await updateDoc(statsRef, {
+            visitorCount: increment(1)
+          });
+          sessionStorage.setItem('hasVisited', 'true');
         }
-        
-        // Listen for real-time updates
-        const unsubscribe = onSnapshot(statsRef, (doc) => {
-          if (doc.exists()) {
-            const count = doc.data().visitorCount;
-            setVisitors(count);
-            try { localStorage.setItem('drfix_cached_visitors', String(count)); } catch {}
-          }
-        }, (error) => {
-          if (!isFirestoreQuotaError(error)) {
-            handleFirestoreError(error, OperationType.GET, 'stats/global');
-          } else {
-            console.warn('[Firestore Quota] Real-time visitor sync paused.');
-          }
-        });
-        
-        return unsubscribe;
       } catch (error) {
         if (!isFirestoreQuotaError(error)) {
           console.error("Error updating visitor count:", error);
         } else {
-          console.warn("[Firestore Quota] Visitor count offline fallback, using local value.");
+          console.warn("[Firestore Quota] Visitor count offline fallback.");
           try { sessionStorage.setItem('drfix_firestore_quota_exceeded', 'true'); } catch {}
         }
-        return () => {};
       }
     };
 
-    let unsub: () => void;
-    updateVisitors().then(u => unsub = u);
-    
-    return () => {
-      if (unsub) unsub();
-    };
+    recordVisit();
   }, []);
 
   return (
@@ -4333,12 +4308,25 @@ function MainContent() {
     }
   };
 
+  const [visitorCount, setVisitorCount] = useState<number>(() => {
+    try {
+      const cached = localStorage.getItem('drfix_cached_visitors');
+      if (cached) return Number(cached);
+    } catch {}
+    return 1250;
+  });
+
   useEffect(() => {
-    // Listen for settings updates
+    // Listen for settings & visitor count updates in a single unified listener
     const statsRef = doc(db, 'stats', 'global');
-    const unsubscribe = onSnapshot(statsRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data() as AppSettings;
+    const unsubscribe = onSnapshot(statsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const raw = docSnap.data();
+        if (typeof raw.visitorCount === 'number') {
+          setVisitorCount(raw.visitorCount);
+          try { localStorage.setItem('drfix_cached_visitors', String(raw.visitorCount)); } catch {}
+        }
+        const data = raw as AppSettings;
         const merged = { ...DEFAULT_APP_SETTINGS, ...data };
         setSettings(merged);
         try {
@@ -4720,7 +4708,7 @@ function MainContent() {
         </Routes>
       </main>
 
-      <Footer settings={settings} isAdmin={isAdminLoggedIn} />
+      <Footer settings={settings} isAdmin={isAdminLoggedIn} visitorCount={visitorCount} />
       
       <MobileQuickBar settings={settings} />
       

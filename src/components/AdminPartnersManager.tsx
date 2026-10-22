@@ -21,11 +21,13 @@ import {
   Sparkles,
   AlertTriangle,
   Building2,
-  Navigation
+  Navigation,
+  Loader2
 } from 'lucide-react';
 import { Partner } from '../types';
 import { cn } from '../lib/utils';
 import { useScrollLock } from '../lib/scrollLock';
+import { compressImage } from '../lib/imageUtils';
 
 interface AdminPartnersManagerProps {
   partners: Partner[];
@@ -132,19 +134,52 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('حجم الصورة كبير جداً، يرجى اختيار صورة أقل من 2 ميغابايت');
-      return;
+    const inputEl = e.target;
+    if (inputEl) {
+      inputEl.value = '';
     }
 
+    setIsUploadingImage(true);
+
+    // Try server-side upload first
+    try {
+      const data = new FormData();
+      data.append('image', file);
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: data
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.imageUrl) {
+          setFormData(prev => ({ ...prev, imageUrl: json.imageUrl }));
+          setIsUploadingImage(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Server upload endpoint error, falling back to compression:', err);
+    }
+
+    // Fallback: client compression
     const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
-        setFormData(prev => ({ ...prev, imageUrl: reader.result as string }));
+    reader.onerror = () => setIsUploadingImage(false);
+    reader.onloadend = async () => {
+      try {
+        if (typeof reader.result === 'string') {
+          const compressed = await compressImage(reader.result, 800, 600, 0.75);
+          setFormData(prev => ({ ...prev, imageUrl: compressed }));
+        }
+      } catch (cErr) {
+        console.error('Compression failed:', cErr);
+      } finally {
+        setIsUploadingImage(false);
       }
     };
     reader.readAsDataURL(file);
@@ -554,6 +589,13 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
                     accept="image/*"
                     className="hidden"
                   />
+
+                  {isUploadingImage && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-brand-red/10 border border-brand-red/30 text-brand-red text-xs font-bold animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      <span>جاري رفع ومعالجة صورة الورشة / الشريك...</span>
+                    </div>
+                  )}
 
                   <div className="flex gap-3 items-center">
                     <img

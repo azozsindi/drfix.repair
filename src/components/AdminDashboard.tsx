@@ -570,6 +570,8 @@ const AdminDashboard = ({
     hero?: UploadedImageInfo;
     gallery?: UploadedImageInfo;
   }>({});
+  const [uploadingImage, setUploadingImage] = useState<'logo' | 'hero' | 'gallery' | null>(null);
+  const [imageUploadSuccess, setImageUploadSuccess] = useState<'logo' | 'hero' | 'gallery' | null>(null);
 
   const [testimonialForm, setTestimonialForm] = useState({
     name: '',
@@ -1053,8 +1055,10 @@ const AdminDashboard = ({
       setOfferForm({ title: '', price: '', subtitle: '', features: '', icon: 'tag' });
       setIsAdding(false);
       setEditingItem(null);
+      setDeleteToast({ message: editingItem ? 'تم تحديث بيانات العرض بنجاح ✅' : 'تمت إضافة العرض الترويجي بنجاح ✅', type: 'success' });
     } catch (error) {
       console.error("Error saving offer:", error);
+      setDeleteToast({ message: 'حدث خطأ أثناء حفظ العرض في قاعدة البيانات', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -1063,6 +1067,16 @@ const AdminDashboard = ({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'gallery' | 'settings' | 'hero') => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Reset input so selecting the same file triggers change event again
+    const inputEl = e.target;
+    if (inputEl) {
+      inputEl.value = '';
+    }
+
+    const slot: 'logo' | 'hero' | 'gallery' = type === 'settings' ? 'logo' : type;
+    setUploadingImage(slot);
+    setImageUploadSuccess(null);
 
     const origSizeBytes = file.size;
     const origSizeFormatted = formatBytes(origSizeBytes);
@@ -1091,7 +1105,7 @@ const AdminDashboard = ({
 
           setUploadedImageMeta(prev => ({
             ...prev,
-            [type === 'settings' ? 'logo' : type]: metaInfo
+            [slot]: metaInfo
           }));
 
           if (type === 'gallery') {
@@ -1101,6 +1115,12 @@ const AdminDashboard = ({
           } else {
             setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
           }
+          setUploadingImage(null);
+          setImageUploadSuccess(slot);
+          setDeleteToast({ 
+            message: `تم رفع ومعالجة الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+            type: 'success' 
+          });
           return;
         }
       }
@@ -1110,57 +1130,77 @@ const AdminDashboard = ({
 
     // Fallback: Client-side compression
     const reader = new FileReader();
+    reader.onerror = () => {
+      setUploadingImage(null);
+      setDeleteToast({ message: 'تعذر قراءة ملف الصورة من جهازك، يرجى اختيار ملف JPG أو PNG صالح', type: 'error' });
+    };
     reader.onloadend = async () => {
-      const base64String = reader.result as string;
+      try {
+        const base64String = reader.result as string;
+        if (!base64String) {
+          setUploadingImage(null);
+          return;
+        }
 
-      // Extract original dimensions
-      const tempImg = new Image();
-      tempImg.src = base64String;
-      await new Promise((res) => { tempImg.onload = res; tempImg.onerror = res; });
-      const origDim = tempImg.naturalWidth ? `${tempImg.naturalWidth} × ${tempImg.naturalHeight} بكسل` : 'غير محدد';
+        // Extract original dimensions
+        const tempImg = new Image();
+        tempImg.src = base64String;
+        await new Promise((res) => { tempImg.onload = res; tempImg.onerror = res; });
+        const origDim = tempImg.naturalWidth ? `${tempImg.naturalWidth} × ${tempImg.naturalHeight} بكسل` : 'غير محدد';
 
-      // Optimized dimensions according to image role
-      const maxWidth = type === 'settings' ? 500 : type === 'hero' ? 1200 : 900;
-      const maxHeight = type === 'settings' ? 500 : type === 'hero' ? 800 : 700;
-      const quality = type === 'settings' ? 0.8 : 0.7;
-      const isPng = file.type === 'image/png' || base64String.startsWith('data:image/png');
+        // Optimized dimensions according to image role
+        const maxWidth = type === 'settings' ? 500 : type === 'hero' ? 1200 : 900;
+        const maxHeight = type === 'settings' ? 500 : type === 'hero' ? 800 : 700;
+        const quality = type === 'settings' ? 0.8 : 0.7;
+        const isPng = file.type === 'image/png' || base64String.startsWith('data:image/png');
 
-      const compressed = await compressImage(base64String, maxWidth, maxHeight, quality, type === 'settings' && isPng);
+        const compressed = await compressImage(base64String, maxWidth, maxHeight, quality, type === 'settings' && isPng);
 
-      // Extract compressed dimensions & size
-      const compImg = new Image();
-      compImg.src = compressed;
-      await new Promise((res) => { compImg.onload = res; compImg.onerror = res; });
-      const compDim = compImg.naturalWidth ? `${compImg.naturalWidth} × ${compImg.naturalHeight} بكسل` : 'غير محدد';
+        // Extract compressed dimensions & size
+        const compImg = new Image();
+        compImg.src = compressed;
+        await new Promise((res) => { compImg.onload = res; compImg.onerror = res; });
+        const compDim = compImg.naturalWidth ? `${compImg.naturalWidth} × ${compImg.naturalHeight} بكسل` : 'غير محدد';
 
-      const compSizeBytes = getBase64SizeInBytes(compressed);
-      const compSizeFormatted = formatBytes(compSizeBytes);
-      const savings = origSizeBytes > compSizeBytes 
-        ? `${Math.round(((origSizeBytes - compSizeBytes) / origSizeBytes) * 100)}%` 
-        : undefined;
+        const compSizeBytes = getBase64SizeInBytes(compressed);
+        const compSizeFormatted = formatBytes(compSizeBytes);
+        const savings = origSizeBytes > compSizeBytes 
+          ? `${Math.round(((origSizeBytes - compSizeBytes) / origSizeBytes) * 100)}%` 
+          : undefined;
 
-      const metaInfo: UploadedImageInfo = {
-        name: file.name,
-        origSize: origSizeFormatted,
-        origSizeBytes,
-        compSize: compSizeFormatted,
-        compSizeBytes,
-        origDim,
-        compDim,
-        savings
-      };
+        const metaInfo: UploadedImageInfo = {
+          name: file.name,
+          origSize: origSizeFormatted,
+          origSizeBytes,
+          compSize: compSizeFormatted,
+          compSizeBytes,
+          origDim,
+          compDim,
+          savings
+        };
 
-      setUploadedImageMeta(prev => ({
-        ...prev,
-        [type === 'settings' ? 'logo' : type]: metaInfo
-      }));
-      
-      if (type === 'gallery') {
-        setGalleryForm(prev => ({ ...prev, imageUrl: compressed }));
-      } else if (type === 'hero') {
-        setSettingsForm(prev => ({ ...prev, heroImageUrl: compressed }));
-      } else {
-        setSettingsForm(prev => ({ ...prev, logoUrl: compressed }));
+        setUploadedImageMeta(prev => ({
+          ...prev,
+          [slot]: metaInfo
+        }));
+        
+        if (type === 'gallery') {
+          setGalleryForm(prev => ({ ...prev, imageUrl: compressed }));
+        } else if (type === 'hero') {
+          setSettingsForm(prev => ({ ...prev, heroImageUrl: compressed }));
+        } else {
+          setSettingsForm(prev => ({ ...prev, logoUrl: compressed }));
+        }
+        setImageUploadSuccess(slot);
+        setDeleteToast({ 
+          message: `تم ضغط وتجهيز الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+          type: 'success' 
+        });
+      } catch (clientErr) {
+        console.error('Client compression error:', clientErr);
+        setDeleteToast({ message: 'حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصيغة أخرى', type: 'error' });
+      } finally {
+        setUploadingImage(null);
       }
     };
     reader.readAsDataURL(file);
@@ -1178,8 +1218,10 @@ const AdminDashboard = ({
       setServiceForm({ title: '', description: '', icon: 'Wrench', price: '' });
       setIsAdding(false);
       setEditingItem(null);
+      setDeleteToast({ message: editingItem ? 'تم تحديث بيانات الخدمة بنجاح ✅' : 'تمت إضافة الخدمة الجديدة بنجاح ✅', type: 'success' });
     } catch (error) {
       console.error("Error saving service:", error);
+      setDeleteToast({ message: 'حدث خطأ أثناء حفظ الخدمة في قاعدة البيانات', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -1193,7 +1235,7 @@ const AdminDashboard = ({
       const data = {
         title: galleryForm.title.trim() || 'صورة من أعمال المركز',
         imageUrl: galleryForm.imageUrl,
-        category: galleryForm.category || 'صيانة دورية',
+        category: galleryForm.category || 'maintenance',
         updatedAt: serverTimestamp()
       };
       if (editingItem && editingItem.type === 'gallery' && !editingItem.id.startsWith('static-')) {
@@ -1201,12 +1243,14 @@ const AdminDashboard = ({
       } else {
         await addDoc(collection(db, 'gallery'), { ...data, createdAt: serverTimestamp() });
       }
-      setGalleryForm({ title: '', imageUrl: '', category: 'صيانة دورية' });
+      setGalleryForm({ title: '', imageUrl: '', category: 'maintenance' });
       setUploadedImageMeta(prev => ({ ...prev, gallery: undefined }));
       setIsAdding(false);
       setEditingItem(null);
+      setDeleteToast({ message: editingItem ? 'تم تحديث وتثبيت صورة المعرض بنجاح ✅' : 'تمت إضافة الصورة إلى معرض الأعمال بنجاح ✅', type: 'success' });
     } catch (error) {
       console.error("Error saving gallery item:", error);
+      setDeleteToast({ message: 'حدث خطأ أثناء حفظ صورة المعرض في قاعدة البيانات', type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -1485,6 +1529,7 @@ const AdminDashboard = ({
     }
     setEditingItem({ id: item.id || ('static-' + (item.title || item.name || 'item')), type });
     if (type === 'service') {
+      setContentTab('services');
       setServiceForm({
         title: item.title || '',
         description: item.description || '',
@@ -1492,6 +1537,7 @@ const AdminDashboard = ({
         price: item.price || ''
       });
     } else if (type === 'offer') {
+      setContentTab('offers');
       setOfferForm({
         title: item.title || '',
         price: item.price || '',
@@ -1500,13 +1546,15 @@ const AdminDashboard = ({
         icon: item.icon || 'tag'
       });
     } else if (type === 'gallery') {
+      setContentTab('gallery');
+      const imgUrl = item.imageUrl || item.url || '';
       setGalleryForm({
         title: item.title || '',
-        imageUrl: item.imageUrl || '',
-        category: item.category || 'صيانة دورية'
+        imageUrl: imgUrl,
+        category: item.category || 'maintenance'
       });
-      if (item.imageUrl && item.imageUrl.startsWith('data:')) {
-        const sz = getBase64SizeInBytes(item.imageUrl);
+      if (imgUrl && imgUrl.startsWith('data:')) {
+        const sz = getBase64SizeInBytes(imgUrl);
         setUploadedImageMeta(prev => ({
           ...prev,
           gallery: {
@@ -2095,18 +2143,27 @@ const AdminDashboard = ({
     }
   };
 
-  const handleUpdateSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateSettings = async (e?: React.FormEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'stats', 'global'), {
+      // Use setDoc with merge so it safely creates or updates both docs
+      await setDoc(doc(db, 'stats', 'global'), {
         ...settingsForm,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
+
+      await setDoc(doc(db, 'settings', 'general'), {
+        ...settingsForm,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
       try {
         localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...settingsForm }));
-      } catch {}
-      alert('تم تحديث الإعدادات بنجاح');
+      } catch (localErr) {
+        console.warn('LocalStorage save warning:', localErr);
+      }
+      setDeleteToast({ message: 'تم حفظ وتحديث كافة الإعدادات والصور في السحابة بنجاح ✅', type: 'success' });
     } catch (error) {
       console.error("Error updating settings:", error);
       handleFirestoreError(error, OperationType.UPDATE, 'stats/global');
@@ -3763,6 +3820,7 @@ const AdminDashboard = ({
                 gallery={gallery}
                 lang={lang}
                 onAddImage={() => { setEditingItem(null); setContentTab('gallery'); setIsAdding(true); }}
+                onEditImage={(item) => handleEdit('gallery', item)}
                 onDeleteImage={(id) => handleDelete('gallery', id)}
               />
             </motion.div>
@@ -4792,6 +4850,13 @@ const AdminDashboard = ({
                             </div>
 
                             <div className="flex-1 w-full space-y-3">
+                              {uploadingImage === 'logo' && (
+                                <div className="p-2.5 bg-brand-red/10 border border-brand-red/30 rounded-xl flex items-center gap-2 text-brand-red text-xs font-bold animate-pulse">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                  <span>جاري رفع ومعالجة الشعار للسحابة...</span>
+                                </div>
+                              )}
+
                               {/* File Input */}
                               <div className="space-y-1">
                                 <label className="text-[11px] text-gray-400 block">رفع صورة من جهازك (PNG, JPG, SVG, WebP):</label>
@@ -4811,8 +4876,22 @@ const AdminDashboard = ({
                                   value={settingsForm.logoUrl}
                                   onChange={e => setSettingsForm({...settingsForm, logoUrl: e.target.value})}
                                   placeholder="https://example.com/logo.png"
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-brand-red text-white"
+                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-brand-red text-white font-mono dir-ltr text-left"
                                 />
+                              </div>
+
+                              {/* Quick Save Bar for Logo */}
+                              <div className="flex items-center justify-between pt-1">
+                                <span className="text-[11px] text-gray-400">تحديث فوري لجميع أقسام المنصة</span>
+                                <button
+                                  type="button"
+                                  disabled={loading || uploadingImage === 'logo'}
+                                  onClick={() => handleUpdateSettings()}
+                                  className="px-3.5 py-1.5 rounded-xl bg-brand-red hover:bg-red-700 text-white text-xs font-bold shadow-md shadow-brand-red/20 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                  <span>⚡ حفظ وتطبيق الشعار فوراً</span>
+                                </button>
                               </div>
 
                               {/* Recommended & Uploaded Image Size Info */}
@@ -5063,12 +5142,33 @@ const AdminDashboard = ({
                             </div>
 
                             <div className="flex-1 w-full space-y-3">
+                              {uploadingImage === 'logo' && (
+                                <div className="p-2.5 bg-brand-red/10 border border-brand-red/30 rounded-xl flex items-center gap-2 text-brand-red text-xs font-bold animate-pulse">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                  <span>جاري رفع ومعالجة الشعار للسحابة...</span>
+                                </div>
+                              )}
+
                               <input 
                                 type="file"
                                 accept="image/*"
                                 onChange={(e) => handleImageUpload(e, 'settings')}
                                 className="w-full text-xs text-gray-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-black/40 border border-white/10 rounded-xl p-1.5"
                               />
+
+                              {/* Quick Save Bar for Logo */}
+                              <div className="flex items-center justify-between pt-1">
+                                <span className="text-[11px] text-gray-400">تطبيق وحفظ التعديلات فورياً</span>
+                                <button
+                                  type="button"
+                                  disabled={loading || uploadingImage === 'logo'}
+                                  onClick={() => handleUpdateSettings()}
+                                  className="px-3.5 py-1.5 rounded-xl bg-brand-red hover:bg-red-700 text-white text-xs font-bold shadow-md shadow-brand-red/20 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                  <span>⚡ حفظ وتطبيق الشعار فوراً</span>
+                                </button>
+                              </div>
 
                               {/* Recommended & Uploaded Image Size Info */}
                               <ImageUploadSizeBadge
@@ -5468,30 +5568,56 @@ const AdminDashboard = ({
                             </div>
 
                             {/* Upload & Custom URL Inputs */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-white/5">
-                              <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 block">
-                                  📁 أو ارفع صورة خاصة من جهازك / جوالك:
-                                </label>
-                                <input 
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => handleImageUpload(e, 'hero')}
-                                  className="w-full text-xs text-gray-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-white/5 p-2 rounded-xl border border-white/10"
-                                />
+                            <div className="space-y-3 pt-2 border-t border-white/5">
+                              {uploadingImage === 'hero' && (
+                                <div className="p-3 bg-brand-red/10 border border-brand-red/30 rounded-xl flex items-center gap-2.5 text-brand-red text-xs font-bold animate-pulse">
+                                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                  <span>جاري رفع ومعالجة صورة الواجهة الرئيسية وتجهيزها...</span>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-400 block">
+                                    📁 أو ارفع صورة خاصة من جهازك / جوالك:
+                                  </label>
+                                  <input 
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(e) => handleImageUpload(e, 'hero')}
+                                    className="w-full text-xs text-gray-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-brand-red file:text-white hover:file:bg-red-700 cursor-pointer bg-white/5 p-2 rounded-xl border border-white/10"
+                                  />
+                                </div>
+
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-gray-400 block">
+                                    🔗 أو ضع رابط صورة مباشر (URL):
+                                  </label>
+                                  <input 
+                                    type="text"
+                                    value={settingsForm.heroImageUrl}
+                                    onChange={e => setSettingsForm({...settingsForm, heroImageUrl: e.target.value})}
+                                    placeholder="https://example.com/my-car-image.jpg"
+                                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red font-mono dir-ltr text-left"
+                                  />
+                                </div>
                               </div>
 
-                              <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-400 block">
-                                  🔗 أو ضع رابط صورة مباشر (URL):
-                                </label>
-                                <input 
-                                  type="text"
-                                  value={settingsForm.heroImageUrl}
-                                  onChange={e => setSettingsForm({...settingsForm, heroImageUrl: e.target.value})}
-                                  placeholder="https://example.com/my-car-image.jpg"
-                                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red"
-                                />
+                              {/* Quick Save Bar for Hero Image */}
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-black/40 border border-white/10">
+                                <span className="text-xs text-gray-300 flex items-center gap-1.5">
+                                  <Check className="w-4 h-4 text-emerald-400" />
+                                  معاينة فورية ومباشرة لصورة واجهة الموقع
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={loading || uploadingImage === 'hero'}
+                                  onClick={() => handleUpdateSettings()}
+                                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-brand-red hover:bg-red-700 text-white text-xs font-bold shadow-lg shadow-brand-red/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                                  <span>⚡ حفظ وتطبيق هذه الصورة فوراً</span>
+                                </button>
                               </div>
                             </div>
 
@@ -6209,8 +6335,12 @@ const AdminDashboard = ({
                 {/* Sticky Header with Title and Close Button */}
                 <div className="px-5 sm:px-7 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex justify-between items-center shrink-0 z-20">
                   <h3 className="text-lg sm:text-xl font-display font-black italic text-white">
-                    {editingItem ? 'تعديل' : 'إضافة'} {activeTab === 'dashboard' || activeTab === 'bookings' ? 'حجز' : 
-                          activeTab === 'content' ? (contentTab === 'services' ? 'خدمة' : contentTab === 'offers' ? 'عرض' : 'صورة') : 'جديد'}
+                    {editingItem ? 'تعديل' : 'إضافة'} {
+                      (editingItem?.type === 'service' || (!editingItem && (activeTab === 'services' || (activeTab === 'content' && contentTab === 'services')))) ? 'خدمة صيانة' : 
+                      (editingItem?.type === 'offer' || (!editingItem && (activeTab === 'offers' || (activeTab === 'content' && contentTab === 'offers')))) ? 'عرض ترويجي' : 
+                      (editingItem?.type === 'gallery' || (!editingItem && (activeTab === 'gallery' || (activeTab === 'content' && contentTab === 'gallery')))) ? 'صورة لمعرض الأعمال' : 
+                      'حجز موعد'
+                    }
                   </h3>
                   <button 
                     type="button"
@@ -6223,7 +6353,7 @@ const AdminDashboard = ({
 
                 <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1 overscroll-contain">
 
-                {(activeTab === 'dashboard' || activeTab === 'bookings' || activeTab === 'calendar') && (
+                {(editingItem?.type === 'booking' || (!editingItem && (activeTab === 'dashboard' || activeTab === 'bookings' || activeTab === 'calendar'))) && (
                   <form onSubmit={handleAddRecord} className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">رقم الجوال</label>
@@ -6276,7 +6406,7 @@ const AdminDashboard = ({
                   </form>
                 )}
 
-                {activeTab === 'content' && contentTab === 'services' && (
+                {(editingItem?.type === 'service' || (!editingItem && (activeTab === 'services' || (activeTab === 'content' && contentTab === 'services')))) && (
                   <form onSubmit={handleAddService} className="space-y-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">اسم الخدمة</label>
@@ -6310,7 +6440,7 @@ const AdminDashboard = ({
                   </form>
                 )}
 
-                {activeTab === 'content' && contentTab === 'offers' && (
+                {(editingItem?.type === 'offer' || (!editingItem && (activeTab === 'offers' || (activeTab === 'content' && contentTab === 'offers')))) && (
                   <form onSubmit={handleAddOffer} className="space-y-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-500 uppercase">عنوان العرض</label>
@@ -6339,32 +6469,57 @@ const AdminDashboard = ({
                         className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red h-32"
                       />
                     </div>
-                    <button className="w-full py-4 bg-brand-red rounded-xl font-bold italic">إضافة العرض</button>
+                    <button className="w-full py-4 bg-brand-red rounded-xl font-bold italic">
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (editingItem ? 'تحديث العرض' : 'إضافة العرض')}
+                    </button>
                   </form>
                 )}
 
-                {activeTab === 'content' && contentTab === 'gallery' && (
+                {(editingItem?.type === 'gallery' || (!editingItem && (activeTab === 'gallery' || (activeTab === 'content' && contentTab === 'gallery')))) && (
                   <form onSubmit={handleAddGallery} className="space-y-6">
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">عنوان الصورة</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">عنوان وتوصيف الصورة</label>
                       <input 
                         required
                         value={galleryForm.title}
                         onChange={e => setGalleryForm({...galleryForm, title: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
+                        placeholder="مثال: فحص وبرمجة كمبيوتر للسيارة"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-white text-xs"
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">رفع الصورة</label>
+                      <label className="text-xs font-bold text-gray-500 uppercase">تصنيف الصورة في المعرض</label>
+                      <select
+                        value={galleryForm.category || 'maintenance'}
+                        onChange={e => setGalleryForm({...galleryForm, category: e.target.value})}
+                        className="w-full bg-[#141720] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-white text-xs font-bold"
+                      >
+                        <option value="maintenance">صيانة متنقلة وميكانيكا (Mobile Maintenance)</option>
+                        <option value="before_after">قبل وبعد الإصلاح (Before & After)</option>
+                        <option value="diagnostics">فحص وبرمجة كمبيوتر (Diagnostics)</option>
+                        <option value="fleet">أسطول العمليات والمعدات (Fleet Vehicles)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-500 uppercase">رفع أو إرفاق الصورة</label>
                       <div className="flex flex-col gap-4">
+                        {uploadingImage === 'gallery' && (
+                          <div className="flex items-center gap-2.5 p-3.5 bg-brand-red/10 border border-brand-red/30 rounded-xl text-brand-red text-xs font-bold animate-pulse">
+                            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                            <span>جاري رفع ومعالجة صورة المعرض للسحابة...</span>
+                          </div>
+                        )}
+
                         <input 
                           type="file"
                           accept="image/*"
                           onChange={(e) => handleImageUpload(e, 'gallery')}
-                          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red file:bg-brand-red file:border-none file:rounded-lg file:text-white file:px-4 file:py-1 file:mr-4 file:cursor-pointer"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red file:bg-brand-red file:border-none file:rounded-lg file:text-white file:px-4 file:py-1 file:mr-4 file:cursor-pointer text-xs text-gray-300"
                         />
                         {galleryForm.imageUrl && (
-                          <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-white/10">
+                          <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-white/10 bg-black/60">
                             <img src={galleryForm.imageUrl} alt="Preview" className="w-full h-full object-cover" loading="lazy" />
                             <button 
                               type="button"
@@ -6372,7 +6527,8 @@ const AdminDashboard = ({
                                 setGalleryForm({ ...galleryForm, imageUrl: '' });
                                 setUploadedImageMeta(prev => ({ ...prev, gallery: undefined }));
                               }}
-                              className="absolute top-2 right-2 p-2 bg-black/60 rounded-full text-white hover:bg-brand-red transition-colors"
+                              className="absolute top-2 right-2 p-2 bg-black/60 rounded-full text-white hover:bg-brand-red transition-colors cursor-pointer"
+                              title="حذف الصورة الحالية"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -6380,14 +6536,14 @@ const AdminDashboard = ({
                         )}
                         <div className="flex items-center gap-2">
                           <div className="h-px flex-1 bg-white/5" />
-                          <span className="text-[10px] text-gray-600 uppercase font-bold">أو استخدم رابط</span>
+                          <span className="text-[10px] text-gray-600 uppercase font-bold">أو استخدم رابط صورة مباشر</span>
                           <div className="h-px flex-1 bg-white/5" />
                         </div>
                         <input 
                           placeholder="https://example.com/image.jpg"
                           value={galleryForm.imageUrl}
                           onChange={e => setGalleryForm({...galleryForm, imageUrl: e.target.value})}
-                          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-xs text-white font-mono dir-ltr text-left"
                         />
 
                         {/* Recommended & Uploaded Image Size Info for Gallery */}
@@ -6404,10 +6560,10 @@ const AdminDashboard = ({
                     </div>
                     <button 
                       type="submit" 
-                      disabled={loading || !galleryForm.imageUrl}
-                      className="w-full py-4 bg-brand-red rounded-xl font-bold italic disabled:opacity-50"
+                      disabled={loading || !galleryForm.imageUrl || uploadingImage === 'gallery'}
+                      className="w-full py-4 bg-brand-red hover:bg-red-700 rounded-xl font-bold italic disabled:opacity-50 transition-colors cursor-pointer text-white"
                     >
-                      {loading ? 'جاري الحفظ...' : (editingItem ? 'تحديث الصورة' : 'إضافة للمعرض')}
+                      {loading ? 'جاري الحفظ...' : (editingItem ? 'تحديث وتثبيت الصورة في المعرض' : 'إضافة الصورة إلى المعرض')}
                     </button>
                   </form>
                 )}

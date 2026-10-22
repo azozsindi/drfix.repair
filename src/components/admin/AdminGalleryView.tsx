@@ -9,7 +9,8 @@ import {
   Filter, 
   X, 
   ExternalLink,
-  Tag
+  Tag,
+  Edit3
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -17,6 +18,7 @@ interface AdminGalleryViewProps {
   gallery: any[];
   lang: 'ar' | 'en';
   onAddImage: () => void;
+  onEditImage?: (item: any) => void;
   onDeleteImage: (id: string) => void;
 }
 
@@ -24,6 +26,7 @@ export const AdminGalleryView: React.FC<AdminGalleryViewProps> = ({
   gallery,
   lang,
   onAddImage,
+  onEditImage,
   onDeleteImage
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -122,6 +125,16 @@ export const AdminGalleryView: React.FC<AdminGalleryViewProps> = ({
                 </span>
 
                 <div className="flex items-center gap-1.5">
+                  {onEditImage && (
+                    <button
+                      type="button"
+                      onClick={() => onEditImage(item)}
+                      className="p-1.5 rounded-lg bg-black/60 hover:bg-[#F52B35] text-white backdrop-blur-md transition-colors cursor-pointer"
+                      title={lang === 'ar' ? 'تعديل الصورة والبيانات' : 'Edit Image'}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPreviewImage(item)}

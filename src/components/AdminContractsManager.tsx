@@ -31,12 +31,14 @@ import {
   Layers,
   ArrowUpDown,
   ImageIcon,
-  Upload
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { Contract, ContractType, ContractStatus, ContractVehicle, ContractVehicleStatus, DEFAULT_SAMPLE_CONTRACTS } from '../types';
 import { cn } from '../lib/utils';
 import { formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
 import { useScrollLock } from '../lib/scrollLock';
+import { compressImage } from '../lib/imageUtils';
 
 interface AdminContractsManagerProps {
   contracts: Contract[];
@@ -1003,19 +1005,39 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            if (file.size > 2 * 1024 * 1024) {
-                              alert(lang === 'ar' ? 'حجم الصورة كبير جداً، يرجى اختيار صورة أقل من 2 ميغابايت' : 'Image is too large. Please select under 2MB.');
-                              return;
+                          if (!file) return;
+                          const inputEl = e.target;
+                          if (inputEl) inputEl.value = '';
+
+                          try {
+                            const data = new FormData();
+                            data.append('image', file);
+                            const res = await fetch('/api/upload-image', { method: 'POST', body: data });
+                            if (res.ok) {
+                              const json = await res.json();
+                              if (json.success && json.imageUrl) {
+                                setFormData(prev => ({ ...prev, partyLogoUrl: json.imageUrl }));
+                                return;
+                              }
                             }
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setFormData({ ...formData, partyLogoUrl: reader.result as string });
-                            };
-                            reader.readAsDataURL(file);
+                          } catch (err) {
+                            console.warn('Server upload error:', err);
                           }
+
+                          const reader = new FileReader();
+                          reader.onloadend = async () => {
+                            if (typeof reader.result === 'string') {
+                              try {
+                                const comp = await compressImage(reader.result, 500, 500, 0.8, true);
+                                setFormData(prev => ({ ...prev, partyLogoUrl: comp }));
+                              } catch {
+                                setFormData(prev => ({ ...prev, partyLogoUrl: reader.result as string }));
+                              }
+                            }
+                          };
+                          reader.readAsDataURL(file);
                         }}
                       />
                     </label>
