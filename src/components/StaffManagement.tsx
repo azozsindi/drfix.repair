@@ -318,7 +318,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
 
           <button
             onClick={openAddModal}
-            className="flex items-center gap-2 px-6 py-3.5 bg-brand-red hover:bg-red-700 text-white font-display font-black rounded-2xl shadow-xl shadow-brand-red/25 transition-all text-sm md:text-base cursor-pointer shrink-0"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 sm:px-6 py-3 sm:py-3.5 bg-brand-red hover:bg-red-700 text-white font-display font-black rounded-2xl shadow-xl shadow-brand-red/25 transition-all text-sm md:text-base cursor-pointer shrink-0"
           >
             <UserPlus className="w-5 h-5" />
             إضافة موظف جديد

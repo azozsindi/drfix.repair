@@ -147,7 +147,7 @@ export const InteractiveLocationPicker: React.FC<InteractiveLocationPickerProps>
     <div className="space-y-3">
       {/* Primary Location Box */}
       <div 
-        className={`p-4 sm:p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden ${
+        className={`p-3 xs:p-4 sm:p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden ${
           coords 
             ? 'bg-gradient-to-br from-emerald-950/20 via-black/60 to-black/40 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.12)]' 
             : 'bg-black/40 border-white/10'

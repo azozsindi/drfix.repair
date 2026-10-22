@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import telegramHandler from './api/telegram';
 import notifyBookingHandler from './api/notify-booking';
@@ -89,8 +90,26 @@ async function startServer() {
     await uploadImageHandler(req, res);
   });
 
-  // Serve uploaded media (videos, inspection files) statically
-  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
+  // Serve uploaded media with revalidation caching (prevents stale browser cache after replacement)
+  app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads'), {
+    maxAge: '5m',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    }
+  }));
+
+  // Fallback static mount for /tmp/uploads in serverless or ephemeral filesystems
+  try {
+    const tmpUploadsDir = path.join('/tmp', 'uploads');
+    if (fs.existsSync(tmpUploadsDir)) {
+      app.use('/uploads', express.static(tmpUploadsDir, {
+        maxAge: '5m',
+        setHeaders: (res) => {
+          res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+        }
+      }));
+    }
+  } catch {}
 
   // Explicit Static Content-Type routes for SEO, Googlebot-Favicon & Social Previews
   app.get('/favicon.ico', (req, res) => {
@@ -106,10 +125,13 @@ async function startServer() {
     res.sendFile(path.join(process.cwd(), 'public', filename));
   });
 
-  app.get(['/logo.png', '/logo-custom.png'], (req, res) => {
+  app.get(['/logo.png', '/logo-custom.png', '/hero-custom.jpg'], (req, res) => {
     const filename = path.basename(req.path);
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    const ext = path.extname(filename).toLowerCase();
+    const contentType = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    // 5 minutes max-age with revalidation so brand image changes take effect quickly without stale cache
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
     res.sendFile(path.join(process.cwd(), 'public', filename));
   });
 

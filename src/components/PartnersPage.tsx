@@ -82,10 +82,28 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
 
   const whatsappSupportNumber = (settings?.whatsapp || '966546870807').replace(/[^0-9]/g, '');
 
+  const getPartnerImageUrl = (partner: Partner) => {
+    const rawUrl = partner.imageUrl || '/hero-custom.jpg';
+    if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return rawUrl;
+    const version = (partner as any).updatedAt || settings?.imageUpdatedAt;
+    if (!version) return rawUrl;
+    try {
+      const isAbsolute = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
+      const dummyBase = 'http://localhost';
+      const parsed = new URL(rawUrl, isAbsolute ? undefined : dummyBase);
+      parsed.searchParams.set('v', String(version));
+      return isAbsolute ? parsed.toString() : parsed.pathname + parsed.search + parsed.hash;
+    } catch {
+      const cleanUrl = rawUrl.replace(/([?&])v=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+      const sep = cleanUrl.includes('?') ? '&' : '?';
+      return `${cleanUrl}${sep}v=${version}`;
+    }
+  };
+
   return (
     <div 
       dir={isAr ? 'rtl' : 'ltr'}
-      className="min-h-[auto] sm:min-h-screen bg-brand-black text-white pt-4 sm:pt-10 md:pt-12 pb-16 sm:pb-24 px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white"
+      className="min-h-[auto] sm:min-h-screen bg-brand-black text-white pt-4 sm:pt-10 md:pt-12 pb-28 sm:pb-32 px-3 xs:px-4 sm:px-6 lg:px-8 selection:bg-brand-red selection:text-white"
     >
       {/* Background Ambient Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
@@ -228,7 +246,7 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                   {/* Image Container with Badges */}
                   <div className="relative aspect-[16/10] w-full overflow-hidden bg-black/40">
                     <img
-                      src={partner.imageUrl || '/hero-custom.jpg'}
+                      src={getPartnerImageUrl(partner)}
                       alt={partner.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       onError={(e) => {
@@ -308,31 +326,33 @@ export const PartnersPage: React.FC<PartnersPageProps> = ({
                         </a>
                       )}
 
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* Call Button */}
-                        {partner.phone ? (
-                          <a
-                            href={`tel:${partner.phone}`}
-                            className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-gray-200 flex items-center justify-center gap-1.5 transition-all active:scale-95"
-                          >
-                            <Phone className="w-3.5 h-3.5 text-brand-red" />
-                            <span>{isAr ? 'اتصال' : 'Call'}</span>
-                          </a>
-                        ) : null}
+                      {(partner.phone || partner.whatsapp) && (
+                        <div className={`grid ${partner.phone && partner.whatsapp ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                          {/* Call Button */}
+                          {partner.phone ? (
+                            <a
+                              href={`tel:${partner.phone}`}
+                              className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-gray-200 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[42px]"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-brand-red" />
+                              <span>{isAr ? 'اتصال' : 'Call'}</span>
+                            </a>
+                          ) : null}
 
-                        {/* WhatsApp Button */}
-                        {partner.whatsapp ? (
-                          <a
-                            href={`https://wa.me/${partner.whatsapp.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-brand-red hover:text-white border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-all active:scale-95 group"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
-                            <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
-                          </a>
-                        ) : null}
-                      </div>
+                          {/* WhatsApp Button */}
+                          {partner.whatsapp ? (
+                            <a
+                              href={`https://wa.me/${partner.whatsapp.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-brand-red hover:text-white border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-all active:scale-95 group min-h-[42px]"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5 text-brand-red group-hover:text-white transition-colors" />
+                              <span>{isAr ? 'واتساب' : 'WhatsApp'}</span>
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
 
                       {/* Request service with this partner via Dr.Fix */}
                       <button

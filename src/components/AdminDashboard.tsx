@@ -268,17 +268,6 @@ const AdminDashboard = ({
   // Command palette state
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
-  // Keyboard shortcut listener for Cmd+K / Ctrl+K
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsCommandPaletteOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   // Compute activeTab from URL pathname or searchParams
   const activeTab: AdminTabId = useMemo(() => {
@@ -314,6 +303,25 @@ const AdminDashboard = ({
   const [loading, setLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [editingItem, setEditingItem] = useState<{ id: string, type: 'service' | 'offer' | 'gallery' | 'booking' | 'testimonial' } | null>(null);
+
+  // Keyboard shortcut listener for Cmd+K / Ctrl+K and Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      } else if (e.key === 'Escape') {
+        if (isAdding) {
+          setIsAdding(false);
+          setEditingItem(null);
+        } else if (isMobileSidebarOpen) {
+          setIsMobileSidebarOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAdding, isMobileSidebarOpen]);
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
     type: 'batch_bookings' | 'batch_offers' | 'single';
@@ -633,6 +641,20 @@ const AdminDashboard = ({
     privacyPolicyText: settings.privacyPolicyText || '',
     termsOfServiceText: settings.termsOfServiceText || ''
   });
+
+  // Synchronize settingsForm state whenever the settings prop updates from Firestore
+  useEffect(() => {
+    if (settings) {
+      setSettingsForm(prev => ({
+        ...prev,
+        ...settings,
+        logoUrl: settings.logoUrl !== undefined ? settings.logoUrl : prev.logoUrl,
+        heroImageUrl: settings.heroImageUrl !== undefined ? settings.heroImageUrl : prev.heroImageUrl,
+        heroImageFit: settings.heroImageFit || prev.heroImageFit,
+        siteName: settings.siteName || prev.siteName
+      }));
+    }
+  }, [settings]);
 
   useEffect(() => {
     // Detect PWA status
@@ -1047,8 +1069,9 @@ const AdminDashboard = ({
         features: offerForm.features.split('\n').filter(f => f.trim()),
         updatedAt: serverTimestamp()
       };
-      if (editingItem && editingItem.type === 'offer' && !editingItem.id.startsWith('static-')) {
-        await updateDoc(doc(db, 'offers', editingItem.id), data);
+      if (editingItem && editingItem.type === 'offer') {
+        const docId = editingItem.id.startsWith('static-') ? editingItem.id.replace('static-', '') : editingItem.id;
+        await setDoc(doc(db, 'offers', docId), { ...data, active: true, createdAt: serverTimestamp() }, { merge: true });
       } else {
         await addDoc(collection(db, 'offers'), { ...data, active: true, createdAt: serverTimestamp() });
       }
@@ -1111,14 +1134,52 @@ const AdminDashboard = ({
           if (type === 'gallery') {
             setGalleryForm(prev => ({ ...prev, imageUrl: data.imageUrl }));
           } else if (type === 'hero') {
+            const nowTs = Date.now();
             setSettingsForm(prev => ({ ...prev, heroImageUrl: data.imageUrl }));
+            // Auto-persist immediately so uploaded image is never lost
+            try {
+              setDoc(doc(db, 'stats', 'global'), {
+                heroImageUrl: data.imageUrl,
+                imageUpdatedAt: nowTs,
+                updatedAt: serverTimestamp()
+              }, { merge: true }).catch(e => console.warn('Hero image auto-sync error:', e));
+              setDoc(doc(db, 'settings', 'general'), {
+                heroImageUrl: data.imageUrl,
+                imageUpdatedAt: nowTs,
+                updatedAt: serverTimestamp()
+              }, { merge: true }).catch(e => console.warn('Hero image auto-sync general error:', e));
+              const localSettings = localStorage.getItem('drfix_app_settings');
+              const parsed = localSettings ? JSON.parse(localSettings) : {};
+              localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: data.imageUrl, imageUpdatedAt: nowTs }));
+            } catch (persistErr) {
+              console.warn('Hero image local persistence error:', persistErr);
+            }
           } else {
+            const nowTs = Date.now();
             setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
+            // Auto-persist immediately so uploaded logo is never lost
+            try {
+              setDoc(doc(db, 'stats', 'global'), {
+                logoUrl: data.imageUrl,
+                imageUpdatedAt: nowTs,
+                updatedAt: serverTimestamp()
+              }, { merge: true }).catch(e => console.warn('Logo image auto-sync error:', e));
+              setDoc(doc(db, 'settings', 'general'), {
+                logoUrl: data.imageUrl,
+                imageUpdatedAt: nowTs,
+                updatedAt: serverTimestamp()
+              }, { merge: true }).catch(e => console.warn('Logo image auto-sync general error:', e));
+              const localSettings = localStorage.getItem('drfix_app_settings');
+              const parsed = localSettings ? JSON.parse(localSettings) : {};
+              localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: data.imageUrl, imageUpdatedAt: nowTs }));
+            } catch (persistErr) {
+              console.warn('Logo image local persistence error:', persistErr);
+            }
           }
           setUploadingImage(null);
           setImageUploadSuccess(slot);
           setDeleteToast({ 
-            message: `تم رفع ومعالجة الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+            message: `تم رفع وتطبيق الصورة في الموقع بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
             type: 'success' 
           });
           return;
@@ -1187,13 +1248,45 @@ const AdminDashboard = ({
         if (type === 'gallery') {
           setGalleryForm(prev => ({ ...prev, imageUrl: compressed }));
         } else if (type === 'hero') {
+          const nowTs = Date.now();
           setSettingsForm(prev => ({ ...prev, heroImageUrl: compressed }));
+          try {
+            setDoc(doc(db, 'stats', 'global'), {
+              heroImageUrl: compressed,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'settings', 'general'), {
+              heroImageUrl: compressed,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(() => {});
+            const localSettings = localStorage.getItem('drfix_app_settings');
+            const parsed = localSettings ? JSON.parse(localSettings) : {};
+            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: compressed, imageUpdatedAt: nowTs }));
+          } catch {}
         } else {
+          const nowTs = Date.now();
           setSettingsForm(prev => ({ ...prev, logoUrl: compressed }));
+          try {
+            setDoc(doc(db, 'stats', 'global'), {
+              logoUrl: compressed,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'settings', 'general'), {
+              logoUrl: compressed,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(() => {});
+            const localSettings = localStorage.getItem('drfix_app_settings');
+            const parsed = localSettings ? JSON.parse(localSettings) : {};
+            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: compressed, imageUpdatedAt: nowTs }));
+          } catch {}
         }
         setImageUploadSuccess(slot);
         setDeleteToast({ 
-          message: `تم ضغط وتجهيز الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+          message: `تم حفظ وتطبيق الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
           type: 'success' 
         });
       } catch (clientErr) {
@@ -1211,7 +1304,8 @@ const AdminDashboard = ({
     setLoading(true);
     try {
       if (editingItem && editingItem.type === 'service') {
-        await updateDoc(doc(db, 'services', editingItem.id), serviceForm);
+        const docId = editingItem.id.startsWith('static-') ? editingItem.id.replace('static-', '') : editingItem.id;
+        await setDoc(doc(db, 'services', docId), serviceForm, { merge: true });
       } else {
         await addDoc(collection(db, 'services'), serviceForm);
       }
@@ -1238,8 +1332,9 @@ const AdminDashboard = ({
         category: galleryForm.category || 'maintenance',
         updatedAt: serverTimestamp()
       };
-      if (editingItem && editingItem.type === 'gallery' && !editingItem.id.startsWith('static-')) {
-        await updateDoc(doc(db, 'gallery', editingItem.id), data);
+      if (editingItem && editingItem.type === 'gallery') {
+        const docId = editingItem.id.startsWith('static-') ? editingItem.id.replace('static-', '') : editingItem.id;
+        await setDoc(doc(db, 'gallery', docId), { ...data, createdAt: serverTimestamp() }, { merge: true });
       } else {
         await addDoc(collection(db, 'gallery'), { ...data, createdAt: serverTimestamp() });
       }
@@ -1268,8 +1363,9 @@ const AdminDashboard = ({
         reply: testimonialForm.reply.trim() || '',
         updatedAt: serverTimestamp()
       };
-      if (editingItem && editingItem.type === 'testimonial' && !editingItem.id.startsWith('static-')) {
-        await updateDoc(doc(db, 'testimonials', editingItem.id), data);
+      if (editingItem && editingItem.type === 'testimonial') {
+        const docId = editingItem.id.startsWith('static-') ? editingItem.id.replace('static-', '') : editingItem.id;
+        await setDoc(doc(db, 'testimonials', docId), { ...data, createdAt: serverTimestamp() }, { merge: true });
       } else {
         await addDoc(collection(db, 'testimonials'), {
           ...data,
@@ -1302,17 +1398,10 @@ const AdminDashboard = ({
 
   const handleUpdatePartner = async (id: string, partnerData: Partial<Partner>) => {
     try {
-      if (id.startsWith('partner-')) {
-        await setDoc(doc(db, 'partners', id), {
-          ...partnerData,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } else {
-        await updateDoc(doc(db, 'partners', id), {
-          ...partnerData,
-          updatedAt: serverTimestamp()
-        });
-      }
+      await setDoc(doc(db, 'partners', id), {
+        ...partnerData,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
       setDeleteToast({ message: 'تم تحديث بيانات الشريك بنجاح', type: 'success' });
     } catch (err) {
       console.error('Error updating partner:', err);
@@ -2146,20 +2235,23 @@ const AdminDashboard = ({
   const handleUpdateSettings = async (e?: React.FormEvent) => {
     if (e && e.preventDefault) e.preventDefault();
     setLoading(true);
+    const nowTs = Date.now();
     try {
-      // Use setDoc with merge so it safely creates or updates both docs
+      // Use setDoc with merge so it safely creates or updates both docs with fresh image timestamp
       await setDoc(doc(db, 'stats', 'global'), {
         ...settingsForm,
+        imageUpdatedAt: nowTs,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       await setDoc(doc(db, 'settings', 'general'), {
         ...settingsForm,
+        imageUpdatedAt: nowTs,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       try {
-        localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...settingsForm }));
+        localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...settingsForm, imageUpdatedAt: nowTs }));
       } catch (localErr) {
         console.warn('LocalStorage save warning:', localErr);
       }
@@ -2397,7 +2489,7 @@ const AdminDashboard = ({
         />
 
         {/* Main Content View Container */}
-        <div className="flex-1 p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-6">
+        <div className="flex-1 p-2.5 xs:p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-6">
           {/* Firestore Quota Notice Banner */}
           {quotaExceededInfo && (
             <motion.div 
@@ -5544,7 +5636,29 @@ const AdminDashboard = ({
                                   return (
                                     <div
                                       key={idx}
-                                      onClick={() => setSettingsForm({ ...settingsForm, heroImageUrl: preset.url })}
+                                      onClick={async () => {
+                                        const nextUrl = preset.url;
+                                        const nowTs = Date.now();
+                                        setSettingsForm(prev => ({ ...prev, heroImageUrl: nextUrl }));
+                                        try {
+                                          await setDoc(doc(db, 'stats', 'global'), {
+                                            heroImageUrl: nextUrl,
+                                            imageUpdatedAt: nowTs,
+                                            updatedAt: serverTimestamp()
+                                          }, { merge: true });
+                                          await setDoc(doc(db, 'settings', 'general'), {
+                                            heroImageUrl: nextUrl,
+                                            imageUpdatedAt: nowTs,
+                                            updatedAt: serverTimestamp()
+                                          }, { merge: true });
+                                          const cached = localStorage.getItem('drfix_app_settings');
+                                          const parsed = cached ? JSON.parse(cached) : {};
+                                          localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: nextUrl, imageUpdatedAt: nowTs }));
+                                          setDeleteToast({ message: 'تم اختيار وتطبيق صورة الواجهة بنجاح ✅', type: 'success' });
+                                        } catch (err) {
+                                          console.warn('Preset save warning:', err);
+                                        }
+                                      }}
                                       className={cn(
                                         "group relative rounded-xl overflow-hidden border transition-all cursor-pointer aspect-[16/10]",
                                         isSelected ? "border-brand-red ring-2 ring-brand-red/50 scale-[1.02]" : "border-white/10 hover:border-white/30"

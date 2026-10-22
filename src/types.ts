@@ -644,6 +644,7 @@ export interface Partner {
   isActive: boolean;
   order?: number;
   createdAt?: any;
+  updatedAt?: any;
 }
 
 export const DEFAULT_PARTNERS: Partner[] = [
@@ -881,6 +882,7 @@ export interface AppSettings {
   heroImageBadgeTitle?: string;
   heroImageBadgeSubtitle?: string;
   showHeroImageBadge?: boolean;
+  imageUpdatedAt?: number;
   // Visibility Toggles
   showStats?: boolean;
   showOffers?: boolean;

@@ -445,7 +445,7 @@ const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void;
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="glass-card p-6 sm:p-8 w-full max-w-md border-brand-red/20 shadow-2xl rounded-2xl sm:rounded-3xl relative"
+        className="glass-card p-4.5 xs:p-6 sm:p-8 w-full max-w-md border-brand-red/20 shadow-2xl rounded-2xl sm:rounded-3xl relative"
       >
         <div className="text-center mb-6 sm:mb-8">
           <div className="w-14 h-14 bg-brand-red/20 border border-brand-red/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-brand-red shadow-lg shadow-brand-red/20">
@@ -584,6 +584,7 @@ interface AppSettings {
   heroImageBadgeTitle?: string;
   heroImageBadgeSubtitle?: string;
   showHeroImageBadge?: boolean;
+  imageUpdatedAt?: number;
   // Visibility Toggles
   showStats?: boolean;
   showOffers?: boolean;
@@ -767,6 +768,27 @@ export const getBase64SizeInBytes = (base64: string): number => {
   if (!parts[1]) return 0;
   const padding = parts[1].endsWith('==') ? 2 : parts[1].endsWith('=') ? 1 : 0;
   return Math.max(0, Math.round((parts[1].length * 3) / 4) - padding);
+};
+
+export const getImageWithCacheBust = (url?: string, timestamp?: number | string): string => {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (!timestamp) return url;
+  try {
+    const isAbsolute = url.startsWith('http://') || url.startsWith('https://');
+    const dummyBase = 'http://localhost';
+    const parsed = new URL(url, isAbsolute ? undefined : dummyBase);
+    parsed.searchParams.set('v', String(timestamp));
+    if (isAbsolute) {
+      return parsed.toString();
+    } else {
+      return parsed.pathname + parsed.search + parsed.hash;
+    }
+  } catch {
+    const cleanUrl = url.replace(/([?&])v=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+    const sep = cleanUrl.includes('?') ? '&' : '?';
+    return `${cleanUrl}${sep}v=${timestamp}`;
+  }
 };
 
 export interface UploadedImageInfo {
@@ -1058,7 +1080,7 @@ const Navbar = ({
         <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 sm:gap-3 group select-none shrink-0">
           <div className="w-10 h-10 sm:w-11 sm:h-11 bg-black rounded-xl p-1 flex items-center justify-center border border-white/10 shadow-lg overflow-hidden group-hover:border-brand-red/50 transition-colors shrink-0">
             <img 
-              src={settings.logoUrl || '/logo-custom.png'} 
+              src={getImageWithCacheBust(settings.logoUrl || '/logo-custom.png', settings.imageUpdatedAt)} 
               alt={settings.siteName || "DR.FIX"} 
               className="w-full h-full object-contain" 
               referrerPolicy="no-referrer" 
@@ -1168,12 +1190,16 @@ const Navbar = ({
                     key={link.path} 
                     onClick={() => handleNavClick(link.path)}
                     className={cn(
-                      "text-right py-2 px-3 rounded-xl transition-all flex items-center justify-between hover:bg-white/5",
+                      "text-start py-2.5 px-3 rounded-xl transition-all flex items-center justify-between hover:bg-white/5 cursor-pointer",
                       location.pathname === link.path ? "text-brand-red bg-brand-red/10" : "text-white"
                     )}
                   >
                     <span>{link.name}</span>
-                    <ChevronLeft className="w-4 h-4 opacity-50" />
+                    {lang === 'ar' ? (
+                      <ChevronLeft className="w-4 h-4 opacity-50 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
+                    )}
                   </button>
                 ))}
 
@@ -1361,7 +1387,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             {lang === 'ar' ? (settings.heroBadge || t.hero.badge) : t.hero.badge}
           </motion.div>
 
-          <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-display font-black leading-tight sm:leading-tight md:leading-[1.15] mb-4 sm:mb-6 italic uppercase tracking-tight">
+          <h1 className="text-[1.65rem] xs:text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-display font-black leading-[1.25] sm:leading-tight md:leading-[1.15] mb-4 sm:mb-6 italic uppercase tracking-tight">
             {lang === 'ar' ? (settings.heroTitle || t.hero.title) : t.hero.title} <br className="hidden sm:inline" />
             <span className="text-brand-red relative inline-block mt-1 sm:mt-0">
               {lang === 'ar' ? (settings.heroSubtitle || t.hero.titleAccent) : t.hero.titleAccent}
@@ -1374,36 +1400,36 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             </span>
           </h1>
 
-          <p className="text-sm sm:text-base md:text-lg text-gray-300 mb-6 sm:mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal">
+          <p className="text-xs sm:text-base md:text-lg text-gray-300 mb-6 sm:mb-8 max-w-xl mx-auto lg:mx-0 leading-relaxed font-normal">
             {t.hero.description}
           </p>
 
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 sm:gap-4 justify-center lg:justify-start w-full">
             <button 
               onClick={handleBookNow} 
-              className="w-full sm:w-auto px-7 sm:px-8 py-3.5 sm:py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all flex items-center justify-center gap-3 text-base sm:text-lg shadow-lg shadow-brand-red/20 active:scale-95 cursor-pointer"
+              className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-brand-red text-white font-display font-black rounded-xl red-glow-hover transition-all flex items-center justify-center gap-2.5 sm:gap-3 text-sm sm:text-lg shadow-lg shadow-brand-red/20 active:scale-95 cursor-pointer min-h-[48px]"
             >
-              <Car className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Car className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
               <span>{t.hero.ctaBook}</span>
             </button>
-            <div className="grid grid-cols-2 sm:flex gap-2.5 sm:gap-3 w-full sm:w-auto">
+            <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3 w-full sm:w-auto">
               <a 
                 href={`tel:${settings.phone || '0546870807'}`} 
-                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-white/10 transition-all active:scale-95 cursor-pointer" 
+                className="min-w-0 px-3 sm:px-6 py-3 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2 text-xs sm:text-base hover:bg-white/10 transition-all active:scale-95 cursor-pointer min-h-[48px] text-white" 
                 title="اتصال هاتفي"
               >
-                <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red" />
-                <span>{t.hero.ctaServices}</span>
+                <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red shrink-0" />
+                <span className="truncate">{t.hero.ctaServices}</span>
               </a>
               <a 
                 href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="px-4 sm:px-6 py-3.5 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2.5 text-sm sm:text-base hover:bg-white/10 hover:border-brand-red transition-all active:scale-95 cursor-pointer group text-white" 
+                className="min-w-0 px-3 sm:px-6 py-3 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2 text-xs sm:text-base hover:bg-white/10 hover:border-brand-red transition-all active:scale-95 cursor-pointer group text-white min-h-[48px]" 
                 title="واتساب"
               >
-                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red group-hover:scale-110 transition-transform" />
-                <span>واتساب</span>
+                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-brand-red group-hover:scale-110 transition-transform shrink-0" />
+                <span className="truncate">{lang === 'ar' ? 'واتساب مباشر' : 'WhatsApp'}</span>
               </a>
             </div>
           </div>
@@ -1412,7 +1438,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.2 }}
-            className="mt-8 sm:mt-10 text-[11px] sm:text-xs text-gray-500 italic font-medium"
+            className="mt-6 sm:mt-10 text-[11px] sm:text-xs text-gray-500 italic font-medium"
           >
             {t.hero.prayer}
           </motion.p>
@@ -1430,7 +1456,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
               ease: "easeInOut"
             }
           }}
-          className="relative px-1 sm:px-4 md:px-0"
+          className="relative px-0 sm:px-4 md:px-0 w-full"
         >
           <div 
             onClick={() => setIsImageModalOpen(true)}
@@ -1438,17 +1464,17 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             title={lang === 'ar' ? "انقر لعرض الصورة كاملة" : "Click to view full image"}
           >
             <img 
-              src={settings.heroImageUrl || "/hero-custom.jpg"} 
+              src={getImageWithCacheBust(settings.heroImageUrl || "/hero-custom.jpg", settings.imageUpdatedAt)} 
               alt="Dr. Fix Car Maintenance" 
               width={1200}
               height={675}
               className={cn(
-                "w-full aspect-[16/10] sm:aspect-auto h-[250px] sm:h-[320px] md:h-[380px] lg:h-[440px] bg-neutral-950 transition-transform duration-500 group-hover:scale-105",
+                "w-full aspect-[16/10] sm:aspect-auto h-[220px] xs:h-[260px] sm:h-[320px] md:h-[380px] lg:h-[440px] bg-neutral-950 transition-transform duration-500 group-hover:scale-105",
                 settings.heroImageFit === 'contain' ? 'object-contain' : 'object-cover object-center'
               )}
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (!target.src.endsWith('/hero-custom.jpg')) {
+                if (!target.src.includes('/hero-custom.jpg')) {
                   target.src = '/hero-custom.jpg';
                 }
               }}
@@ -1459,20 +1485,20 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
             <div className="absolute inset-0 bg-gradient-to-t from-brand-black/90 via-transparent to-transparent opacity-60 pointer-events-none" />
 
             {/* Tap to zoom hint badge */}
-            <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md border border-white/20 rounded-full px-2.5 py-1 flex items-center gap-1.5 text-white/90 text-[11px] font-medium shadow-lg opacity-90 group-hover:opacity-100 group-hover:bg-brand-red transition-all">
+            <div className="absolute top-2.5 left-2.5 sm:top-3 sm:left-3 bg-black/70 backdrop-blur-md border border-white/20 rounded-full px-2.5 py-1 flex items-center gap-1.5 text-white/90 text-[10px] sm:text-[11px] font-medium shadow-lg opacity-90 group-hover:opacity-100 group-hover:bg-brand-red transition-all">
               <ZoomIn className="w-3.5 h-3.5 text-white" />
               <span>{lang === 'ar' ? 'عرض كامل' : 'Full view'}</span>
             </div>
             
             {/* Quick floating stat badge on image */}
             {settings.showHeroImageBadge !== false && (
-              <div className="absolute bottom-3 right-3 sm:bottom-6 sm:right-6 bg-brand-black/90 backdrop-blur-md border border-white/15 rounded-xl px-3 py-1.5 sm:px-3.5 sm:py-2 flex items-center gap-2.5 sm:gap-3 shadow-xl pointer-events-none">
-                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500 animate-ping shrink-0" />
-                <div className="text-right">
-                  <div className="text-[11px] sm:text-xs font-bold text-white leading-tight">
+              <div className="absolute bottom-2.5 right-2.5 sm:bottom-6 sm:right-6 bg-brand-black/90 backdrop-blur-md border border-white/15 rounded-xl px-2.5 py-1 sm:px-3.5 sm:py-2 flex items-center gap-2 sm:gap-3 shadow-xl pointer-events-none max-w-[85%]">
+                <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-green-500 animate-ping shrink-0" />
+                <div className="text-right min-w-0">
+                  <div className="text-[10px] sm:text-xs font-bold text-white leading-tight truncate">
                     {settings.heroImageBadgeTitle || (lang === 'ar' ? "خدمة متنقلة وسريعة" : "Fast & Mobile Service")}
                   </div>
-                  <div className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5">
+                  <div className="text-[9px] sm:text-[10px] text-gray-400 mt-0.5 truncate">
                     {settings.heroImageBadgeSubtitle || (lang === 'ar' ? "نصلك أينما كنت بجدة" : "We reach you anywhere in Jeddah")}
                   </div>
                 </div>
@@ -1525,7 +1551,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
               className="relative max-w-5xl max-h-[85vh] w-full flex items-center justify-center"
             >
               <img
-                src={settings.heroImageUrl || "/hero-custom.jpg"}
+                src={getImageWithCacheBust(settings.heroImageUrl || "/hero-custom.jpg", settings.imageUpdatedAt)}
                 alt="Dr. Fix Full"
                 className="max-h-[82vh] max-w-full w-auto h-auto object-contain rounded-xl sm:rounded-2xl border border-white/15 shadow-2xl"
               />
@@ -1876,7 +1902,7 @@ const STATIC_GALLERY: GalleryItem[] = [
   { id: 'g4', title: 'تلميع ساطع', titleEn: 'Deep Detailing', imageUrl: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=1000', category: 'تلميع', categoryEn: 'Detailing', createdAt: Timestamp.now() },
 ];
 
-const Gallery = () => {
+const Gallery = ({ settings }: { settings?: AppSettings }) => {
   const [items, setItems] = useState<GalleryItem[]>(() => {
     try {
       const cached = localStorage.getItem('drfix_cached_gallery');
@@ -1953,7 +1979,7 @@ const Gallery = () => {
               className="group relative aspect-square rounded-2xl overflow-hidden border border-white/10 shadow-lg"
             >
               <img 
-                src={item.imageUrl} 
+                src={getImageWithCacheBust(item.imageUrl, (item as any).updatedAt || settings?.imageUpdatedAt)} 
                 alt={lang === 'ar' ? item.title : (item.titleEn || item.title)} 
                 loading="lazy"
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
@@ -2626,11 +2652,11 @@ const BookingForm = ({
 
   return (
     <section id="booking" className="py-8 sm:py-14 md:py-24 pb-32 sm:pb-36 relative overflow-hidden">
-      <div className="max-w-4xl mx-auto px-4 md:px-6 relative z-10">
+      <div className="max-w-4xl mx-auto px-3 xs:px-4 md:px-6 relative z-10">
         <motion.div 
           whileHover={{ rotateX: 1, rotateY: -1 }}
           transition={{ type: "spring", stiffness: 300, damping: 20 }}
-          className="glass-card p-4 sm:p-6 md:p-10 lg:p-12 border-brand-red/20 shadow-2xl relative"
+          className="glass-card p-3.5 xs:p-5 sm:p-6 md:p-10 lg:p-12 border-brand-red/20 shadow-2xl relative"
           style={{ transformStyle: 'preserve-3d' }}
         >
           {/* Back to Home Link */}
@@ -2785,14 +2811,14 @@ const BookingForm = ({
               </div>
             )}
 
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.carMake}</label>
                 <input 
                   {...register('carMake', { required: true })}
                   placeholder={t.booking.carMakePlaceholder}
                   autoComplete="organization"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                  className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
                 />
               </div>
               <div className="space-y-2">
@@ -2801,7 +2827,7 @@ const BookingForm = ({
                   {...register('carModel', { required: true })}
                   placeholder={t.booking.carModelPlaceholder}
                   autoComplete="model"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                  className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
                 />
               </div>
               <div className="space-y-2">
@@ -2809,7 +2835,7 @@ const BookingForm = ({
                 <input 
                   {...register('carYear', { required: true })}
                   placeholder={t.booking.carYearPlaceholder}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                  className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
                 />
               </div>
             </div>
@@ -2818,7 +2844,7 @@ const BookingForm = ({
               <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.serviceType}</label>
               <select 
                 {...register('serviceType', { required: true })}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all appearance-none text-sm md:text-base text-white"
+                className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all appearance-none text-sm md:text-base text-white"
               >
                 <option value="" className="bg-brand-black">{t.booking.selectService}</option>
                 {selectedService && !['home-service', 'mechanic', 'electric', 'programming', 'bodywork', 'maintenance', 'ac', 'brakes', 'inspection', 'tires', 'battery', 'detailing', 'other'].includes(normalizeServiceType(selectedService)) && (
@@ -2895,14 +2921,14 @@ const BookingForm = ({
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4 md:gap-6">
+            <div className="grid sm:grid-cols-2 gap-3.5 sm:gap-4 md:gap-6">
               <div className="space-y-2">
                 <label className="text-xs md:text-sm font-display font-bold text-gray-400 uppercase tracking-wider">{t.booking.customerName}</label>
                 <input 
                   {...register('customerName')}
                   placeholder={t.booking.customerNamePlaceholder}
                   autoComplete="name"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                  className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
                 />
               </div>
               <div className="space-y-2">
@@ -2912,7 +2938,7 @@ const BookingForm = ({
                   type="tel"
                   placeholder={t.booking.phonePlaceholder}
                   autoComplete="tel"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
+                  className="w-full min-h-[48px] bg-white/5 border border-white/10 rounded-xl px-3.5 sm:px-4 py-3 focus:border-brand-red focus:outline-none transition-all text-sm md:text-base text-white"
                 />
               </div>
             </div>
@@ -3645,7 +3671,7 @@ const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppS
           <div className="flex items-center gap-2 mb-6">
             <div className="w-16 h-16 sm:w-20 sm:h-20 bg-black rounded-2xl p-1.5 flex items-center justify-center border border-white/10 shadow-xl overflow-hidden">
               <img 
-                src={settings.logoUrl || '/logo-custom.png'} 
+                src={getImageWithCacheBust(settings.logoUrl || '/logo-custom.png', settings.imageUpdatedAt)} 
                 alt="Logo" 
                 className="w-full h-full object-contain" 
                 referrerPolicy="no-referrer" 
@@ -4677,7 +4703,7 @@ function MainContent() {
               {(settings.showStats !== false) && <Stats />}
               {(settings.showServices !== false) && <Services onServiceSelect={handleServiceSelect} />}
               {(settings.showOffers !== false) && <Offers onOfferSelect={handleOfferSelect} />}
-              {(settings.showGallery !== false) && <Gallery />}
+              {(settings.showGallery !== false) && <Gallery settings={settings} />}
               <Process />
               <BookingCtaSection lang={lang} whatsapp={settings.whatsapp} />
               {(settings.showTestimonials !== false) && <Testimonials />}

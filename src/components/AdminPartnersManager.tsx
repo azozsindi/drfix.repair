@@ -198,10 +198,14 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
 
     setIsSubmitting(true);
     try {
+      const payload = {
+        ...formData,
+        updatedAt: Date.now()
+      };
       if (editingPartner && editingPartner.id) {
-        await onUpdatePartner(editingPartner.id, formData);
+        await onUpdatePartner(editingPartner.id, payload);
       } else {
-        await onAddPartner(formData);
+        await onAddPartner(payload);
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -364,7 +368,15 @@ export const AdminPartnersManager: React.FC<AdminPartnersManagerProps> = ({
               {/* Partner Card Header */}
               <div className="flex items-start gap-3">
                 <img
-                  src={partner.imageUrl || PRESET_IMAGES[0].url}
+                  src={
+                    partner.imageUrl
+                      ? partner.imageUrl.startsWith('data:') || partner.imageUrl.startsWith('blob:')
+                        ? partner.imageUrl
+                        : partner.updatedAt
+                          ? `${partner.imageUrl.replace(/([?&])v=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '')}${partner.imageUrl.includes('?') ? '&' : '?'}v=${partner.updatedAt}`
+                          : partner.imageUrl
+                      : PRESET_IMAGES[0].url
+                  }
                   alt={partner.name}
                   className="w-16 h-16 rounded-xl object-cover border border-white/10 shrink-0 bg-black/40"
                   onError={(e) => {

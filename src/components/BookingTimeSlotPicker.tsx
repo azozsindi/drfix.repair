@@ -58,7 +58,7 @@ export const BookingTimeSlotPicker: React.FC<BookingTimeSlotPickerProps> = ({
   }, [activeDate]);
 
   return (
-    <div className="space-y-4 bg-gradient-to-b from-white/[0.07] to-white/[0.03] border border-white/10 rounded-2xl p-4 sm:p-5 text-right shadow-xl" dir={isAr ? 'rtl' : 'ltr'}>
+    <div className="space-y-4 bg-gradient-to-b from-white/[0.07] to-white/[0.03] border border-white/10 rounded-2xl p-3 xs:p-4 sm:p-5 text-right shadow-xl" dir={isAr ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
         <div className="flex items-center gap-3">

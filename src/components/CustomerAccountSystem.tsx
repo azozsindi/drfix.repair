@@ -1339,6 +1339,17 @@ export const CustomerAuthModal: React.FC = () => {
   // Prevent background scroll when auth modal is open
   useScrollLock(isAuthOpen);
 
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isAuthOpen) {
+        setIsAuthOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthOpen, setIsAuthOpen]);
+
   if (!isAuthOpen) return null;
 
   const handleGoogleSignIn = async () => {
@@ -1496,6 +1507,17 @@ export const CustomerPortalModal: React.FC = () => {
 
   // Prevent background scroll when portal modal is open
   useScrollLock(isPortalOpen);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPortalOpen) {
+        setIsPortalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPortalOpen, setIsPortalOpen]);
 
   const [activeTab, setActiveTab] = useState<'bookings' | 'cars' | 'profile'>('bookings');
   const [showAddCarForm, setShowAddCarForm] = useState(false);
