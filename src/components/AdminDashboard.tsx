@@ -1112,78 +1112,80 @@ const AdminDashboard = ({
         method: 'POST',
         body: formData
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.imageUrl) {
-          const metaInfo: UploadedImageInfo = {
-            name: file.name,
-            origSize: origSizeFormatted,
-            origSizeBytes,
-            compSize: formatBytes(data.size || origSizeBytes),
-            compSizeBytes: data.size || origSizeBytes,
-            origDim: 'ملف خادم أصلي',
-            compDim: 'رابط مباشر وثابت',
-            savings: 'سريع وخفيف'
-          };
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.success && data.imageUrl) {
+        const metaInfo: UploadedImageInfo = {
+          name: file.name,
+          origSize: origSizeFormatted,
+          origSizeBytes,
+          compSize: formatBytes(data.size || origSizeBytes),
+          compSizeBytes: data.size || origSizeBytes,
+          origDim: 'ملف خادم أصلي',
+          compDim: 'رابط مباشر وثابت',
+          savings: 'سريع وخفيف'
+        };
 
-          setUploadedImageMeta(prev => ({
-            ...prev,
-            [slot]: metaInfo
-          }));
+        setUploadedImageMeta(prev => ({
+          ...prev,
+          [slot]: metaInfo
+        }));
 
-          if (type === 'gallery') {
-            setGalleryForm(prev => ({ ...prev, imageUrl: data.imageUrl }));
-          } else if (type === 'hero') {
-            const nowTs = Date.now();
-            setSettingsForm(prev => ({ ...prev, heroImageUrl: data.imageUrl }));
-            // Auto-persist immediately so uploaded image is never lost
-            try {
-              setDoc(doc(db, 'stats', 'global'), {
-                heroImageUrl: data.imageUrl,
-                imageUpdatedAt: nowTs,
-                updatedAt: serverTimestamp()
-              }, { merge: true }).catch(e => console.warn('Hero image auto-sync error:', e));
-              setDoc(doc(db, 'settings', 'general'), {
-                heroImageUrl: data.imageUrl,
-                imageUpdatedAt: nowTs,
-                updatedAt: serverTimestamp()
-              }, { merge: true }).catch(e => console.warn('Hero image auto-sync general error:', e));
-              const localSettings = localStorage.getItem('drfix_app_settings');
-              const parsed = localSettings ? JSON.parse(localSettings) : {};
-              localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: data.imageUrl, imageUpdatedAt: nowTs }));
-            } catch (persistErr) {
-              console.warn('Hero image local persistence error:', persistErr);
-            }
-          } else {
-            const nowTs = Date.now();
-            setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
-            // Auto-persist immediately so uploaded logo is never lost
-            try {
-              setDoc(doc(db, 'stats', 'global'), {
-                logoUrl: data.imageUrl,
-                imageUpdatedAt: nowTs,
-                updatedAt: serverTimestamp()
-              }, { merge: true }).catch(e => console.warn('Logo image auto-sync error:', e));
-              setDoc(doc(db, 'settings', 'general'), {
-                logoUrl: data.imageUrl,
-                imageUpdatedAt: nowTs,
-                updatedAt: serverTimestamp()
-              }, { merge: true }).catch(e => console.warn('Logo image auto-sync general error:', e));
-              const localSettings = localStorage.getItem('drfix_app_settings');
-              const parsed = localSettings ? JSON.parse(localSettings) : {};
-              localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: data.imageUrl, imageUpdatedAt: nowTs }));
-            } catch (persistErr) {
-              console.warn('Logo image local persistence error:', persistErr);
-            }
+        if (type === 'gallery') {
+          setGalleryForm(prev => ({ ...prev, imageUrl: data.imageUrl }));
+        } else if (type === 'hero') {
+          const nowTs = Date.now();
+          setSettingsForm(prev => ({ ...prev, heroImageUrl: data.imageUrl }));
+          // Auto-persist immediately so uploaded image is never lost
+          try {
+            setDoc(doc(db, 'stats', 'global'), {
+              heroImageUrl: data.imageUrl,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(e => console.warn('Hero image auto-sync error:', e));
+            setDoc(doc(db, 'settings', 'general'), {
+              heroImageUrl: data.imageUrl,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(e => console.warn('Hero image auto-sync general error:', e));
+            const localSettings = localStorage.getItem('drfix_app_settings');
+            const parsed = localSettings ? JSON.parse(localSettings) : {};
+            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: data.imageUrl, imageUpdatedAt: nowTs }));
+          } catch (persistErr) {
+            console.warn('Hero image local persistence error:', persistErr);
           }
-          setUploadingImage(null);
-          setImageUploadSuccess(slot);
-          setDeleteToast({ 
-            message: `تم رفع وتطبيق الصورة في الموقع بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
-            type: 'success' 
-          });
-          return;
+        } else {
+          const nowTs = Date.now();
+          setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
+          // Auto-persist immediately so uploaded logo is never lost
+          try {
+            setDoc(doc(db, 'stats', 'global'), {
+              logoUrl: data.imageUrl,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(e => console.warn('Logo image auto-sync error:', e));
+            setDoc(doc(db, 'settings', 'general'), {
+              logoUrl: data.imageUrl,
+              imageUpdatedAt: nowTs,
+              updatedAt: serverTimestamp()
+            }, { merge: true }).catch(e => console.warn('Logo image auto-sync general error:', e));
+            const localSettings = localStorage.getItem('drfix_app_settings');
+            const parsed = localSettings ? JSON.parse(localSettings) : {};
+            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: data.imageUrl, imageUpdatedAt: nowTs }));
+          } catch (persistErr) {
+            console.warn('Logo image local persistence error:', persistErr);
+          }
         }
+        setUploadingImage(null);
+        setImageUploadSuccess(slot);
+        setDeleteToast({ 
+          message: `تم رفع وتطبيق الصورة في الموقع بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+          type: 'success' 
+        });
+        return;
+      } else if (data && !data.success && data.error) {
+        setUploadingImage(null);
+        setDeleteToast({ message: data.error, type: 'error' });
+        return;
       }
     } catch (err) {
       console.warn('Server upload endpoint not responding, falling back to client compression:', err);
@@ -1291,7 +1293,7 @@ const AdminDashboard = ({
         });
       } catch (clientErr) {
         console.error('Client compression error:', clientErr);
-        setDeleteToast({ message: 'حدث خطأ أثناء معالجة الصورة، يرجى المحاولة بصيغة أخرى', type: 'error' });
+        setDeleteToast({ message: 'تعذر معالجة ملف الصورة تلقائياً، يرجى حفظها بصيغة JPG أو PNG واختيارها مجدداً', type: 'error' });
       } finally {
         setUploadingImage(null);
       }
@@ -2237,21 +2239,38 @@ const AdminDashboard = ({
     setLoading(true);
     const nowTs = Date.now();
     try {
+      const cleanPath = (url?: string) => {
+        if (!url) return '';
+        let clean = url.trim().replace(/(\.(jpe?g|png|webp|gif|svg|avif))\/*$/i, '$1');
+        if (/^(images|uploads)\//i.test(clean)) {
+          clean = '/' + clean;
+        }
+        return clean;
+      };
+
+      const sanitizedForm = {
+        ...settingsForm,
+        heroImageUrl: cleanPath(settingsForm.heroImageUrl),
+        logoUrl: cleanPath(settingsForm.logoUrl)
+      };
+
+      setSettingsForm(sanitizedForm);
+
       // Use setDoc with merge so it safely creates or updates both docs with fresh image timestamp
       await setDoc(doc(db, 'stats', 'global'), {
-        ...settingsForm,
+        ...sanitizedForm,
         imageUpdatedAt: nowTs,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       await setDoc(doc(db, 'settings', 'general'), {
-        ...settingsForm,
+        ...sanitizedForm,
         imageUpdatedAt: nowTs,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       try {
-        localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...settingsForm, imageUpdatedAt: nowTs }));
+        localStorage.setItem('drfix_app_settings', JSON.stringify({ ...DEFAULT_APP_SETTINGS, ...settings, ...sanitizedForm, imageUpdatedAt: nowTs }));
       } catch (localErr) {
         console.warn('LocalStorage save warning:', localErr);
       }
@@ -5632,7 +5651,9 @@ const AdminDashboard = ({
                                     badge: 'الهوية المعتمدة'
                                   }
                                 ].map((preset, idx) => {
-                                  const isSelected = (settingsForm.heroImageUrl || '/hero-custom.jpg') === preset.url;
+                                  const cleanFormHero = (settingsForm.heroImageUrl || '/hero-custom.jpg').trim().replace(/(\.(jpe?g|png|webp|gif|svg|avif))\/*$/i, '$1');
+                                  const normalizedFormHero = cleanFormHero.startsWith('images/') ? '/' + cleanFormHero : cleanFormHero;
+                                  const isSelected = normalizedFormHero === preset.url;
                                   return (
                                     <div
                                       key={idx}
@@ -5710,7 +5731,11 @@ const AdminDashboard = ({
                                   <input 
                                     type="text"
                                     value={settingsForm.heroImageUrl}
-                                    onChange={e => setSettingsForm({...settingsForm, heroImageUrl: e.target.value})}
+                                    onChange={e => {
+                                      let val = e.target.value;
+                                      val = val.replace(/(\.(jpe?g|png|webp|gif|svg|avif))\/*$/i, '$1');
+                                      setSettingsForm({...settingsForm, heroImageUrl: val});
+                                    }}
                                     placeholder="https://example.com/my-car-image.jpg"
                                     className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red font-mono dir-ltr text-left"
                                   />

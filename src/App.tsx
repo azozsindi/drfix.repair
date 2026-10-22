@@ -772,12 +772,21 @@ export const getBase64SizeInBytes = (base64: string): number => {
 
 export const getImageWithCacheBust = (url?: string, timestamp?: number | string): string => {
   if (!url) return '';
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-  if (!timestamp) return url;
+  let cleanUrl = url.trim();
+  if (cleanUrl.startsWith('data:') || cleanUrl.startsWith('blob:')) return cleanUrl;
+  
+  // Clean trailing slashes on image extensions e.g. .jpg/ -> .jpg
+  cleanUrl = cleanUrl.replace(/(\.(jpe?g|png|webp|gif|svg|avif))\/*$/i, '$1');
+  // Ensure leading slash if relative image/upload path
+  if (/^(images|uploads)\//i.test(cleanUrl)) {
+    cleanUrl = '/' + cleanUrl;
+  }
+
+  if (!timestamp) return cleanUrl;
   try {
-    const isAbsolute = url.startsWith('http://') || url.startsWith('https://');
+    const isAbsolute = cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://');
     const dummyBase = 'http://localhost';
-    const parsed = new URL(url, isAbsolute ? undefined : dummyBase);
+    const parsed = new URL(cleanUrl, isAbsolute ? undefined : dummyBase);
     parsed.searchParams.set('v', String(timestamp));
     if (isAbsolute) {
       return parsed.toString();
@@ -785,9 +794,9 @@ export const getImageWithCacheBust = (url?: string, timestamp?: number | string)
       return parsed.pathname + parsed.search + parsed.hash;
     }
   } catch {
-    const cleanUrl = url.replace(/([?&])v=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
-    const sep = cleanUrl.includes('?') ? '&' : '?';
-    return `${cleanUrl}${sep}v=${timestamp}`;
+    const stripped = cleanUrl.replace(/([?&])v=[^&]*(&|$)/g, '$1').replace(/[?&]$/, '');
+    const sep = stripped.includes('?') ? '&' : '?';
+    return `${stripped}${sep}v=${timestamp}`;
   }
 };
 

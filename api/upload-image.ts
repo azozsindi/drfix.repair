@@ -34,17 +34,19 @@ const storage = multer.diskStorage({
   }
 });
 
-// Up to 15MB image files supported
+// Up to 25MB image files supported (modern smartphone cameras)
 export const imageUploadMiddleware = multer({
   storage,
   limits: {
-    fileSize: 15 * 1024 * 1024 // 15MB
+    fileSize: 25 * 1024 * 1024 // 25MB
   },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.originalname.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) {
+    const isImageMime = file.mimetype.startsWith('image/');
+    const isImageExt = /\.(jpe?g|png|webp|gif|svg|bmp|tiff?|ico|heic|heif|avif)$/i.test(file.originalname);
+    if (isImageMime || isImageExt) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files (JPG, PNG, WebP, SVG, GIF) are allowed'));
+      cb(new Error('صيغة الملف غير مدعومة. يرجى اختيار ملف صورة صالح (JPG, PNG, WebP, GIF, SVG, HEIC)'));
     }
   }
 }).single('image');
@@ -53,9 +55,15 @@ export default async function uploadImageHandler(req: Request, res: Response) {
   imageUploadMiddleware(req, res, (err) => {
     if (err) {
       console.error('Multer image upload error:', err);
+      let errorMsg = 'فشل رفع ملف الصورة';
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        errorMsg = 'حجم الصورة يتجاوز الحد المسموح (25 ميجابايت). يرجى اختيار صورة أصغر.';
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
       return res.status(400).json({
         success: false,
-        error: err.message || 'فشل رفع ملف الصورة'
+        error: errorMsg
       });
     }
 

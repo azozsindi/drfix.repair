@@ -37,40 +37,55 @@ export const compressImage = (
   preservePng = false
 ): Promise<string> => {
   return new Promise((resolve) => {
-    const img = new Image();
-    img.src = base64Str;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
+    try {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        try {
+          let width = img.naturalWidth || img.width;
+          let height = img.naturalHeight || img.height;
 
-      if (width > height) {
-        if (width > maxWidth) {
-          height = Math.round(height * (maxWidth / width));
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = Math.round(width * (maxHeight / height));
-          height = maxHeight;
-        }
-      }
+          if (!width || !height) {
+            resolve(base64Str);
+            return;
+          }
 
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const isPng = preservePng || base64Str.startsWith('data:image/png');
-        if (!isPng) {
-          ctx.fillStyle = '#FFFFFF';
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round(height * (maxWidth / width));
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round(width * (maxHeight / height));
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const isPng = preservePng || base64Str.startsWith('data:image/png');
+            if (!isPng) {
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
+          } else {
+            resolve(base64Str);
+          }
+        } catch (canvasErr) {
+          console.warn('Canvas processing error:', canvasErr);
+          resolve(base64Str);
         }
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', quality));
-      } else {
-        resolve(base64Str);
-      }
-    };
-    img.onerror = () => resolve(base64Str);
+      };
+      img.onerror = () => resolve(base64Str);
+    } catch {
+      resolve(base64Str);
+    }
   });
 };
 
