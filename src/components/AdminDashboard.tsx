@@ -4703,7 +4703,7 @@ const AdminDashboard = ({
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="flex flex-col lg:flex-row gap-6 sm:gap-8"
+              className="flex flex-col lg:flex-row items-start gap-6 sm:gap-8 w-full"
             >
               {/* Settings Sub-Tabs Navigation: Horizontal scroll on mobile/tablet, vertical on desktop */}
               <div className="lg:w-64 lg:shrink-0">
@@ -4744,7 +4744,7 @@ const AdminDashboard = ({
               </div>
 
               {/* Settings Content */}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 w-full space-y-8">
                 <div className="glass-card p-4 sm:p-6 lg:p-8 border-white/10 rounded-2xl sm:rounded-3xl shadow-2xl">
                   <form onSubmit={handleUpdateSettings} className="space-y-8">
                     {settingsSubTab === 'general' && (
@@ -6204,46 +6204,51 @@ const AdminDashboard = ({
                     </div>
                   </form>
                 </div>
-              </div>
 
-              <div className="mt-12 pt-12 border-t border-white/5 w-full">
-                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-brand-red" />
-                  إدارة محتوى الموقع
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <button 
-                    onClick={() => { setActiveTab('content'); setContentTab('services'); }}
-                    className="p-6 bg-white/5 border border-white/5 rounded-2xl hover:border-brand-red/50 transition-all text-right group"
-                  >
-                    <Wrench className="w-8 h-8 text-brand-red mb-4 group-hover:scale-110 transition-transform" />
-                    <div className="font-bold mb-1">إدارة الخدمات</div>
-                    <div className="text-xs text-gray-500">تعديل الخدمات التي تظهر للعملاء</div>
-                  </button>
-                  <button 
-                    onClick={() => { setActiveTab('content'); setContentTab('offers'); }}
-                    className="p-6 bg-white/5 border border-white/5 rounded-2xl hover:border-brand-red/50 transition-all text-right group"
-                  >
-                    <Tag className="w-8 h-8 text-brand-red mb-4 group-hover:scale-110 transition-transform" />
-                    <div className="font-bold mb-1">إدارة العروض الخاصة</div>
-                    <div className="text-xs text-gray-500">تعديل العروض الخاصة والخصومات</div>
-                  </button>
-                  <button 
-                    onClick={() => { setActiveTab('content'); setContentTab('gallery'); }}
-                    className="p-6 bg-white/5 border border-white/5 rounded-2xl hover:border-brand-red/50 transition-all text-right group"
-                  >
-                    <Camera className="w-8 h-8 text-brand-red mb-4 group-hover:scale-110 transition-transform" />
-                    <div className="font-bold mb-1">إدارة المعرض</div>
-                    <div className="text-xs text-gray-500">رفع صور جديدة لأعمال المركز</div>
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('partners')}
-                    className="p-6 bg-white/5 border border-white/5 rounded-2xl hover:border-brand-red/50 transition-all text-right group"
-                  >
-                    <Handshake className="w-8 h-8 text-brand-red mb-4 group-hover:scale-110 transition-transform" />
-                    <div className="font-bold mb-1">إدارة شركاء النجاح</div>
-                    <div className="text-xs text-gray-500">إضافة وتعديل الورش والمحلات ومواقعها</div>
-                  </button>
+                {/* Quick Content Navigation Links */}
+                <div className="pt-8 border-t border-white/10 w-full">
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
+                    <FileText className="w-5 h-5 text-brand-red" />
+                    <span>إدارة محتوى الموقع والتسويق السريع</span>
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                    <button 
+                      type="button"
+                      onClick={() => { setActiveTab('content'); setContentTab('services'); }}
+                      className="p-5 bg-white/5 border border-white/10 rounded-2xl hover:border-brand-red/50 hover:bg-white/10 transition-all text-right group cursor-pointer"
+                    >
+                      <Wrench className="w-7 h-7 text-brand-red mb-3 group-hover:scale-110 transition-transform" />
+                      <div className="font-bold mb-1 text-sm text-white">إدارة الخدمات</div>
+                      <div className="text-xs text-gray-400">تعديل الخدمات التي تظهر للعملاء</div>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => { setActiveTab('content'); setContentTab('offers'); }}
+                      className="p-5 bg-white/5 border border-white/10 rounded-2xl hover:border-brand-red/50 hover:bg-white/10 transition-all text-right group cursor-pointer"
+                    >
+                      <Tag className="w-7 h-7 text-brand-red mb-3 group-hover:scale-110 transition-transform" />
+                      <div className="font-bold mb-1 text-sm text-white">إدارة العروض الخاصة</div>
+                      <div className="text-xs text-gray-400">تعديل العروض الخاصة والخصومات</div>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => { setActiveTab('content'); setContentTab('gallery'); }}
+                      className="p-5 bg-white/5 border border-white/10 rounded-2xl hover:border-brand-red/50 hover:bg-white/10 transition-all text-right group cursor-pointer"
+                    >
+                      <Camera className="w-7 h-7 text-brand-red mb-3 group-hover:scale-110 transition-transform" />
+                      <div className="font-bold mb-1 text-sm text-white">إدارة المعرض</div>
+                      <div className="text-xs text-gray-400">رفع صور جديدة لأعمال المركز</div>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveTab('partners')}
+                      className="p-5 bg-white/5 border border-white/10 rounded-2xl hover:border-brand-red/50 hover:bg-white/10 transition-all text-right group cursor-pointer"
+                    >
+                      <Handshake className="w-7 h-7 text-brand-red mb-3 group-hover:scale-110 transition-transform" />
+                      <div className="font-bold mb-1 text-sm text-white">إدارة شركاء النجاح</div>
+                      <div className="text-xs text-gray-400">إضافة وتعديل الورش والمحلات ومواقعها</div>
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
