@@ -354,6 +354,54 @@ const AdminDashboard = ({
   const [statusChangeModalData, setStatusChangeModalData] = useState<{ record: MaintenanceRecord; targetStatus: BookingStatus } | null>(null);
   const [techReviewRecord, setTechReviewRecord] = useState<MaintenanceRecord | null>(null);
 
+  // Settings Sub-Tabs Mobile Drag & Scroll Logic
+  const subTabsScrollRef = useRef<HTMLDivElement>(null);
+  const isSubTabsDraggingRef = useRef(false);
+  const subTabsStartXRef = useRef(0);
+  const subTabsStartScrollLeftRef = useRef(0);
+
+  const handleSubTabsTouchStart = (e: React.TouchEvent) => {
+    if (!subTabsScrollRef.current) return;
+    isSubTabsDraggingRef.current = true;
+    subTabsStartXRef.current = e.touches[0].clientX;
+    subTabsStartScrollLeftRef.current = subTabsScrollRef.current.scrollLeft;
+  };
+
+  const handleSubTabsTouchMove = (e: React.TouchEvent) => {
+    if (!isSubTabsDraggingRef.current || !subTabsScrollRef.current) return;
+    const diff = e.touches[0].clientX - subTabsStartXRef.current;
+    subTabsScrollRef.current.scrollLeft = subTabsStartScrollLeftRef.current - diff;
+  };
+
+  const handleSubTabsTouchEnd = () => {
+    isSubTabsDraggingRef.current = false;
+  };
+
+  const handleSubTabsMouseDown = (e: React.MouseEvent) => {
+    if (!subTabsScrollRef.current) return;
+    isSubTabsDraggingRef.current = true;
+    subTabsStartXRef.current = e.clientX;
+    subTabsStartScrollLeftRef.current = subTabsScrollRef.current.scrollLeft;
+  };
+
+  const handleSubTabsMouseMove = (e: React.MouseEvent) => {
+    if (!isSubTabsDraggingRef.current || !subTabsScrollRef.current) return;
+    const diff = e.clientX - subTabsStartXRef.current;
+    subTabsScrollRef.current.scrollLeft = subTabsStartScrollLeftRef.current - diff;
+  };
+
+  const handleSubTabsMouseUp = () => {
+    isSubTabsDraggingRef.current = false;
+  };
+
+  const handleScrollSubTabs = (amount: number) => {
+    if (!subTabsScrollRef.current) return;
+    subTabsScrollRef.current.scrollBy({
+      left: lang === 'ar' ? -amount : amount,
+      behavior: 'smooth'
+    });
+  };
+
   // Lock background scrolling when any modal in AdminDashboard is open
   useScrollLock(isAdding || !!selectedBookingDetails || !!deleteConfirmTarget);
 
@@ -4814,42 +4862,113 @@ const AdminDashboard = ({
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="flex flex-col lg:flex-row items-start gap-6 sm:gap-8 w-full"
+              className="flex flex-col lg:flex-row items-stretch lg:items-start gap-5 sm:gap-8 w-full min-w-0 max-w-full"
             >
-              {/* Settings Sub-Tabs Navigation: Horizontal scroll on mobile/tablet, vertical on desktop */}
-              <div className="lg:w-64 lg:shrink-0">
-                <div className="glass-card p-2.5 sm:p-3.5 lg:p-4 border-white/10 rounded-2xl sm:rounded-3xl shadow-xl">
+              {/* Settings Sub-Tabs Navigation: Mobile Quick Dropdown + Touch-Scroll Bar + Desktop Sidebar */}
+              <div className="w-full lg:w-72 lg:shrink-0 min-w-0 max-w-full space-y-3">
+                {/* 1. Mobile Quick-Jump Dropdown: Instantly navigate to any section with 1 click */}
+                <div className="lg:hidden p-3 rounded-2xl bg-[#141720] border border-white/10 shadow-lg space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                    <span className="flex items-center gap-1.5 text-white">
+                      <Layout className="w-4 h-4 text-brand-red" />
+                      <span>الانتقال لقسم الإعدادات:</span>
+                    </span>
+                    <span className="text-[10px] text-brand-red font-mono bg-brand-red/10 px-2 py-0.5 rounded-full border border-brand-red/30">
+                      قائمة سريعة
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <select
+                      value={settingsSubTab}
+                      onChange={(e) => setSettingsSubTab(e.target.value as any)}
+                      className="w-full bg-black/60 border-2 border-brand-red/50 rounded-xl px-4 py-3 pe-10 text-white text-xs sm:text-sm font-bold appearance-none outline-none focus:border-brand-red shadow-inner cursor-pointer"
+                    >
+                      <option value="hero">🖼️ الواجهة الرئيسية (صورة المكينة، النصوص، الشارة)</option>
+                      <option value="general">🌐 الإعدادات العامة واسم الموقع</option>
+                      <option value="notifications">🔔 إشعارات تيليجرام وتطبيق الجوال</option>
+                      <option value="branding">🎨 الهوية والشعار والثيمات</option>
+                      <option value="contact">📞 التواصل والشبكات الاجتماعية</option>
+                      <option value="sections">👁️ تفعيل وإخفاء الأقسام</option>
+                      <option value="seo">🔍 الأرشفة ومحركات البحث (SEO)</option>
+                      <option value="footer">📄 نصوص الفوتر وروابط التحميل</option>
+                      <option value="legal">🛡️ سياسة الخصوصية والشروط</option>
+                      <option value="maintenance">⚠️ وضع الصيانة المؤقت</option>
+                    </select>
+                    <ChevronDown className="w-5 h-5 text-brand-red absolute end-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 2. Interactive Scrollable Sub-Tabs Card with Touch Drag & Navigation Arrows */}
+                <div className="glass-card p-2.5 sm:p-3.5 lg:p-4 border-white/10 rounded-2xl sm:rounded-3xl shadow-xl w-full min-w-0 max-w-full overflow-hidden">
                   <div className="text-[11px] font-bold text-gray-400 uppercase mb-2 px-1 hidden lg:block">
                     أقسام الإعدادات
                   </div>
-                  <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 sm:gap-2 pb-1.5 lg:pb-0 scroll-smooth no-scrollbar">
-                    {[
-                      { id: 'general', label: 'الإعدادات العامة', icon: Globe },
-                      { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
-                      { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
-                      { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout },
-                      { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
-                      { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
-                      { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
-                      { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
-                      { id: 'legal', label: 'سياسة الخصوصية والشروط', icon: ShieldCheck },
-                      { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setSettingsSubTab(tab.id as any)}
-                        className={cn(
-                          "flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer",
-                          settingsSubTab === tab.id 
-                            ? "bg-brand-red text-white shadow-lg shadow-brand-red/20 scale-[1.01]" 
-                            : "text-gray-400 hover:bg-white/5 hover:text-white"
-                        )}
-                      >
-                        <tab.icon className="w-4 h-4 shrink-0" />
-                        <span>{tab.label}</span>
-                      </button>
-                    ))}
+
+                  <div className="relative flex items-center gap-1.5 w-full min-w-0 max-w-full">
+                    {/* Mobile Slide Arrow (Right in RTL / Left in LTR) */}
+                    <button
+                      type="button"
+                      onClick={() => handleScrollSubTabs(-140)}
+                      className="lg:hidden p-2 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-brand-red/30 text-gray-200 border border-white/10 shrink-0 cursor-pointer shadow-sm transition-colors"
+                      title={lang === 'ar' ? 'تمرير لليمين' : 'Slide left'}
+                      aria-label="تمرير"
+                    >
+                      <ChevronRight className="w-4 h-4 text-[#F52B35]" />
+                    </button>
+
+                    {/* Draggable & Scrollable Sub-Tabs */}
+                    <div
+                      ref={subTabsScrollRef}
+                      onTouchStart={handleSubTabsTouchStart}
+                      onTouchMove={handleSubTabsTouchMove}
+                      onTouchEnd={handleSubTabsTouchEnd}
+                      onMouseDown={handleSubTabsMouseDown}
+                      onMouseMove={handleSubTabsMouseMove}
+                      onMouseUp={handleSubTabsMouseUp}
+                      onMouseLeave={handleSubTabsMouseUp}
+                      className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 sm:gap-2 pb-1.5 lg:pb-0 scroll-smooth no-scrollbar w-full min-w-0 max-w-full touch-pan-x overscroll-contain select-none cursor-grab active:cursor-grabbing"
+                      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+                    >
+                      {[
+                        { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout, highlight: true },
+                        { id: 'general', label: 'الإعدادات العامة', icon: Globe },
+                        { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
+                        { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
+                        { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
+                        { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
+                        { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
+                        { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
+                        { id: 'legal', label: 'سياسة الخصوصية والشروط', icon: ShieldCheck },
+                        { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setSettingsSubTab(tab.id as any)}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer",
+                            settingsSubTab === tab.id 
+                              ? "bg-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/20" 
+                              : "text-gray-400 hover:bg-white/5 hover:text-white",
+                            tab.highlight && settingsSubTab !== tab.id && "border border-brand-red/30 text-white bg-brand-red/10"
+                          )}
+                        >
+                          <tab.icon className={cn("w-4 h-4 shrink-0", tab.highlight && settingsSubTab !== tab.id ? "text-brand-red" : "")} />
+                          <span>{tab.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Mobile Slide Arrow (Left in RTL / Right in LTR) */}
+                    <button
+                      type="button"
+                      onClick={() => handleScrollSubTabs(140)}
+                      className="lg:hidden p-2 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-brand-red/30 text-gray-200 border border-white/10 shrink-0 cursor-pointer shadow-sm transition-colors"
+                      title={lang === 'ar' ? 'تمرير لليسار' : 'Slide right'}
+                      aria-label="تمرير"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-[#F52B35]" />
+                    </button>
                   </div>
                 </div>
               </div>
