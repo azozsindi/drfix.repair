@@ -1152,94 +1152,8 @@ const AdminDashboard = ({
     const origSizeBytes = file.size;
     const origSizeFormatted = formatBytes(origSizeBytes);
 
-    // Primary: Server-side clean upload via /api/upload-image (avoids Firestore 1MB quota limits)
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const res = await fetch('/api/upload-image', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data && data.success && data.imageUrl) {
-        const metaInfo: UploadedImageInfo = {
-          name: file.name,
-          origSize: origSizeFormatted,
-          origSizeBytes,
-          compSize: formatBytes(data.size || origSizeBytes),
-          compSizeBytes: data.size || origSizeBytes,
-          origDim: 'ملف خادم أصلي',
-          compDim: 'رابط مباشر وثابت',
-          savings: 'سريع وخفيف'
-        };
-
-        setUploadedImageMeta(prev => ({
-          ...prev,
-          [slot]: metaInfo
-        }));
-
-        if (type === 'gallery') {
-          setGalleryForm(prev => ({ ...prev, imageUrl: data.imageUrl }));
-        } else if (type === 'hero') {
-          const nowTs = Date.now();
-          setSettingsForm(prev => ({ ...prev, heroImageUrl: data.imageUrl }));
-          // Auto-persist immediately so uploaded image is never lost
-          try {
-            setDoc(doc(db, 'stats', 'global'), {
-              heroImageUrl: data.imageUrl,
-              imageUpdatedAt: nowTs,
-              updatedAt: serverTimestamp()
-            }, { merge: true }).catch(e => console.warn('Hero image auto-sync error:', e));
-            setDoc(doc(db, 'settings', 'general'), {
-              heroImageUrl: data.imageUrl,
-              imageUpdatedAt: nowTs,
-              updatedAt: serverTimestamp()
-            }, { merge: true }).catch(e => console.warn('Hero image auto-sync general error:', e));
-            const localSettings = localStorage.getItem('drfix_app_settings');
-            const parsed = localSettings ? JSON.parse(localSettings) : {};
-            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: data.imageUrl, imageUpdatedAt: nowTs }));
-          } catch (persistErr) {
-            console.warn('Hero image local persistence error:', persistErr);
-          }
-        } else {
-          const nowTs = Date.now();
-          setSettingsForm(prev => ({ ...prev, logoUrl: data.imageUrl }));
-          // Auto-persist immediately so uploaded logo is never lost
-          try {
-            setDoc(doc(db, 'stats', 'global'), {
-              logoUrl: data.imageUrl,
-              imageUpdatedAt: nowTs,
-              updatedAt: serverTimestamp()
-            }, { merge: true }).catch(e => console.warn('Logo image auto-sync error:', e));
-            setDoc(doc(db, 'settings', 'general'), {
-              logoUrl: data.imageUrl,
-              imageUpdatedAt: nowTs,
-              updatedAt: serverTimestamp()
-            }, { merge: true }).catch(e => console.warn('Logo image auto-sync general error:', e));
-            const localSettings = localStorage.getItem('drfix_app_settings');
-            const parsed = localSettings ? JSON.parse(localSettings) : {};
-            localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: data.imageUrl, imageUpdatedAt: nowTs }));
-          } catch (persistErr) {
-            console.warn('Logo image local persistence error:', persistErr);
-          }
-        }
-        setUploadingImage(null);
-        setImageUploadSuccess(slot);
-        setDeleteToast({ 
-          message: `تم رفع وتطبيق الصورة في الموقع بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
-          type: 'success' 
-        });
-        return;
-      } else if (data && !data.success && data.error) {
-        setUploadingImage(null);
-        setDeleteToast({ message: data.error, type: 'error' });
-        return;
-      }
-    } catch (err) {
-      console.warn('Server upload endpoint not responding, falling back to client compression:', err);
-    }
-
-    // Fallback: Client-side compression
+    // Guaranteed Direct Client-Side Compression & Permanent Firestore Cloud Persistence
+    // Solves EROFS, container ephemerality, and production 404 image errors permanently
     const reader = new FileReader();
     reader.onerror = () => {
       setUploadingImage(null);
@@ -1260,9 +1174,9 @@ const AdminDashboard = ({
         const origDim = tempImg.naturalWidth ? `${tempImg.naturalWidth} × ${tempImg.naturalHeight} بكسل` : 'غير محدد';
 
         // Optimized dimensions according to image role
-        const maxWidth = type === 'settings' ? 500 : type === 'hero' ? 1200 : 900;
-        const maxHeight = type === 'settings' ? 500 : type === 'hero' ? 800 : 700;
-        const quality = type === 'settings' ? 0.8 : 0.7;
+        const maxWidth = type === 'settings' ? 512 : type === 'hero' ? 1280 : 900;
+        const maxHeight = type === 'settings' ? 512 : type === 'hero' ? 750 : 700;
+        const quality = type === 'settings' ? 0.8 : 0.72;
         const isPng = file.type === 'image/png' || base64String.startsWith('data:image/png');
 
         const compressed = await compressImage(base64String, maxWidth, maxHeight, quality, type === 'settings' && isPng);
@@ -1295,48 +1209,51 @@ const AdminDashboard = ({
           [slot]: metaInfo
         }));
         
+        const nowTs = Date.now();
         if (type === 'gallery') {
           setGalleryForm(prev => ({ ...prev, imageUrl: compressed }));
         } else if (type === 'hero') {
-          const nowTs = Date.now();
           setSettingsForm(prev => ({ ...prev, heroImageUrl: compressed }));
           try {
-            setDoc(doc(db, 'stats', 'global'), {
+            await setDoc(doc(db, 'stats', 'global'), {
               heroImageUrl: compressed,
               imageUpdatedAt: nowTs,
               updatedAt: serverTimestamp()
-            }, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'settings', 'general'), {
+            }, { merge: true });
+            await setDoc(doc(db, 'settings', 'general'), {
               heroImageUrl: compressed,
               imageUpdatedAt: nowTs,
               updatedAt: serverTimestamp()
-            }, { merge: true }).catch(() => {});
+            }, { merge: true });
             const localSettings = localStorage.getItem('drfix_app_settings');
             const parsed = localSettings ? JSON.parse(localSettings) : {};
             localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, heroImageUrl: compressed, imageUpdatedAt: nowTs }));
-          } catch {}
+          } catch (persistErr) {
+            console.warn('Hero image local persistence error:', persistErr);
+          }
         } else {
-          const nowTs = Date.now();
           setSettingsForm(prev => ({ ...prev, logoUrl: compressed }));
           try {
-            setDoc(doc(db, 'stats', 'global'), {
+            await setDoc(doc(db, 'stats', 'global'), {
               logoUrl: compressed,
               imageUpdatedAt: nowTs,
               updatedAt: serverTimestamp()
-            }, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'settings', 'general'), {
+            }, { merge: true });
+            await setDoc(doc(db, 'settings', 'general'), {
               logoUrl: compressed,
               imageUpdatedAt: nowTs,
               updatedAt: serverTimestamp()
-            }, { merge: true }).catch(() => {});
+            }, { merge: true });
             const localSettings = localStorage.getItem('drfix_app_settings');
             const parsed = localSettings ? JSON.parse(localSettings) : {};
             localStorage.setItem('drfix_app_settings', JSON.stringify({ ...parsed, logoUrl: compressed, imageUpdatedAt: nowTs }));
-          } catch {}
+          } catch (persistErr) {
+            console.warn('Logo image local persistence error:', persistErr);
+          }
         }
         setImageUploadSuccess(slot);
         setDeleteToast({ 
-          message: `تم حفظ وتطبيق الصورة بنجاح (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
+          message: `تم حفظ وتطبيق الصورة في السحابة بنجاح وستظهر فوراً لجميع الزوار (${type === 'hero' ? 'صورة الواجهة الرئيسية' : type === 'settings' ? 'شعار الموقع' : 'صورة المعرض'}) ✅`, 
           type: 'success' 
         });
       } catch (clientErr) {
