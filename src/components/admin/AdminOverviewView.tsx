@@ -174,10 +174,10 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap">
           <Link
             to="/"
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap"
             title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
           >
             <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
@@ -186,7 +186,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           <button
             type="button"
             onClick={onOpenNewBookingModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap"
           >
             <PlusCircle className="w-4 h-4" />
             <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
@@ -194,7 +194,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           <button
             type="button"
             onClick={() => onNavigateTab('reports')}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap"
           >
             <FileText className="w-4 h-4 text-[#F52B35]" />
             <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
@@ -202,55 +202,55 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
         </div>
       </div>
 
-      {/* Quick Action Navigation Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3">
+      {/* Quick Action Navigation Grid (Swipeable / Scrollable on Mobile) */}
+      <div className="flex sm:grid sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 overflow-x-auto sm:overflow-visible pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain">
         <button 
           type="button"
           onClick={onOpenNewBookingModal} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-[#F52B35]/30 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm hover:border-[#F52B35]"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-[#F52B35]/30 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm hover:border-[#F52B35] shrink-0 sm:shrink"
         >
           <PlusCircle className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'حجز جديد' : 'New Booking'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'حجز جديد' : 'New Booking'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('contracts')} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
         >
           <FileCheck className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'إدارة العقود' : 'Contracts'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'إدارة العقود' : 'Contracts'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('offers')} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
         >
           <Tag className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'العروض الخاصة' : 'Offers'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'العروض الخاصة' : 'Offers'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('services')} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
         >
           <Wrench className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'إدارة الخدمات' : 'Services'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'إدارة الخدمات' : 'Services'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('gallery')} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
         >
           <Camera className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'المعرض والوسائط' : 'Gallery'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'المعرض والوسائط' : 'Gallery'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('partners')} 
-          className="p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm"
+          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
         >
           <Handshake className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white">{lang === 'ar' ? 'شركاء النجاح' : 'Partners'}</span>
+          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'شركاء النجاح' : 'Partners'}</span>
         </button>
       </div>
 
