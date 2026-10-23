@@ -147,24 +147,92 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
     }
   };
 
+  // Interactive touch and drag scrolling logic for mobile & desktop
+  const actionBarRef = React.useRef<HTMLDivElement>(null);
+  const isDraggingRef = React.useRef(false);
+  const startXRef = React.useRef(0);
+  const startScrollLeftRef = React.useRef(0);
+  const hasMovedRef = React.useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!actionBarRef.current) return;
+    isDraggingRef.current = true;
+    hasMovedRef.current = false;
+    startXRef.current = e.touches[0].clientX;
+    startScrollLeftRef.current = actionBarRef.current.scrollLeft;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingRef.current || !actionBarRef.current) return;
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - startXRef.current;
+    if (Math.abs(diff) > 4) {
+      hasMovedRef.current = true;
+    }
+    // Update scroll position directly for instant tactile movement
+    actionBarRef.current.scrollLeft = startScrollLeftRef.current - diff;
+  };
+
+  const handleTouchEnd = () => {
+    isDraggingRef.current = false;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!actionBarRef.current) return;
+    isDraggingRef.current = true;
+    hasMovedRef.current = false;
+    startXRef.current = e.clientX;
+    startScrollLeftRef.current = actionBarRef.current.scrollLeft;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current || !actionBarRef.current) return;
+    const currentX = e.clientX;
+    const diff = currentX - startXRef.current;
+    if (Math.abs(diff) > 4) {
+      hasMovedRef.current = true;
+    }
+    actionBarRef.current.scrollLeft = startScrollLeftRef.current - diff;
+  };
+
+  const handleMouseUp = () => {
+    isDraggingRef.current = false;
+  };
+
+  const handleItemClick = (e: React.MouseEvent) => {
+    if (hasMovedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      hasMovedRef.current = false;
+    }
+  };
+
+  const handleScrollBy = (amount: number) => {
+    if (!actionBarRef.current) return;
+    actionBarRef.current.scrollBy({
+      left: isRtl ? -amount : amount,
+      behavior: 'smooth'
+    });
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      className="space-y-6 sm:space-y-8"
+      className="space-y-6 sm:space-y-8 w-full min-w-0 max-w-full"
     >
       {/* Executive Welcome Banner */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 p-5 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl">
-        <div className="space-y-1">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl w-full min-w-0 max-w-full overflow-hidden">
+        <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
               {lang === 'ar' ? 'نظام التشغيل نشط ومباشر' : 'Live Operations Active'}
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-display font-black text-white">
+          <h2 className="text-xl sm:text-2xl font-display font-black text-white truncate sm:text-clip">
             {lang === 'ar' ? 'نظرة عامة على عمليات DR.FIX' : 'DR.FIX Operations Executive Summary'}
           </h2>
           <p className="text-xs sm:text-sm text-[#A1A6B2] max-w-2xl">
@@ -174,36 +242,91 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap">
-          <Link
-            to="/"
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap"
-            title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
-          >
-            <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
-            <span>{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Site'}</span>
-          </Link>
+        {/* Action Buttons Container with Active Drag, Touch Movement & Navigation Arrows */}
+        <div className="relative flex items-center gap-1.5 w-full sm:w-auto min-w-0 max-w-full">
+          {/* Mobile slide button (Right in RTL / Left in LTR) */}
           <button
             type="button"
-            onClick={onOpenNewBookingModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap"
+            onClick={() => handleScrollBy(-130)}
+            className="sm:hidden p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm"
+            title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide left'}
+            aria-label="تحريك الأزرار"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
+            {isRtl ? <ChevronRight className="w-4 h-4 text-gray-200" /> : <ChevronLeft className="w-4 h-4 text-gray-200" />}
           </button>
+
+          {/* Interactive touch-draggable container */}
+          <div
+            ref={actionBarRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto min-w-0 max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap select-none scroll-smooth cursor-grab active:cursor-grabbing"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+          >
+            <Link
+              to="/"
+              onClick={handleItemClick}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap active:scale-95"
+              title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
+            >
+              <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
+              <span>{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Site'}</span>
+            </Link>
+            <button
+              type="button"
+              onClick={(e) => {
+                if (hasMovedRef.current) {
+                  e.preventDefault();
+                  hasMovedRef.current = false;
+                  return;
+                }
+                onOpenNewBookingModal();
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                if (hasMovedRef.current) {
+                  e.preventDefault();
+                  hasMovedRef.current = false;
+                  return;
+                }
+                onNavigateTab('reports');
+              }}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <FileText className="w-4 h-4 text-[#F52B35]" />
+              <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
+            </button>
+          </div>
+
+          {/* Mobile slide button (Left in RTL / Right in LTR) */}
           <button
             type="button"
-            onClick={() => onNavigateTab('reports')}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap"
+            onClick={() => handleScrollBy(130)}
+            className="sm:hidden p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm"
+            title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide right'}
+            aria-label="تحريك الأزرار"
           >
-            <FileText className="w-4 h-4 text-[#F52B35]" />
-            <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
+            {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-200" /> : <ChevronRight className="w-4 h-4 text-gray-200" />}
           </button>
         </div>
       </div>
 
       {/* Quick Action Navigation Grid (Swipeable / Scrollable on Mobile) */}
-      <div className="flex sm:grid sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 overflow-x-auto sm:overflow-visible pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain">
+      <div 
+        className="flex sm:grid sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 overflow-x-auto sm:overflow-visible pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain w-full min-w-0 max-w-full select-none scroll-smooth"
+        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+      >
         <button 
           type="button"
           onClick={onOpenNewBookingModal} 
