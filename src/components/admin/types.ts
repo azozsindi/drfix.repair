@@ -15,13 +15,15 @@ import {
   Bell, 
   Settings, 
   BookOpen, 
-  Briefcase
+  Briefcase,
+  Car
 } from 'lucide-react';
 
 export type AdminTabId = 
   | 'overview'        // 1. الرئيسية (/admin)
   | 'bookings'        // 2. الحجوزات والعمليات (/admin/bookings)
   | 'calendar'        // 3. التقويم والمواعيد (/admin/calendar)
+  | 'handovers'       // 3.5. استلام وتسليم السيارات (/admin/handovers)
   | 'customers'       // 4. العملاء وسجل السيارات (/admin/customers)
   | 'contracts'       // 5. إدارة العقود (/admin/contracts)
   | 'reports'         // 6. التقارير وسندات الصيانة (/admin/reports)
@@ -103,6 +105,15 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   },
 
   // Operations
+  {
+    id: 'handovers',
+    labelAr: 'استلام وتسليم السيارات',
+    labelEn: 'Vehicle Handover & Tracking',
+    path: '/admin/handovers',
+    icon: Car,
+    category: 'operations',
+    technicianAllowed: true
+  },
   {
     id: 'customers',
     labelAr: 'العملاء وسجل السيارات',
@@ -226,6 +237,8 @@ export const PATH_TO_TAB: Record<string, AdminTabId> = {
   '/admin/': 'overview',
   '/admin/bookings': 'bookings',
   '/admin/calendar': 'calendar',
+  '/admin/handovers': 'handovers',
+  '/admin/vehicle-handover': 'handovers',
   '/admin/customers': 'customers',
   '/admin/contracts': 'contracts',
   '/admin/reports': 'reports',
@@ -248,6 +261,8 @@ export const PATH_TO_TAB: Record<string, AdminTabId> = {
   '/admindrfix/': 'overview',
   '/admindrfix/bookings': 'bookings',
   '/admindrfix/calendar': 'calendar',
+  '/admindrfix/handovers': 'handovers',
+  '/admindrfix/vehicle-handover': 'handovers',
   '/admindrfix/customers': 'customers',
   '/admindrfix/contracts': 'contracts',
   '/admindrfix/reports': 'reports',
@@ -270,6 +285,7 @@ export const TAB_TO_PATH: Record<AdminTabId, string> = {
   overview: '/admin',
   bookings: '/admin/bookings',
   calendar: '/admin/calendar',
+  handovers: '/admin/handovers',
   customers: '/admin/customers',
   contracts: '/admin/contracts',
   reports: '/admin/reports',

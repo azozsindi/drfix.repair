@@ -191,6 +191,44 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["videoId", "chunkIndex", "totalChunks", "data"]
+    },
+    "vehicleHandover": {
+      "title": "Vehicle Handover Record",
+      "description": "Comprehensive vehicle intake, repair tracking, and final delivery documentation.",
+      "type": "object",
+      "properties": {
+        "handoverCode": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "carMake": { "type": "string" },
+        "carModel": { "type": "string" },
+        "carYear": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "status": { "type": "string", "enum": ["received", "under_inspection", "in_repair", "ready_for_handover", "delivered", "cancelled"] },
+        "assignedMechanicId": { "type": "string" },
+        "assignedMechanicName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["handoverCode", "plateNumber", "carMake", "carModel", "status"]
+    },
+    "handoverAuditLog": {
+      "title": "Handover Audit Log",
+      "description": "Immutable security and audit trail for all vehicle handover actions and digital signatures.",
+      "type": "object",
+      "properties": {
+        "handoverId": { "type": "string" },
+        "handoverCode": { "type": "string" },
+        "plateNumber": { "type": "string" },
+        "action": { "type": "string" },
+        "actionTitle": { "type": "string" },
+        "details": { "type": "string" },
+        "performedByStaffId": { "type": "string" },
+        "performedByStaffName": { "type": "string" },
+        "performedByRole": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["handoverId", "handoverCode", "action", "performedByStaffId", "timestamp"]
     }
   },
   "firestore": {
@@ -249,6 +287,14 @@
     "/inspection_videos/{chunkId}": {
       "schema": "inspectionVideo",
       "description": "Collection of inspection video chunks for vehicle arrival and service documentation."
+    },
+    "/vehicle_handovers/{handoverId}": {
+      "schema": "vehicleHandover",
+      "description": "Collection of vehicle handover intakes, repair tracking, and final delivery records."
+    },
+    "/handover_audit_logs/{logId}": {
+      "schema": "handoverAuditLog",
+      "description": "Collection of immutable audit logs for vehicle intake, mechanic signatures, and handover closure."
     }
   }
 }

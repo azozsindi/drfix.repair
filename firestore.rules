@@ -179,6 +179,27 @@ service cloud.firestore {
     }
 
     // ==========================================================
+    // Vehicle Handover & Repair Tracking System
+    // ==========================================================
+    match /vehicle_handovers/{handoverId} {
+      allow read: if true;
+      allow create: if request.resource.data.handoverCode is string 
+                    && request.resource.data.plateNumber is string 
+                    && request.resource.data.status is string;
+      allow update: if request.resource.data.handoverCode is string 
+                    && request.resource.data.status is string;
+      allow delete: if request.auth != null;
+    }
+
+    // Immutable Handover Audit Trail (Append-only, strictly no edits or deletes)
+    match /handover_audit_logs/{logId} {
+      allow read: if true;
+      allow create: if request.resource.data.handoverId is string 
+                    && request.resource.data.action is string;
+      allow update, delete: if false;
+    }
+
+    // ==========================================================
     // Global Default Deny for any unlisted collections
     // ==========================================================
     match /{document=**} {
