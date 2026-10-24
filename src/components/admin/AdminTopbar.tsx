@@ -46,13 +46,13 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
   const CurrentIcon = currentItem.icon;
 
   return (
-    <header className="h-16 sticky top-0 z-20 bg-[#090A0C]/90 backdrop-blur-md border-b border-white/[0.08] px-2.5 sm:px-6 flex items-center justify-between gap-2 text-[#F5F6F8] w-full min-w-0 max-w-full overflow-hidden">
+    <header className="h-16 sticky top-0 z-20 bg-[#090A0C]/90 backdrop-blur-md border-b border-white/[0.08] px-3 sm:px-6 flex items-center justify-between gap-3 text-[#F5F6F8] w-full min-w-0 max-w-full overflow-hidden">
       {/* Left / Start: Mobile Menu Button & Breadcrumbs */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 shrink-0">
         <button
           type="button"
           onClick={onOpenMobileSidebar}
-          className="md:hidden p-2 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] active:bg-[#F52B35]/20 text-white transition-colors cursor-pointer shrink-0 border border-white/[0.08]"
+          className="md:hidden w-10 h-10 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] active:bg-[#F52B35]/20 text-white transition-colors cursor-pointer shrink-0 border border-white/[0.08] flex items-center justify-center"
           aria-label={lang === 'ar' ? 'فتح القائمة الجانبية' : 'Open Sidebar'}
         >
           <Menu className="w-5 h-5 text-[#F52B35]" />
@@ -79,15 +79,15 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
       </div>
 
       {/* Center / Right: Quick Search, Language, Notifications & Action Buttons */}
-      <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
         {/* Global Search Button with ⌘K / Ctrl+K badge */}
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-[#A1A6B2] hover:text-white text-xs transition-all cursor-pointer group shadow-sm shrink-0"
+          className="flex items-center justify-center gap-1.5 w-10 h-10 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-[#A1A6B2] hover:text-white text-xs transition-all cursor-pointer group shadow-sm shrink-0 active:scale-95"
           title={lang === 'ar' ? 'بحث سريع (Ctrl+K)' : 'Quick Search (Ctrl+K)'}
         >
-          <Search className="w-3.5 h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform" />
+          <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform" />
           <span className="hidden lg:inline text-xs">
             {lang === 'ar' ? 'بحث سريع في النظام...' : 'Quick search...'}
           </span>
@@ -99,11 +99,11 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
         {/* Back to Website Button */}
         <Link
           to="/"
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.12] hover:border-[#F52B35]/60 text-white text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95 shrink-0"
+          className="flex items-center justify-center gap-1.5 w-10 h-10 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.12] hover:border-[#F52B35]/60 text-white text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95 shrink-0"
           title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
         >
-          <Globe className="w-3.5 h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
-          <span className="text-[11px] sm:text-xs font-bold whitespace-nowrap">
+          <Globe className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="hidden sm:inline text-[11px] sm:text-xs font-bold whitespace-nowrap">
             {lang === 'ar' ? 'الرجوع للموقع' : 'Back to Site'}
           </span>
         </Link>
@@ -117,7 +117,7 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
         <button
           type="button"
           onClick={() => onNavigateToTab('notifications')}
-          className="relative p-2 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-gray-300 hover:text-white transition-all cursor-pointer shadow-sm group shrink-0"
+          className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-gray-300 hover:text-white transition-all cursor-pointer shadow-sm group shrink-0 active:scale-95"
           title={lang === 'ar' ? 'مركز التنبيهات والإشعارات' : 'Notifications Hub'}
           aria-label={lang === 'ar' ? 'الإشعارات' : 'Notifications'}
         >
@@ -134,7 +134,7 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
           <button
             type="button"
             onClick={onQuickNewBooking}
-            className="flex items-center gap-1 p-2 sm:px-3.5 sm:py-1.5 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#F52B35]/25 hover:shadow-lg cursor-pointer shrink-0"
+            className="flex items-center justify-center gap-1.5 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#F52B35]/25 hover:shadow-lg cursor-pointer shrink-0 active:scale-95"
             title={lang === 'ar' ? 'حجز جديد' : 'New Booking'}
           >
             <Plus className="w-4 h-4" />

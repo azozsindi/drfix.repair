@@ -30,6 +30,28 @@ export const sendTelegramNotification = async (
 
   if (chatIds.length === 0) return false;
 
+  // Sanitize replyMarkup inline keyboard buttons
+  const sanitizeMarkup = (markup: any) => {
+    if (!markup || !markup.inline_keyboard || !Array.isArray(markup.inline_keyboard)) return undefined;
+    const sanitized: any[][] = [];
+    for (const row of markup.inline_keyboard) {
+      if (!Array.isArray(row)) continue;
+      const validRow = row.filter((btn: any) => {
+        if (!btn || !btn.url || typeof btn.url !== 'string') return false;
+        const u = btn.url.trim();
+        return (u.startsWith('https://') || u.startsWith('http://') || u.startsWith('tg://')) &&
+               !u.includes('localhost') && !u.includes('127.0.0.1') && !u.startsWith('tel:');
+      }).map((btn: any) => {
+        // If button URL had localhost or relative URL, convert or keep clean
+        return btn;
+      });
+      if (validRow.length > 0) sanitized.push(validRow);
+    }
+    return sanitized.length > 0 ? { inline_keyboard: sanitized } : undefined;
+  };
+
+  const safeMarkup = sanitizeMarkup(replyMarkup);
+
   const results = await Promise.allSettled(
     chatIds.map(async (singleChatId) => {
       try {
@@ -38,8 +60,8 @@ export const sendTelegramNotification = async (
           text: messageText,
           parse_mode: 'HTML'
         };
-        if (replyMarkup) {
-          payload.reply_markup = replyMarkup;
+        if (safeMarkup) {
+          payload.reply_markup = safeMarkup;
         }
         const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
         const res = await fetch(url, {
@@ -50,23 +72,24 @@ export const sendTelegramNotification = async (
         
         if (res.ok) {
           const data = await res.json();
-          if (data.ok) return true;
+          if (data && data.ok) return true;
         }
 
-        // Fallback without HTML parse_mode if Telegram rejected formatting
+        // Fallback without HTML parse_mode AND without keyboard if Telegram rejected
         const plainPayload: Record<string, any> = {
           chat_id: singleChatId,
           text: String(messageText).replace(/<[^>]*>/g, '')
         };
-        if (replyMarkup) {
-          plainPayload.reply_markup = replyMarkup;
-        }
         const retryRes = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(plainPayload)
         });
-        return retryRes.ok;
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          if (retryData && retryData.ok) return true;
+        }
+        return false;
       } catch (err) {
         console.error(`Telegram notification error for ID ${singleChatId}:`, err);
         return false;

@@ -2568,7 +2568,10 @@ const BookingForm = ({
           `⏰ <b>وقت التسجيل:</b> ${safeTime}\n` +
           `━━━━━━━━━━━━━━━━━━`;
 
-        const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+        const rawOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        const baseUrl = (!rawOrigin || rawOrigin.includes('localhost') || rawOrigin.includes('127.0.0.1'))
+          ? 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app'
+          : rawOrigin;
 
         const inline_keyboard = [
           [

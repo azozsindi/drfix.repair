@@ -243,16 +243,16 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
         </div>
 
         {/* Action Buttons Container with Active Drag, Touch Movement & Navigation Arrows */}
-        <div className="relative flex items-center gap-1.5 w-full sm:w-auto min-w-0 max-w-full">
+        <div className="relative flex items-center gap-2.5 w-full sm:w-auto min-w-0 max-w-full">
           {/* Mobile slide button (Right in RTL / Left in LTR) */}
           <button
             type="button"
             onClick={() => handleScrollBy(-130)}
-            className="sm:hidden p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm"
+            className="sm:hidden w-10 h-10 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm flex items-center justify-center"
             title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide left'}
             aria-label="تحريك الأزرار"
           >
-            {isRtl ? <ChevronRight className="w-4 h-4 text-gray-200" /> : <ChevronLeft className="w-4 h-4 text-gray-200" />}
+            {isRtl ? <ChevronRight className="w-5 h-5 text-gray-200" /> : <ChevronLeft className="w-5 h-5 text-gray-200" />}
           </button>
 
           {/* Interactive touch-draggable container */}
@@ -265,13 +265,13 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="flex items-center gap-2.5 w-full sm:w-auto overflow-x-auto min-w-0 max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap select-none scroll-smooth cursor-grab active:cursor-grabbing"
+            className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto min-w-0 max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap select-none scroll-smooth cursor-grab active:cursor-grabbing"
             style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
           >
             <Link
               to="/"
               onClick={handleItemClick}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap active:scale-95"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
               title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
             >
               <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
@@ -287,7 +287,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                 }
                 onOpenNewBookingModal();
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+              className="flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
             >
               <PlusCircle className="w-4 h-4" />
               <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
@@ -302,7 +302,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                 }
                 onNavigateTab('reports');
               }}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
             >
               <FileText className="w-4 h-4 text-[#F52B35]" />
               <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
@@ -313,11 +313,11 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           <button
             type="button"
             onClick={() => handleScrollBy(130)}
-            className="sm:hidden p-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm"
+            className="sm:hidden w-10 h-10 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm flex items-center justify-center"
             title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide right'}
             aria-label="تحريك الأزرار"
           >
-            {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-200" /> : <ChevronRight className="w-4 h-4 text-gray-200" />}
+            {isRtl ? <ChevronLeft className="w-5 h-5 text-gray-200" /> : <ChevronRight className="w-5 h-5 text-gray-200" />}
           </button>
         </div>
       </div>

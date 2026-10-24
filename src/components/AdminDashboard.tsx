@@ -10,6 +10,7 @@ import {
 import { AdminSidebar } from './admin/AdminSidebar';
 import { AdminTopbar } from './admin/AdminTopbar';
 import { AdminCommandPalette } from './admin/AdminCommandPalette';
+import { AdminMobileDock } from './admin/AdminMobileDock';
 import { AdminOverviewView } from './admin/AdminOverviewView';
 import { AdminServicesView } from './admin/AdminServicesView';
 import { AdminOffersView } from './admin/AdminOffersView';
@@ -2473,7 +2474,7 @@ const AdminDashboard = ({
         />
 
         {/* Main Content View Container */}
-        <div className="flex-1 p-2.5 xs:p-3.5 sm:p-5 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-6">
+        <div className="flex-1 px-3.5 py-4 sm:px-6 sm:py-6 md:p-6 lg:p-8 max-w-[1600px] w-full mx-auto space-y-5 sm:space-y-6 pb-28 md:pb-8">
           {/* Firestore Quota Notice Banner */}
           {quotaExceededInfo && (
             <motion.div 
@@ -3282,9 +3283,9 @@ const AdminDashboard = ({
                                 )}
                               </div>
 
-                              <div className="pt-2 border-t border-white/5 space-y-2">
+                              <div className="pt-2.5 border-t border-white/10 space-y-2.5">
                                 {/* الصف الأول: أزرار التواصل والحالة السريعة */}
-                                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar pt-0.5">
                                   {!isTechnician && (
                                     <>
                                       <a
@@ -3292,7 +3293,7 @@ const AdminDashboard = ({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={() => handleUpdateStatus(record.id, 'on_the_way')}
-                                        className="h-8 px-2.5 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                        className="min-h-[38px] px-3 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 shadow-sm"
                                         title="الفني بالطريق وإرسال واتساب"
                                       >
                                         🚗 بالطريق
@@ -3302,7 +3303,7 @@ const AdminDashboard = ({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         onClick={() => handleUpdateStatus(record.id, 'accepted')}
-                                        className="h-8 px-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                        className="min-h-[38px] px-3 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 shadow-sm"
                                         title="قبول الحجز وإرسال واتساب"
                                       >
                                         ✅ قبول
@@ -3313,49 +3314,49 @@ const AdminDashboard = ({
                                     href={`https://api.whatsapp.com/send?phone=${waPhone}&text=${waMsg}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="h-8 px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                    className="min-h-[38px] px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 shadow-sm"
                                   >
-                                    <MessageCircle className="w-3.5 h-3.5" />
-                                    واتساب
+                                    <MessageCircle className="w-4 h-4 text-emerald-400" />
+                                    <span>واتساب</span>
                                   </a>
                                   <a 
                                     href={`tel:${record.customerPhone}`}
-                                    className="h-8 px-2.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                    className="min-h-[38px] px-3.5 bg-white/[0.07] hover:bg-white/[0.12] text-gray-200 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                   >
-                                    <PhoneCall className="w-3.5 h-3.5" />
-                                    اتصال
+                                    <PhoneCall className="w-3.5 h-3.5 text-gray-300" />
+                                    <span>اتصال</span>
                                   </a>
                                   {record.coordinates?.latitude && record.coordinates?.longitude && (
                                     <a 
                                       href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="h-8 px-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                                      className="min-h-[38px] px-3 bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                                     >
-                                      <Navigation className="w-3.5 h-3.5" />
-                                      GPS
+                                      <Navigation className="w-3.5 h-3.5 text-blue-400" />
+                                      <span>GPS</span>
                                     </a>
                                   )}
                                 </div>
 
-                                {/* الصف الثاني: إجراءات الإدارة المنسقة بأحجام متطابقة */}
-                                <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-white/5">
+                                {/* الصف الثاني: إجراءات الإدارة المنسقة بأحجام متطابقة ومتباعدة */}
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10">
                                   <button 
                                     onClick={() => handleSelectBookingDetails(record)}
-                                    className="h-8 px-3 text-gray-200 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                                    className="min-h-[38px] px-3.5 text-gray-200 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shrink-0 active:scale-95"
                                     title="عرض التفاصيل الكاملة"
                                   >
-                                    <FileText className="w-3.5 h-3.5 text-gray-400" />
+                                    <FileText className="w-4 h-4 text-gray-300" />
                                     <span>التفاصيل</span>
                                   </button>
 
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-2">
                                     {!isTechnician && (
                                       <a
                                         href={getWhatsAppStatusUrl(record, record.status)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="w-8 h-8 flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-colors cursor-pointer shrink-0 active:scale-95"
+                                        className="w-10 h-10 flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 rounded-xl transition-colors cursor-pointer shrink-0 active:scale-95"
                                         title="إرسال إشعار الحالة للعميل عبر الواتساب"
                                       >
                                         <MessageSquare className="w-4 h-4" />
@@ -3363,7 +3364,7 @@ const AdminDashboard = ({
                                     )}
                                     <button 
                                       onClick={() => handleEdit('booking', record)}
-                                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer shrink-0 active:scale-95"
+                                      className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 rounded-xl cursor-pointer shrink-0 active:scale-95"
                                       title="تعديل الحجز"
                                     >
                                       <Edit3 className="w-4 h-4" />
@@ -3371,7 +3372,7 @@ const AdminDashboard = ({
                                     <button 
                                       type="button"
                                       onClick={() => handleDelete('maintenance', record.id, `${record.carModel} (${record.customerName || record.customerPhone || ''})`)}
-                                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-brand-red bg-white/5 hover:bg-brand-red/10 border border-white/10 rounded-lg cursor-pointer shrink-0 active:scale-95"
+                                      className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-brand-red bg-white/[0.06] hover:bg-brand-red/15 border border-white/10 hover:border-brand-red/30 rounded-xl cursor-pointer shrink-0 active:scale-95"
                                       title="حذف الحجز"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -4815,77 +4816,41 @@ const AdminDashboard = ({
                   </div>
                 </div>
 
-                {/* 2. Interactive Scrollable Sub-Tabs Card with Touch Drag & Navigation Arrows */}
-                <div className="glass-card p-2.5 sm:p-3.5 lg:p-4 border-white/10 rounded-2xl sm:rounded-3xl shadow-xl w-full min-w-0 max-w-full overflow-hidden">
-                  <div className="text-[11px] font-bold text-gray-400 uppercase mb-2 px-1 hidden lg:block">
+                {/* 2. Desktop-Only Sidebar (Hidden on mobile as user requested only the dropdown list) */}
+                <div className="hidden lg:block glass-card p-4 border-white/10 rounded-3xl shadow-xl w-full min-w-0 max-w-full overflow-hidden">
+                  <div className="text-[11px] font-bold text-gray-400 uppercase mb-3 px-1">
                     أقسام الإعدادات
                   </div>
 
-                  <div className="relative flex items-center gap-1.5 w-full min-w-0 max-w-full">
-                    {/* Mobile Slide Arrow (Right in RTL / Left in LTR) */}
-                    <button
-                      type="button"
-                      onClick={() => handleScrollSubTabs(-140)}
-                      className="lg:hidden p-2 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-brand-red/30 text-gray-200 border border-white/10 shrink-0 cursor-pointer shadow-sm transition-colors"
-                      title={lang === 'ar' ? 'تمرير لليمين' : 'Slide left'}
-                      aria-label="تمرير"
-                    >
-                      <ChevronRight className="w-4 h-4 text-[#F52B35]" />
-                    </button>
-
-                    {/* Draggable & Scrollable Sub-Tabs */}
-                    <div
-                      ref={subTabsScrollRef}
-                      onTouchStart={handleSubTabsTouchStart}
-                      onTouchMove={handleSubTabsTouchMove}
-                      onTouchEnd={handleSubTabsTouchEnd}
-                      onMouseDown={handleSubTabsMouseDown}
-                      onMouseMove={handleSubTabsMouseMove}
-                      onMouseUp={handleSubTabsMouseUp}
-                      onMouseLeave={handleSubTabsMouseUp}
-                      className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible gap-1.5 sm:gap-2 pb-1.5 lg:pb-0 scroll-smooth no-scrollbar w-full min-w-0 max-w-full touch-pan-x overscroll-contain select-none cursor-grab active:cursor-grabbing"
-                      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-                    >
-                      {[
-                        { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout, highlight: true },
-                        { id: 'general', label: 'الإعدادات العامة', icon: Globe },
-                        { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
-                        { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
-                        { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
-                        { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
-                        { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
-                        { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
-                        { id: 'legal', label: 'سياسة الخصوصية والشروط', icon: ShieldCheck },
-                        { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
-                      ].map((tab) => (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setSettingsSubTab(tab.id as any)}
-                          className={cn(
-                            "flex items-center gap-2.5 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 whitespace-nowrap cursor-pointer",
-                            settingsSubTab === tab.id 
-                              ? "bg-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/20" 
-                              : "text-gray-400 hover:bg-white/5 hover:text-white",
-                            tab.highlight && settingsSubTab !== tab.id && "border border-brand-red/30 text-white bg-brand-red/10"
-                          )}
-                        >
-                          <tab.icon className={cn("w-4 h-4 shrink-0", tab.highlight && settingsSubTab !== tab.id ? "text-brand-red" : "")} />
-                          <span>{tab.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Mobile Slide Arrow (Left in RTL / Right in LTR) */}
-                    <button
-                      type="button"
-                      onClick={() => handleScrollSubTabs(140)}
-                      className="lg:hidden p-2 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-brand-red/30 text-gray-200 border border-white/10 shrink-0 cursor-pointer shadow-sm transition-colors"
-                      title={lang === 'ar' ? 'تمرير لليسار' : 'Slide right'}
-                      aria-label="تمرير"
-                    >
-                      <ChevronLeft className="w-4 h-4 text-[#F52B35]" />
-                    </button>
+                  <div className="flex flex-col gap-1.5 w-full">
+                    {[
+                      { id: 'hero', label: 'الواجهة الرئيسية', icon: Layout, highlight: true },
+                      { id: 'general', label: 'الإعدادات العامة', icon: Globe },
+                      { id: 'notifications', label: 'إشعارات تيليجرام والتطبيق', icon: Bell },
+                      { id: 'branding', label: 'الهوية والثيمات', icon: Palette },
+                      { id: 'contact', label: 'التواصل والاجتماعي', icon: Share2 },
+                      { id: 'sections', label: 'الأقسام والظهور', icon: Eye },
+                      { id: 'seo', label: 'الأرشفة (SEO)', icon: Search },
+                      { id: 'footer', label: 'تذييل الصفحة', icon: AlignLeft },
+                      { id: 'legal', label: 'سياسة الخصوصية والشروط', icon: ShieldCheck },
+                      { id: 'maintenance', label: 'وضع الصيانة', icon: ShieldAlert },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSettingsSubTab(tab.id as any)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all w-full text-right cursor-pointer",
+                          settingsSubTab === tab.id 
+                            ? "bg-brand-red text-white shadow-lg shadow-brand-red/30 scale-[1.02] ring-1 ring-white/20" 
+                            : "text-gray-400 hover:bg-white/5 hover:text-white",
+                          tab.highlight && settingsSubTab !== tab.id && "border border-brand-red/30 text-white bg-brand-red/10"
+                        )}
+                      >
+                        <tab.icon className={cn("w-4 h-4 shrink-0", tab.highlight && settingsSubTab !== tab.id ? "text-brand-red" : "")} />
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -7092,7 +7057,7 @@ const AdminDashboard = ({
               initial={{ opacity: 0, y: 50, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-xs font-bold pointer-events-none"
+              className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-xs font-bold pointer-events-none"
               style={{
                 backgroundColor: deleteToast.type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(239, 68, 68, 0.95)',
                 color: '#fff',
@@ -7105,6 +7070,15 @@ const AdminDashboard = ({
           )}
         </AnimatePresence>
         </div>
+
+        {/* 3. Ergonomic Bottom Navigation Dock for Mobile Devices */}
+        <AdminMobileDock
+          currentTab={activeTab}
+          onSelectTab={(tab) => setActiveTab(tab)}
+          onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          pendingBookingsCount={records.filter(r => r.status === 'pending' || r.status === 'new').length}
+          lang={lang}
+        />
       </div>
     </div>
   );

@@ -80,8 +80,7 @@ export default async function handler(req: any, res: any) {
       replyMarkup = {
         inline_keyboard: [
           [
-            { text: '💬 محادثة واتساب', url: `https://wa.me/${intPhone}` },
-            { text: '📞 اتصال بالعميل', url: `tel:${safePhone || intPhone}` }
+            { text: '💬 محادثة واتساب العميل', url: `https://wa.me/${intPhone}` }
           ]
         ]
       };
@@ -90,18 +89,32 @@ export default async function handler(req: any, res: any) {
     const token = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();
     const adminChatId = (process.env.TELEGRAM_ADMIN_ID || DEFAULT_ADMIN_ID).trim();
 
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    let response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: adminChatId,
         text,
         parse_mode: 'HTML',
-        reply_markup: replyMarkup
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {})
       })
     });
 
-    const result = await response.json();
+    let result = await response.json();
+
+    if (!result || !result.ok) {
+      console.warn('Telegram registration notification rejected:', result?.description, 'Retrying plain text...');
+      const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: adminChatId,
+          text: text.replace(/<[^>]*>/g, '')
+        })
+      });
+      result = await fallbackRes.json();
+    }
+
     return res.status(200).json({ ok: true, result });
   } catch (error: any) {
     console.error('Error sending registration notification:', error);

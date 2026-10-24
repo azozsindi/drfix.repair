@@ -96,14 +96,19 @@ export default async function handler(req: any, res: any) {
       `📊 <b>الحالة:</b> 🆕 جديد\n` +
       `━━━━━━━━━━━━━━━━━━`;
 
-    const host = req.headers?.['x-forwarded-host'] || req.headers?.host || 'ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
-    const proto = req.headers?.['x-forwarded-proto'] || 'https';
-    const baseUrl = `${proto}://${host}`;
+    const defaultPublicUrl = 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+    const hostHeader = req.headers?.['x-forwarded-host'] || req.headers?.host || '';
+    const protoHeader = req.headers?.['x-forwarded-proto'] || 'https';
+    
+    let baseUrl = defaultPublicUrl;
+    if (hostHeader && !hostHeader.includes('localhost') && !hostHeader.includes('127.0.0.1') && !hostHeader.includes('0.0.0.0')) {
+      baseUrl = `${protoHeader}://${hostHeader}`;
+    }
 
     const inline_keyboard: any[][] = [];
 
     const actionRow: any[] = [];
-    if (mapsUrl) actionRow.push({ text: '📍 موقع العميل (GPS)', url: mapsUrl });
+    if (mapsUrl && !mapsUrl.includes('localhost')) actionRow.push({ text: '📍 موقع العميل (GPS)', url: mapsUrl });
     if (waGeneralUrl) actionRow.push({ text: '💬 فتح واتساب العميل الآن', url: waGeneralUrl });
     if (actionRow.length > 0) inline_keyboard.push(actionRow);
 
@@ -116,21 +121,47 @@ export default async function handler(req: any, res: any) {
       { text: '🏁 تم الإنجاز', url: `${baseUrl}/api/status-redirect?id=${encodeURIComponent(bId)}&status=completed` }
     ]);
 
+    // Telegram Bot API strictly allows only valid HTTP/HTTPS/TG URLs without localhost
+    const sanitizedKeyboard: any[][] = [];
+    for (const row of inline_keyboard) {
+      const validRow = row.filter((btn: any) => {
+        if (!btn || !btn.url || typeof btn.url !== 'string') return false;
+        const u = btn.url.trim();
+        return (u.startsWith('https://') || u.startsWith('http://') || u.startsWith('tg://')) &&
+               !u.includes('localhost') && !u.includes('127.0.0.1') && !u.startsWith('tel:');
+      });
+      if (validRow.length > 0) sanitizedKeyboard.push(validRow);
+    }
+
     const token = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();
     const adminChatId = (process.env.TELEGRAM_ADMIN_ID || DEFAULT_ADMIN_ID).trim();
 
-    const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    let tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: adminChatId,
         text: messageText,
         parse_mode: 'HTML',
-        reply_markup: { inline_keyboard }
+        ...(sanitizedKeyboard.length > 0 ? { reply_markup: { inline_keyboard: sanitizedKeyboard } } : {})
       })
     });
 
-    const result = await tgRes.json();
+    let result = await tgRes.json();
+
+    // Fallback: If Telegram rejected (e.g. keyboard URL or formatting), retry immediately without keyboard
+    if (!result || !result.ok) {
+      console.warn('Telegram primary dispatch rejected:', result?.description, 'Retrying fallback plain message...');
+      const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: adminChatId,
+          text: messageText.replace(/<[^>]*>/g, '')
+        })
+      });
+      result = await fallbackRes.json();
+    }
 
     // Trigger FCM Web Push Notification in parallel
     try {

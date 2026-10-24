@@ -3,7 +3,8 @@ import {
   User, Car, Calendar, FileText, LogOut, Plus, Trash2, CheckCircle2, 
   Clock, AlertCircle, X, Shield, Phone, MapPin, ChevronLeft, ChevronRight,
   ExternalLink, Lock, UserCheck, Wrench, Sparkles, Eye, EyeOff,
-  MessageCircle, Check
+  MessageCircle, Check, Bell, Moon, Sun, PlusCircle, LayoutDashboard,
+  TrendingUp, Navigation, Activity
 } from 'lucide-react';
 import { 
   doc, setDoc, getDoc, updateDoc, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
@@ -20,6 +21,7 @@ import { db, auth, firebaseConfig } from '../firebase';
 import { CustomerProfile, CustomerCar, MaintenanceRecord, sortBookingsNewestFirst } from '../types';
 import { CustomerVisualReport } from './CustomerVisualReport';
 import { useScrollLock } from '../lib/scrollLock';
+import { sendTelegramNotification, escapeTelegramHtml, DEFAULT_TELEGRAM_BOT_TOKEN, DEFAULT_TELEGRAM_CHAT_ID } from '../lib/telegramUtils';
 
 // Helper to normalize Saudi phone numbers for consistent indexing
 export const cleanSaudiPhone = (raw: string): string => {
@@ -706,6 +708,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }).catch(() => {});
 
       setIsAuthOpen(false);
+      setIsPortalOpen(true);
       setLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -917,6 +920,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }).catch(() => {});
 
       setIsAuthOpen(false);
+      setIsPortalOpen(true);
       setLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -1129,6 +1133,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }).catch(() => {});
 
       setIsAuthOpen(false);
+      setIsPortalOpen(true);
       setLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -1497,7 +1502,7 @@ export const CustomerAuthModal: React.FC = () => {
 };
 
 // =========================================================================
-// Modal: Customer Portal (لوحة العميل / حسابي)
+// Modal: Fazaa Customer Portal (بوابة العميل - فزعة لصيانة السيارات)
 // =========================================================================
 export const CustomerPortalModal: React.FC = () => {
   const { 
@@ -1519,7 +1524,28 @@ export const CustomerPortalModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPortalOpen, setIsPortalOpen]);
 
-  const [activeTab, setActiveTab] = useState<'bookings' | 'cars' | 'profile'>('bookings');
+  // Main Tabs: الرئيسية | طلباتي | طلب جديد | الإشعارات | حسابي
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'new_booking' | 'notifications' | 'profile'>('overview');
+  
+  // Theme Toggle: داكن (Dark) / فاتح (Light)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('drfix_portal_theme') !== 'light';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleTheme = () => {
+    setIsDarkMode(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('drfix_portal_theme', next ? 'dark' : 'light');
+      } catch {}
+      return next;
+    });
+  };
+
   const [showAddCarForm, setShowAddCarForm] = useState(false);
   const [newMake, setNewMake] = useState('');
   const [newModel, setNewModel] = useState('');
@@ -1535,6 +1561,15 @@ export const CustomerPortalModal: React.FC = () => {
   const [myBookings, setMyBookings] = useState<MaintenanceRecord[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
 
+  // New Request Form State (طلب صيانة جديد)
+  const [newReqCarModel, setNewReqCarModel] = useState('');
+  const [newReqServiceType, setNewReqServiceType] = useState('فحص وبرمجة كمبيوتر شامل');
+  const [newReqLocation, setNewReqLocation] = useState('جدة');
+  const [newReqNotes, setNewReqNotes] = useState('');
+  const [newReqDate, setNewReqDate] = useState('');
+  const [submittingNewReq, setSubmittingNewReq] = useState(false);
+  const [newReqSuccess, setNewReqSuccess] = useState(false);
+
   // Profile edit
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -1549,6 +1584,9 @@ export const CustomerPortalModal: React.FC = () => {
       setEditEmail(customer.email || '');
       setEditAddress(customer.address || '');
       setEditPhone(customer.phone || '');
+      if (customer.cars && customer.cars.length > 0 && !newReqCarModel) {
+        setNewReqCarModel(`${customer.cars[0].make} ${customer.cars[0].model} (${customer.cars[0].year})`);
+      }
     }
   }, [customer]);
 
@@ -1576,11 +1614,10 @@ export const CustomerPortalModal: React.FC = () => {
       setMyBookings(sorted);
       setLoadingBookings(false);
 
-      // Auto-sync cars from maintenance cards into customer cars
       if (customer) {
         syncCustomerCarsWithBookings(customer).then(updated => {
           if (updated && updated.cars && updated.cars.length !== (customer.cars || []).length) {
-            // Updated in context via snapshot/state
+            // Updated in context via snapshot
           }
         }).catch(() => {});
       }
@@ -1628,6 +1665,12 @@ export const CustomerPortalModal: React.FC = () => {
 
   if (!isPortalOpen || !customer) return null;
 
+  // Computed Metrics
+  const activeBookings = myBookings.filter(b => b.status !== 'completed' && b.status !== 'cancelled');
+  const completedBookings = myBookings.filter(b => b.status === 'completed');
+  const totalServices = myBookings.length;
+  const latestActiveBooking = activeBookings[0] || null;
+
   const handleSaveNewCar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMake.trim() || !newModel.trim()) return;
@@ -1635,7 +1678,7 @@ export const CustomerPortalModal: React.FC = () => {
     const ok = await addCar({
       make: newMake.trim(),
       model: newModel.trim(),
-      year: newYear.trim() || '2022',
+      year: newYear.trim() || '2024',
       plateNumber: newPlate.trim(),
       color: newColor.trim()
     });
@@ -1646,6 +1689,8 @@ export const CustomerPortalModal: React.FC = () => {
       setNewPlate('');
       setNewColor('');
       setShowAddCarForm(false);
+      setCarActionMsg({ text: 'تمت إضافة سيارتك بنجاح ✅', type: 'success' });
+      setTimeout(() => setCarActionMsg(null), 3500);
     }
   };
 
@@ -1660,7 +1705,131 @@ export const CustomerPortalModal: React.FC = () => {
       address: editAddress.trim()
     });
     setSavingProfile(false);
-    alert('تم حفظ البيانات بنجاح');
+    setCarActionMsg({ text: 'تم حفظ وتحديث بيانات حسابك بنجاح ✅', type: 'success' });
+    setTimeout(() => setCarActionMsg(null), 3500);
+  };
+
+  // Submit direct new maintenance request
+  const handleCreateNewRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReqCarModel.trim()) {
+      alert('يرجى تحديد أو إدخال سيارتك');
+      return;
+    }
+    setSubmittingNewReq(true);
+    try {
+      const cleanPhone = customer.phone ? cleanSaudiPhone(customer.phone) : editPhone ? cleanSaudiPhone(editPhone) : '';
+      const uniqueBookingId = 'FIX-' + Math.floor(1000 + Math.random() * 9000);
+
+      const bookingDoc = {
+        bookingId: uniqueBookingId,
+        carModel: newReqCarModel.trim(),
+        serviceType: newReqServiceType,
+        customerName: customer.name || 'عميل كريم',
+        customerPhone: cleanPhone || '0500000000',
+        customerId: customer.id || '',
+        customerEmail: customer.email || '',
+        location: newReqLocation.trim() || 'جدة',
+        notes: newReqNotes.trim(),
+        status: 'new',
+        cost: 0,
+        serviceDate: newReqDate ? new Date(newReqDate).toISOString() : new Date().toISOString(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(db, 'maintenance'), bookingDoc);
+      
+      // Auto register car if it's new
+      if (newReqCarModel.trim() && (!customer.cars || !customer.cars.some(c => `${c.make} ${c.model}`.toLowerCase().includes(newReqCarModel.toLowerCase())))) {
+        addCar({
+          make: newReqCarModel.split(' ')[0] || 'سيارة',
+          model: newReqCarModel.split(' ').slice(1).join(' ') || newReqCarModel,
+          year: '2024'
+        }).catch(() => {});
+      }
+
+      // 1. Dispatch Server-side Telegram Notification
+      let serverNotified = false;
+      try {
+        const notifyRes = await fetch('/api/notify-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingId: uniqueBookingId,
+            customerPhone: cleanPhone,
+            customerName: customer.name || 'عميل DR.FIX',
+            carModel: newReqCarModel.trim(),
+            serviceType: newReqServiceType,
+            notes: newReqNotes.trim(),
+            location: newReqLocation.trim() || 'جدة',
+            serviceDate: newReqDate ? new Date(newReqDate).toLocaleDateString('ar-SA') : 'موعد فوري',
+            isImmediate: true
+          })
+        });
+        if (notifyRes.ok) {
+          const resJson = await notifyRes.json();
+          if (resJson && resJson.ok && resJson.result && resJson.result.ok) {
+            serverNotified = true;
+          }
+        }
+      } catch (notifyErr) {
+        console.warn('API notification error (fallback to direct):', notifyErr);
+      }
+
+      // 2. Direct Fallback to Telegram Bot if server notification wasn't acknowledged
+      if (!serverNotified) {
+        const intPhone = cleanPhone.startsWith('05') ? '966' + cleanPhone.slice(1) : cleanPhone.replace(/^0+/, '');
+        const waLink = intPhone ? `https://wa.me/${intPhone}` : null;
+        const tgText = `🔔 <b>طلب صيانة جديد من بوابة العميل في DR.FIX</b> 🚗⚡\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
+          `👤 <b>العميل:</b> ${escapeTelegramHtml(customer.name || 'عميل كريم')}\n` +
+          `📱 <b>الجوال:</b> <code>${cleanPhone}</code>\n` +
+          `🚘 <b>السيارة:</b> ${escapeTelegramHtml(newReqCarModel.trim())}\n` +
+          `🔧 <b>الخدمة:</b> ${escapeTelegramHtml(newReqServiceType)}\n` +
+          `📍 <b>الموقع:</b> ${escapeTelegramHtml(newReqLocation.trim() || 'جدة')}\n` +
+          (newReqNotes.trim() ? `📝 <b>الملاحظات:</b> ${escapeTelegramHtml(newReqNotes.trim())}\n` : '') +
+          `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n` +
+          `━━━━━━━━━━━━━━━━━━`;
+
+        const publicBaseUrl = 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+        const inline_keyboard: any[][] = [];
+        if (waLink) {
+          inline_keyboard.push([{ text: '💬 فتح واتساب العميل', url: waLink }]);
+        }
+        inline_keyboard.push([
+          { text: '✅ قبول الطلب', url: `${publicBaseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=accepted` },
+          { text: '❌ رفض الطلب', url: `${publicBaseUrl}/api/status-redirect?id=${encodeURIComponent(uniqueBookingId)}&status=cancelled` }
+        ]);
+
+        sendTelegramNotification(tgText, DEFAULT_TELEGRAM_BOT_TOKEN, DEFAULT_TELEGRAM_CHAT_ID, { inline_keyboard }).catch(() => {});
+      }
+
+      // 3. Save to in-app Notifications collection
+      addDoc(collection(db, 'notifications'), {
+        type: 'new_booking',
+        title: 'طلب صيانة جديد 🚗',
+        body: `طلب صيانة جديد #${uniqueBookingId} للسيارة ${newReqCarModel.trim()} من ${customer.name || cleanPhone}`,
+        bookingId: uniqueBookingId,
+        customerName: customer.name || 'عميل',
+        customerPhone: cleanPhone,
+        carModel: newReqCarModel.trim(),
+        serviceType: newReqServiceType,
+        createdAt: serverTimestamp()
+      }).catch(() => {});
+
+      setSubmittingNewReq(false);
+      setNewReqSuccess(true);
+      setTimeout(() => {
+        setNewReqSuccess(false);
+        setActiveTab('bookings');
+      }, 1400);
+    } catch (err) {
+      console.error('Create request error:', err);
+      setSubmittingNewReq(false);
+      alert('حدث خطأ أثناء إرسال طلب الصيانة، يرجى المحاولة مرة أخرى.');
+    }
   };
 
   const getStatusDetails = (status: string) => {
@@ -1671,7 +1840,7 @@ export const CustomerPortalModal: React.FC = () => {
           step: 1,
           label: 'تم استلام الطلب',
           badgeText: 'قيد المراجعة ⏳',
-          badgeClass: 'bg-white/10 border-white/20 text-white',
+          badgeClass: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
           desc: 'تم تسجيل طلبك بنجاح في النظام وجاري مراجعته من قبل إدارة العمليات للتأكيد والتوجيه.',
           pulseColor: 'bg-brand-red',
           isLive: true
@@ -1712,7 +1881,7 @@ export const CustomerPortalModal: React.FC = () => {
           label: 'اكتملت الصيانة بنجاح',
           badgeText: 'تم الإنجاز بنجاح 🏁',
           badgeClass: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400',
-          desc: 'تم الانتهاء من كافة أعمال الصيانة بنجاح. نتمنى لك قيادة آمنة ويسري ضمان DR.FIX الذهبي المعتمد.',
+          desc: 'تم الانتهاء من كافة أعمال الصيانة بنجاح. نتمنى لك قيادة آمنة ويسري ضمان DR.FIX المعتمد.',
           pulseColor: 'bg-emerald-400',
           isLive: false
         };
@@ -1740,49 +1909,81 @@ export const CustomerPortalModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn overscroll-contain" dir="rtl">
-      <div className="relative w-full max-w-2xl bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[92vh]">
-        {/* Modal Top Bar */}
-        <div className="p-4 sm:p-5 border-b border-white/10 bg-black/40 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {customer.photoURL ? (
-              <img 
-                src={customer.photoURL} 
-                alt={customer.name} 
-                className="w-11 h-11 rounded-full object-cover border-2 border-brand-red/50 shrink-0" 
-                referrerPolicy="no-referrer" 
-              />
-            ) : (
-              <div className="w-11 h-11 rounded-full bg-brand-red/20 border-2 border-brand-red/40 flex items-center justify-center text-brand-red font-black text-lg shrink-0">
-                {customer.name?.charAt(0) || <User className="w-5 h-5" />}
-              </div>
-            )}
-            <div>
-              <h3 className="font-bold text-base text-white flex items-center gap-2">
-                {customer.name}
-                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-brand-red/15 text-brand-red border border-brand-red/30 font-bold">
-                  عميل DR.FIX المعتمد
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn overscroll-contain select-none" dir="rtl">
+      <div className={`relative w-full max-w-2xl ${
+        isDarkMode 
+          ? 'bg-[#0D1015] text-[#F5F6F8] border border-white/15' 
+          : 'bg-[#F9FAFB] text-[#111827] border border-gray-300'
+      } rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[92vh] transition-colors duration-200`}>
+        
+        {/* ========================================================================= */}
+        {/* 1. Header: فزعة لصيانة السيارات | بوابة العميل | خدماتك ومتابعتك مباشر     */}
+        {/* ========================================================================= */}
+        <div className={`p-3.5 sm:p-4.5 border-b ${
+          isDarkMode ? 'border-white/10 bg-[#090B0E]/80' : 'border-gray-200 bg-white/90'
+        } backdrop-blur-md flex items-center justify-between gap-3 shrink-0`}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#F52B35] to-[#B3121B] flex items-center justify-center text-white shadow-lg shadow-[#F52B35]/25 shrink-0">
+              <Wrench className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-display font-black text-sm sm:text-base tracking-tight truncate">
+                  dr.fix لصيانة السيارات
+                </h3>
+                <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-[#F52B35]/15 text-[#FF414A] border border-[#F52B35]/30">
+                  بوابة العميل
                 </span>
-              </h3>
-              <p className="text-xs text-gray-400 font-mono mt-0.5" dir="ltr">
-                {customer.phone || customer.email || 'حساب مفعل'}
-              </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-bold mt-0.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>خدماتك ومتابعتك</span>
+                <span className="text-[10px] px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 rounded font-mono">مباشر</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Action Controls: Theme Toggle (داكن/فاتح) + Logout + Close */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Theme Toggle Button */}
             <button
+              type="button"
+              onClick={toggleTheme}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                isDarkMode 
+                  ? 'bg-white/5 border-white/10 text-gray-300 hover:text-white hover:bg-white/10' 
+                  : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
+              }`}
+              title={isDarkMode ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
+            >
+              {isDarkMode ? <Moon className="w-3.5 h-3.5 text-amber-300" /> : <Sun className="w-3.5 h-3.5 text-amber-500" />}
+              <span className="text-[11px] font-bold">{isDarkMode ? 'داكن' : 'فاتح'}</span>
+            </button>
+
+            {/* Logout */}
+            <button
+              type="button"
               onClick={logout}
               title="تسجيل الخروج"
-              className="p-2 text-gray-400 hover:text-red-400 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center gap-1.5 cursor-pointer"
+              className={`p-2 rounded-xl transition-colors cursor-pointer text-xs flex items-center gap-1 ${
+                isDarkMode ? 'text-gray-400 hover:text-red-400 bg-white/5 hover:bg-white/10' : 'text-gray-600 hover:text-red-600 bg-gray-100 hover:bg-gray-200'
+              }`}
             >
               <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">خروج</span>
+              <span className="hidden sm:inline text-[11px]">خروج</span>
             </button>
+
+            {/* Close */}
             <button
+              type="button"
               onClick={() => setIsPortalOpen(false)}
-              className="p-2 text-gray-400 hover:text-white rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-              title="إغلاق"
+              className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                isDarkMode ? 'text-gray-400 hover:text-white bg-white/5 hover:bg-white/10' : 'text-gray-600 hover:text-black bg-gray-100 hover:bg-gray-200'
+              }`}
+              title="إغلاق البوابة"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1791,12 +1992,12 @@ export const CustomerPortalModal: React.FC = () => {
 
         {/* Notice for Google users who haven't saved a phone number yet */}
         {(!customer.phone || customer.phone.length < 9) && (
-          <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-brand-red/10 border border-brand-red/30 animate-fadeIn">
+          <div className="mx-3.5 sm:mx-5 mt-3 p-3.5 rounded-2xl bg-[#F52B35]/10 border border-[#F52B35]/30 animate-fadeIn">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-brand-red shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h4 className="text-xs font-bold text-white mb-1">خطوة مهمة: يرجى إضافة رقم جوالك</h4>
-                <p className="text-[11px] text-gray-300 mb-2.5">
+              <AlertCircle className="w-5 h-5 text-[#F52B35] shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-bold text-white mb-0.5">خطوة مهمة: يرجى إضافة رقم جوالك</h4>
+                <p className="text-[11px] text-gray-300 mb-2">
                   لربط كرت الصيانة التلقائي وتسهيل اتصال الفني بك عند التوجه لموقعك في جدة.
                 </p>
                 <div className="flex items-center gap-2 max-w-sm">
@@ -1806,7 +2007,7 @@ export const CustomerPortalModal: React.FC = () => {
                     onChange={e => setEditPhone(e.target.value)}
                     placeholder="05XXXXXXXX"
                     dir="ltr"
-                    className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red text-right font-mono"
+                    className="flex-1 bg-black/60 border border-white/15 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#F52B35] text-right font-mono"
                   />
                   <button
                     type="button"
@@ -1820,9 +2021,10 @@ export const CustomerPortalModal: React.FC = () => {
                       setSavingPhone(true);
                       await updateProfile({ phone: cleaned });
                       setSavingPhone(false);
-                      alert('تم حفظ رقم الجوال بنجاح وتحديث ملفك!');
+                      setCarActionMsg({ text: 'تم حفظ رقم الجوال بنجاح!', type: 'success' });
+                      setTimeout(() => setCarActionMsg(null), 3000);
                     }}
-                    className="px-3.5 py-2 bg-brand-red hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                    className="px-3.5 py-2 bg-[#F52B35] hover:bg-[#D11C25] text-white font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
                   >
                     {savingPhone ? 'جاري الحفظ...' : 'حفظ الرقم'}
                   </button>
@@ -1832,301 +2034,360 @@ export const CustomerPortalModal: React.FC = () => {
           </div>
         )}
 
-        {/* Portal Tabs */}
-        <div className="grid grid-cols-3 border-b border-white/10 bg-black/30 text-xs font-bold">
-          <button
-            onClick={() => setActiveTab('bookings')}
-            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'bookings' 
-                ? 'border-brand-red text-white bg-brand-red/10' 
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
-            <span className="hidden sm:inline">كرت الصيانة والتتبع ({myBookings.length})</span>
-            <span className="sm:hidden text-[11px] whitespace-nowrap">الكرت ({myBookings.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('cars')}
-            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'cars' 
-                ? 'border-brand-red text-white bg-brand-red/10' 
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <Car className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
-            <span className="hidden sm:inline">سياراتي ({customer.cars?.length || 0})</span>
-            <span className="sm:hidden text-[11px] whitespace-nowrap">سياراتي ({customer.cars?.length || 0})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`py-2.5 sm:py-3.5 px-1 sm:px-2 flex items-center justify-center gap-1 sm:gap-2 border-b-2 transition-all cursor-pointer ${
-              activeTab === 'profile' 
-                ? 'border-brand-red text-white bg-brand-red/10' 
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-red shrink-0" />
-            <span className="hidden sm:inline">بياناتي الشخصية</span>
-            <span className="sm:hidden text-[11px] whitespace-nowrap">بياناتي</span>
-          </button>
-        </div>
+        {/* Action Message Banner */}
+        {carActionMsg && (
+          <div className={`mx-3.5 sm:mx-5 mt-2 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn ${
+            carActionMsg.type === 'success' 
+              ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300"
+              : "bg-red-500/15 border border-red-500/30 text-red-300"
+          }`}>
+            {carActionMsg.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+            )}
+            <span>{carActionMsg.text}</span>
+          </div>
+        )}
 
-        {/* Tab Content Body */}
-        <div className="p-3.5 sm:p-6 overflow-y-auto overscroll-contain flex-1 space-y-4">
-          {/* TAB 1: MY CARS */}
-          {activeTab === 'cars' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-white">السيارات المسجلة في حسابك</h4>
-                  <p className="text-xs text-gray-400">احجز بضغطة زر واحدة لأي سيارة مسجلة</p>
+        {/* ========================================================================= */}
+        {/* Tab Body View                                                             */}
+        {/* ========================================================================= */}
+        <div className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain flex-1 space-y-4 pb-20">
+          
+          {/* ========================================================================= */}
+          {/* TAB 1: الرئيسية (Overview)                                                */}
+          {/* ========================================================================= */}
+          {activeTab === 'overview' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Hero Welcome Card: فزعة معك + مرحبًا ABDULAZIZ Sindi 👋 */}
+              <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border relative overflow-hidden ${
+                isDarkMode 
+                  ? 'bg-gradient-to-br from-[#141820] via-[#0E1117] to-[#0A0C10] border-white/10 shadow-xl' 
+                  : 'bg-gradient-to-br from-white via-red-50/30 to-white border-gray-200 shadow-md'
+              }`}>
+                {/* Background red ambient glow */}
+                <div className="absolute top-0 right-0 w-44 h-44 bg-[#F52B35]/15 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 space-y-3">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F52B35]/15 border border-[#F52B35]/30 text-[#FF414A] text-xs font-bold">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>dr.fix معك</span>
+                  </div>
+
+                  <div>
+                    <h2 className="text-lg sm:text-2xl font-display font-black tracking-tight flex items-center gap-2 flex-wrap">
+                      <span>مرحبًا {customer.name || 'ABDULAZIZ Sindi'} 👋</span>
+                    </h2>
+                    <p className={`text-xs sm:text-sm mt-1 leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      متابعة تلقائية وآمنة لطلباتك، مع إشعارات مباشرة وفواتير ومكافآت في حساب واحد.
+                    </p>
+                  </div>
+
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('new_booking')}
+                      className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-xs sm:text-sm shadow-lg shadow-[#F52B35]/30 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>طلب صيانة جديد</span>
+                    </button>
+                  </div>
                 </div>
-                {!showAddCarForm && (
-                  <button
-                    onClick={() => setShowAddCarForm(true)}
-                    className="px-3 py-1.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>إضافة سيارة</span>
-                  </button>
+              </div>
+
+              {/* Stats Grid: طلبات نشطة | طلبات مكتملة | إجمالي الخدمات */}
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3.5">
+                {/* 1. طلبات نشطة */}
+                <div 
+                  onClick={() => setActiveTab('bookings')}
+                  className={`p-3 sm:p-4 rounded-2xl border text-center transition-all cursor-pointer group hover:scale-[1.02] ${
+                    isDarkMode ? 'bg-black/40 border-white/10 hover:border-[#F52B35]/40' : 'bg-white border-gray-200 hover:border-[#F52B35]/40 shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-1 text-xs font-bold text-gray-400 mb-1">
+                    <span>طلبات نشطة</span>
+                    {activeBookings.length > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    )}
+                  </div>
+                  <div className="text-xl sm:text-3xl font-black text-[#F52B35] font-mono">
+                    {activeBookings.length}
+                  </div>
+                </div>
+
+                {/* 2. طلبات مكتملة */}
+                <div 
+                  onClick={() => setActiveTab('bookings')}
+                  className={`p-3 sm:p-4 rounded-2xl border text-center transition-all cursor-pointer group hover:scale-[1.02] ${
+                    isDarkMode ? 'bg-black/40 border-white/10 hover:border-emerald-500/40' : 'bg-white border-gray-200 hover:border-emerald-500/40 shadow-sm'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-gray-400 mb-1">
+                    طلبات مكتملة
+                  </div>
+                  <div className="text-xl sm:text-3xl font-black text-emerald-400 font-mono">
+                    {completedBookings.length}
+                  </div>
+                </div>
+
+                {/* 3. إجمالي الخدمات */}
+                <div 
+                  onClick={() => setActiveTab('bookings')}
+                  className={`p-3 sm:p-4 rounded-2xl border text-center transition-all cursor-pointer group hover:scale-[1.02] ${
+                    isDarkMode ? 'bg-black/40 border-white/10 hover:border-blue-500/40' : 'bg-white border-gray-200 hover:border-blue-500/40 shadow-sm'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-gray-400 mb-1">
+                    إجمالي الخدمات
+                  </div>
+                  <div className="text-xl sm:text-3xl font-black text-blue-400 font-mono">
+                    {totalServices}
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Request Live Section */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="flex items-center gap-1.5 text-gray-400">
+                    <Activity className="w-4 h-4 text-[#F52B35]" />
+                    <span>متابعة الطلب المباشر</span>
+                  </span>
+                  {activeBookings.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('bookings')}
+                      className="text-[#F52B35] hover:underline cursor-pointer"
+                    >
+                      عرض الكل ({activeBookings.length})
+                    </button>
+                  )}
+                </div>
+
+                {/* Condition: No active request VS Active request exists */}
+                {!latestActiveBooking ? (
+                  <div className={`p-6 sm:p-8 rounded-2xl border text-center space-y-3 ${
+                    isDarkMode ? 'bg-black/30 border-white/10' : 'bg-white border-gray-200 shadow-sm'
+                  }`}>
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-500 mx-auto">
+                      <Clock className="w-6 h-6 text-gray-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm sm:text-base">
+                        لا يوجد طلب نشط الآن
+                      </h4>
+                      <p className={`text-xs mt-1 max-w-md mx-auto leading-relaxed ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        عند حاجتك للصيانة، أرسل طلبًا جديدًا وسنحفظه تلقائيًا في حسابك.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('new_booking')}
+                      className="px-5 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#D11C25] text-white font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center gap-2 active:scale-95"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>طلب صيانة</span>
+                    </button>
+                  </div>
+                ) : (
+                  // Active Request Live Tracking Card
+                  <div className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3.5 ${
+                    isDarkMode ? 'bg-black/50 border-[#F52B35]/40 shadow-lg shadow-[#F52B35]/5' : 'bg-white border-[#F52B35]/40 shadow-md'
+                  }`}>
+                    {(() => {
+                      const stInfo = getStatusDetails(latestActiveBooking.status);
+                      const bookingCode = latestActiveBooking.bookingId || `#${latestActiveBooking.id.slice(0, 7).toUpperCase()}`;
+
+                      return (
+                        <>
+                          <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-2.5">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded bg-[#F52B35] text-white text-[10px] font-black uppercase">
+                                  طلب مباشر
+                                </span>
+                                <span className="text-xs font-mono font-bold text-gray-300">
+                                  {bookingCode}
+                                </span>
+                              </div>
+                              <h5 className="font-bold text-sm sm:text-base text-white mt-1">
+                                {latestActiveBooking.carModel || 'صيانة سيارة'}
+                              </h5>
+                              <span className="text-xs text-[#F52B35] font-semibold">
+                                {latestActiveBooking.serviceType}
+                              </span>
+                            </div>
+
+                            <span className={`px-2.5 py-1 rounded-full border text-xs font-bold inline-flex items-center gap-1.5 ${stInfo.badgeClass}`}>
+                              {stInfo.badgeText}
+                            </span>
+                          </div>
+
+                          {/* 5-Step Progress */}
+                          <div className="bg-black/40 p-3 rounded-xl border border-white/5 space-y-2">
+                            <div className="flex items-center justify-between text-[11px] font-bold">
+                              <span className="text-gray-400">مرحلة العمل:</span>
+                              <span className="text-white font-medium">{stInfo.label}</span>
+                            </div>
+
+                            <div className="relative flex items-center justify-between pt-1 pb-1">
+                              <div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 h-1 bg-white/10 -z-0" />
+                              <div 
+                                className="absolute top-1/2 right-4 -translate-y-1/2 h-1 bg-gradient-to-l from-[#F52B35] to-emerald-500 transition-all duration-700 -z-0"
+                                style={{
+                                  width: latestActiveBooking.status === 'in-progress' ? '75%' :
+                                         latestActiveBooking.status === 'on_the_way' ? '50%' :
+                                         latestActiveBooking.status === 'accepted' ? '25%' : '8%'
+                                }}
+                              />
+
+                              {[
+                                { step: 1, title: 'الاستلام' },
+                                { step: 2, title: 'تم القبول' },
+                                { step: 3, title: 'بالطريق' },
+                                { step: 4, title: 'صيانة' },
+                                { step: 5, title: 'جاهزة' }
+                              ].map(st => {
+                                const isDone = stInfo.step > st.step;
+                                const isCurrent = stInfo.step === st.step;
+
+                                return (
+                                  <div key={st.step} className="relative z-10 flex flex-col items-center gap-1">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
+                                      isDone ? 'bg-emerald-500 text-black' : isCurrent ? 'bg-[#F52B35] text-white ring-2 ring-[#F52B35]/40 animate-pulse' : 'bg-neutral-800 text-gray-500'
+                                    }`}>
+                                      {isDone ? '✓' : st.step}
+                                    </div>
+                                    <span className={`text-[9px] font-bold ${isCurrent ? 'text-[#F52B35]' : 'text-gray-400'}`}>
+                                      {st.title}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('bookings')}
+                              className="text-xs text-gray-300 hover:text-white font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>تفاصيل كرت الصيانة</span>
+                              <ChevronLeft className="w-3.5 h-3.5" />
+                            </button>
+
+                            <a
+                              href={`https://api.whatsapp.com/send?phone=966546870807&text=${encodeURIComponent(
+                                `السلام عليكم، أستفسر عن حالة طلبي رقم (${bookingCode}) للسيارة (${latestActiveBooking.carModel})`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>مراسلة العمليات</span>
+                            </a>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
 
-              {/* Add Car Form */}
-              {showAddCarForm && (
-                <form onSubmit={handleSaveNewCar} className="p-4 rounded-2xl bg-black/60 border border-brand-red/30 space-y-3 animate-fadeIn">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-brand-red flex items-center gap-1.5">
-                      <Car className="w-4 h-4" />
-                      إضافة سيارة جديدة
-                    </span>
-                    <button 
-                      type="button" 
-                      onClick={() => setShowAddCarForm(false)}
-                      className="text-gray-400 hover:text-white text-xs cursor-pointer"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">الشركة المصنعة *</label>
-                      <input
-                        type="text"
-                        required
-                        value={newMake}
-                        onChange={e => setNewMake(e.target.value)}
-                        placeholder="تويوتا، مازدا، نيسان..."
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">الموديل *</label>
-                      <input
-                        type="text"
-                        required
-                        value={newModel}
-                        onChange={e => setNewModel(e.target.value)}
-                        placeholder="كامري، CX9، باترول..."
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">سنة الصنع</label>
-                      <input
-                        type="text"
-                        value={newYear}
-                        onChange={e => setNewYear(e.target.value)}
-                        placeholder="2023"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-gray-400 block mb-1">رقم اللوحة</label>
-                      <input
-                        type="text"
-                        value={newPlate}
-                        onChange={e => setNewPlate(e.target.value)}
-                        placeholder="أ ب ج 1234"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red"
-                      />
-                    </div>
-                  </div>
+              {/* Registered Cars Quick Card */}
+              <div className={`p-4 rounded-2xl border space-y-3 ${
+                isDarkMode ? 'bg-black/30 border-white/10' : 'bg-white border-gray-200 shadow-sm'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-400 flex items-center gap-1.5">
+                    <Car className="w-4 h-4 text-[#F52B35]" />
+                    <span>سياراتي المسجلة ({customer.cars?.length || 0})</span>
+                  </span>
                   <button
-                    type="submit"
-                    disabled={addingCar}
-                    className="w-full py-2.5 bg-brand-red hover:bg-red-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    type="button"
+                    onClick={() => setActiveTab('profile')}
+                    className="text-xs text-[#F52B35] hover:underline font-bold cursor-pointer"
                   >
-                    {addingCar ? 'جاري الحفظ...' : 'حفظ السيارة في حسابي'}
-                  </button>
-                </form>
-              )}
-
-              {/* Action Message Banner */}
-              {carActionMsg && (
-                <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn ${
-                  carActionMsg.type === 'success' 
-                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300"
-                    : "bg-red-500/15 border border-red-500/30 text-red-300"
-                }`}>
-                  {carActionMsg.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                  )}
-                  <span>{carActionMsg.text}</span>
-                </div>
-              )}
-
-              {/* Cars List */}
-              {(!customer.cars || customer.cars.length === 0) ? (
-                <div className="text-center py-8 bg-black/30 border border-white/5 rounded-2xl p-6">
-                  <Car className="w-12 h-12 text-gray-600 mx-auto mb-2 opacity-50" />
-                  <p className="text-xs text-gray-400">لم تقم بإضافة أي سيارة حتى الآن.</p>
-                  <button
-                    onClick={() => setShowAddCarForm(true)}
-                    className="mt-3 px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    إضافة سيارتك الأولى الآن
+                    إدارة السيارات
                   </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {customer.cars.map(car => (
-                    <div 
-                      key={car.id} 
-                      className="p-4 rounded-2xl bg-black/40 border border-white/10 hover:border-brand-red/40 transition-all flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="p-2 rounded-xl bg-brand-red/10 border border-brand-red/20 text-brand-red shrink-0">
-                              <Car className="w-5 h-5" />
-                            </div>
-                            <div className="min-w-0">
-                              <h5 className="font-bold text-sm text-white truncate">{car.make} {car.model}</h5>
-                              <span className="text-[11px] text-gray-400">موديل {car.year}</span>
-                            </div>
-                          </div>
 
-                          {confirmDeleteCarId === car.id ? (
-                            <div className="flex items-center gap-1.5 shrink-0 animate-fadeIn">
-                              <button
-                                type="button"
-                                disabled={deletingCar}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setDeletingCar(true);
-                                  const ok = await removeCar(car.id);
-                                  setDeletingCar(false);
-                                  setConfirmDeleteCarId(null);
-                                  if (ok) {
-                                    setCarActionMsg({ text: `تم حذف ${car.make} ${car.model} بنجاح`, type: 'success' });
-                                    setTimeout(() => setCarActionMsg(null), 3500);
-                                  } else {
-                                    setCarActionMsg({ text: 'تعذر حذف السيارة، يرجى المحاولة لاحقاً', type: 'error' });
-                                    setTimeout(() => setCarActionMsg(null), 3500);
-                                  }
-                                }}
-                                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold transition-all disabled:opacity-50 cursor-pointer shadow-sm shadow-red-500/30 whitespace-nowrap"
-                              >
-                                {deletingCar ? 'جارِ الحذف...' : 'تأكيد الحذف'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={deletingCar}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmDeleteCarId(null);
-                                }}
-                                className="px-2 py-1 bg-white/10 hover:bg-white/20 text-gray-300 rounded-lg text-[11px] transition-all cursor-pointer whitespace-nowrap"
-                              >
-                                إلغاء
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteCarId(car.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
-                              title="حذف السيارة"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                {(!customer.cars || customer.cars.length === 0) ? (
+                  <p className="text-xs text-gray-400 py-1">
+                    لم تقم بإضافة سيارة بعد. يمكنك إضافتها لحجز الصيانة بنقرة واحدة!
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {customer.cars.slice(0, 2).map(c => (
+                      <div key={c.id} className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">{c.make} {c.model}</div>
+                          <div className="text-[10px] text-gray-400">{c.year} {c.plateNumber ? `• ${c.plateNumber}` : ''}</div>
                         </div>
-
-                        {car.plateNumber && (
-                          <div className="mt-3 inline-block px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-gray-300">
-                            🚘 اللوحة: {car.plateNumber}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-white/5">
                         <button
-                          onClick={() => prefillBookingWithCar(car)}
-                          className="w-full py-2 bg-brand-red/20 hover:bg-brand-red text-brand-red hover:text-white border border-brand-red/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          type="button"
+                          onClick={() => {
+                            setNewReqCarModel(`${c.make} ${c.model} (${c.year})`);
+                            setActiveTab('new_booking');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-[#F52B35]/20 hover:bg-[#F52B35] text-[#FF414A] hover:text-white text-[10px] font-bold transition-colors cursor-pointer shrink-0"
                         >
-                          <Wrench className="w-3.5 h-3.5" />
-                          <span>احجز صيانة لهذه السيارة الآن</span>
+                          طلب صيانة
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* TAB 1 (PRIMARY): MAINTENANCE CARDS & LIVE TRACKING */}
+          {/* ========================================================================= */}
+          {/* TAB 2: طلباتي (My Requests)                                               */}
+          {/* ========================================================================= */}
           {activeTab === 'bookings' && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                    <span>كروت الصيانة والتتبع المباشر</span>
+                    <span>طلبات الصيانة وكروت المتابعة</span>
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   </h4>
-                  <p className="text-xs text-gray-400">متابعة مراحل الصيانة وتحديثات الفني لحظة بلحظة</p>
+                  <p className="text-xs text-gray-400">متابعة مراحل الصيانة وتقارير الفحص المعتمدة</p>
                 </div>
                 <button
-                  onClick={() => {
-                    setIsPortalOpen(false);
-                    const el = document.getElementById('booking');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="px-3 py-1.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                  type="button"
+                  onClick={() => setActiveTab('new_booking')}
+                  className="px-3 py-1.5 bg-[#F52B35] hover:bg-[#D11C25] text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-md cursor-pointer transition-all active:scale-95"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>حجز صيانة جديدة</span>
+                  <span>طلب جديد</span>
                 </button>
               </div>
 
               {loadingBookings ? (
                 <div className="text-center py-12">
-                  <div className="inline-block w-8 h-8 border-2 border-brand-red border-t-transparent rounded-full animate-spin mb-2" />
-                  <p className="text-xs text-gray-400">جاري تحميل كروت الصيانة والتحديثات المباشرة...</p>
+                  <div className="inline-block w-8 h-8 border-2 border-[#F52B35] border-t-transparent rounded-full animate-spin mb-2" />
+                  <p className="text-xs text-gray-400">جاري تحميل طلبات الصيانة وتحديثات الفني...</p>
                 </div>
               ) : myBookings.length === 0 ? (
                 <div className="text-center py-10 bg-black/30 border border-white/5 rounded-2xl p-6 space-y-3">
-                  <FileText className="w-12 h-12 text-brand-red/60 mx-auto opacity-70" />
-                  <h5 className="font-bold text-sm text-white">أهلاً بك يا {customer.name}!</h5>
+                  <FileText className="w-12 h-12 text-[#F52B35]/60 mx-auto opacity-70" />
+                  <h5 className="font-bold text-sm text-white">لا توجد طلبات سابقة في حسابك</h5>
                   <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
-                    كرت الصيانة الإلكتروني سيظهر هنا فور حجزك لمتابعة كل مرحلة لحظة بلحظة (تم القبول، الفني بالطريق، جاري الفحص والإصلاح).
+                    عند إرسال طلب صيانة جديد سيظهر هنا كرت الصيانة الإلكتروني لمتابعة كافة المراحل لحظة بلحظة.
                   </p>
                   <button
-                    onClick={() => {
-                      setIsPortalOpen(false);
-                      const el = document.getElementById('booking');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="mt-2 px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-lg shadow-brand-red/20 transition-all"
+                    type="button"
+                    onClick={() => setActiveTab('new_booking')}
+                    className="mt-2 px-5 py-2.5 bg-[#F52B35] hover:bg-[#D11C25] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-lg shadow-[#F52B35]/20 transition-all active:scale-95"
                   >
                     <Wrench className="w-4 h-4" />
-                    احجز أول كرت صيانة لسيارتك الآن
+                    <span>إرسال أول طلب صيانة لسيارتك الآن</span>
                   </button>
                 </div>
               ) : (
@@ -2138,15 +2399,15 @@ export const CustomerPortalModal: React.FC = () => {
                     return (
                       <div 
                         key={b.id} 
-                        className={`p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-neutral-900 to-black/80 border ${
-                          statusInfo.isLive ? 'border-brand-red/40 shadow-xl shadow-brand-red/5' : 'border-white/10'
+                        className={`p-4 sm:p-5 rounded-2xl border ${
+                          statusInfo.isLive ? 'border-[#F52B35]/40 shadow-xl shadow-[#F52B35]/5 bg-black/50' : 'border-white/10 bg-black/30'
                         } transition-all space-y-4`}
                       >
-                        {/* Card Header Ribbon */}
+                        {/* Card Header */}
                         <div className="flex items-start justify-between gap-2 border-b border-white/10 pb-3">
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded-md bg-brand-red text-white text-[10px] font-black uppercase tracking-wider">
+                              <span className="px-2 py-0.5 rounded-md bg-[#F52B35] text-white text-[10px] font-black uppercase tracking-wider">
                                 كرت صيانة
                               </span>
                               <span className="text-xs font-mono font-bold text-gray-300">
@@ -2158,38 +2419,34 @@ export const CustomerPortalModal: React.FC = () => {
                             </h5>
                           </div>
 
-                          <div className="text-left">
-                            <span className={`px-3 py-1 rounded-full border text-xs font-bold inline-flex items-center gap-1.5 ${statusInfo.badgeClass}`}>
-                              {statusInfo.isLive && (
-                                <span className="relative flex h-2 w-2">
-                                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${statusInfo.pulseColor} opacity-75`}></span>
-                                  <span className={`relative inline-flex rounded-full h-2 w-2 ${statusInfo.pulseColor}`}></span>
-                                </span>
-                              )}
-                              {statusInfo.badgeText}
-                            </span>
-                          </div>
+                          <span className={`px-3 py-1 rounded-full border text-xs font-bold inline-flex items-center gap-1.5 ${statusInfo.badgeClass}`}>
+                            {statusInfo.isLive && (
+                              <span className="relative flex h-2 w-2">
+                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${statusInfo.pulseColor} opacity-75`}></span>
+                                <span className={`relative inline-flex rounded-full h-2 w-2 ${statusInfo.pulseColor}`}></span>
+                              </span>
+                            )}
+                            {statusInfo.badgeText}
+                          </span>
                         </div>
 
-                        {/* Interactive 5-Step Pipeline Progress Tracker */}
+                        {/* Visual 5-Step Pipeline Progress Tracker */}
                         <div className="bg-black/60 p-3 sm:p-4 rounded-xl border border-white/5 space-y-3">
                           <div className="flex items-center justify-between text-[11px] font-bold">
                             <span className="text-gray-400">مراحل إنجاز الصيانة:</span>
                             <span className="text-white font-medium">{statusInfo.label}</span>
                           </div>
 
-                          {/* 5-Step Visual Stepper */}
                           <div className="relative flex items-center justify-between pt-1 pb-1">
-                            {/* Track Line */}
                             <div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 h-1 bg-white/10 -z-0" />
                             <div 
-                              className="absolute top-1/2 right-4 -translate-y-1/2 h-1 bg-gradient-to-l from-brand-red to-emerald-500 transition-all duration-700 -z-0"
+                              className="absolute top-1/2 right-4 -translate-y-1/2 h-1 bg-gradient-to-l from-[#F52B35] to-emerald-500 transition-all duration-700 -z-0"
                               style={{
                                 width: b.status === 'cancelled' ? '0%' :
                                        b.status === 'completed' ? 'calc(100% - 32px)' :
                                        b.status === 'in-progress' ? '75%' :
                                        b.status === 'on_the_way' ? '50%' :
-                                       b.status === 'accepted' ? '25%' : '5%'
+                                       b.status === 'accepted' ? '25%' : '8%'
                               }}
                             />
 
@@ -2210,13 +2467,13 @@ export const CustomerPortalModal: React.FC = () => {
                                     isDone 
                                       ? 'bg-emerald-500 text-black font-bold shadow-md shadow-emerald-500/20' 
                                       : isCurrent
-                                      ? 'bg-brand-red text-white ring-4 ring-brand-red/30 shadow-lg shadow-brand-red/40 animate-pulse'
+                                      ? 'bg-[#F52B35] text-white ring-4 ring-[#F52B35]/30 shadow-lg shadow-[#F52B35]/40 animate-pulse'
                                       : 'bg-neutral-800 text-gray-400 border border-white/10'
                                   }`}>
                                     {isDone ? <Check className="w-4 h-4" /> : <Icon className="w-3.5 h-3.5" />}
                                   </div>
                                   <span className={`text-[10px] font-bold ${
-                                    isCurrent ? 'text-brand-red font-black' : isDone ? 'text-emerald-400' : 'text-gray-400'
+                                    isCurrent ? 'text-[#F52B35] font-black' : isDone ? 'text-emerald-400' : 'text-gray-400'
                                   }`}>
                                     {st.title}
                                   </span>
@@ -2225,19 +2482,8 @@ export const CustomerPortalModal: React.FC = () => {
                             })}
                           </div>
 
-                          {/* Live Technician Status Alert Box */}
-                          <div className={`p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 ${
-                            b.status === 'on_the_way' 
-                              ? 'bg-purple-500/10 border-purple-500/30 text-purple-200'
-                              : b.status === 'accepted'
-                              ? 'bg-blue-500/10 border-blue-500/30 text-blue-200'
-                              : b.status === 'in-progress'
-                              ? 'bg-orange-500/10 border-orange-500/30 text-orange-200'
-                              : b.status === 'completed'
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                              : 'bg-white/5 border-white/10 text-gray-300'
-                          }`}>
-                            <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-brand-red" />
+                          <div className="p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 bg-white/5 border-white/10 text-gray-300">
+                            <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-[#F52B35]" />
                             <div className="flex-1">
                               <p className="font-bold text-[11px] mb-0.5">تحديث مباشر من فني DR.FIX:</p>
                               <p className="text-[11px] opacity-90">{statusInfo.desc}</p>
@@ -2249,12 +2495,12 @@ export const CustomerPortalModal: React.FC = () => {
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-black/30 p-3 rounded-xl border border-white/5 text-[11px]">
                           <div>
                             <span className="text-gray-400 block text-[10px]">نوع الخدمة:</span>
-                            <span className="font-bold text-brand-red">{b.serviceType || 'صيانة متنقلة'}</span>
+                            <span className="font-bold text-[#F52B35]">{b.serviceType || 'صيانة متنقلة'}</span>
                           </div>
                           <div>
                             <span className="text-gray-400 block text-[10px]">الموقع / الحي:</span>
                             <span className="font-bold text-white flex items-center gap-1">
-                              <MapPin className="w-3 h-3 text-brand-red shrink-0" />
+                              <MapPin className="w-3 h-3 text-[#F52B35] shrink-0" />
                               {b.location || 'جدة'}
                             </span>
                           </div>
@@ -2282,26 +2528,24 @@ export const CustomerPortalModal: React.FC = () => {
 
                         {/* Interactive Quick Action Buttons */}
                         <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {/* Direct WhatsApp with Card Info */}
                           <a
                             href={`https://api.whatsapp.com/send?phone=966546870807&text=${encodeURIComponent(
                               `السلام عليكم DR.FIX، أستفسر عن حالة كرت الصيانة رقم (${bookingCode}) للسيارة (${b.carModel || 'السيارة'}) - الحالة الحالية: ${statusInfo.label}`
                             )}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 min-w-[140px] py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md"
+                            className="flex-1 min-w-[140px] py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95"
                           >
                             <MessageCircle className="w-3.5 h-3.5" />
                             <span>مراسلة العمليات والفني</span>
                           </a>
 
-                          {/* Direct Call */}
                           <a
                             href="tel:0546870807"
-                            className="py-2 px-3 bg-white/10 hover:bg-white/15 border border-white/15 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                            className="py-2 px-3 bg-white/10 hover:bg-white/15 border border-white/15 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
                             title="اتصال هاتفي مباشر"
                           >
-                            <Phone className="w-3.5 h-3.5 text-brand-red" />
+                            <Phone className="w-3.5 h-3.5 text-[#F52B35]" />
                             <span className="hidden sm:inline">اتصال مباشر</span>
                           </a>
                         </div>
@@ -2313,82 +2557,575 @@ export const CustomerPortalModal: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 3: PROFILE & SETTINGS */}
+          {/* ========================================================================= */}
+          {/* TAB 3: طلب جديد (New Request)                                             */}
+          {/* ========================================================================= */}
+          {activeTab === 'new_booking' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <PlusCircle className="w-4 h-4 text-[#F52B35]" />
+                  <span>طلب صيانة جديد ومباشر</span>
+                </h4>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  أرسل طلبك وسنحفظه تلقائياً في حسابك ونربطك فوراً بالفني الميداني في جدة
+                </p>
+              </div>
+
+              {newReqSuccess ? (
+                <div className="p-8 text-center rounded-2xl bg-emerald-500/15 border border-emerald-500/30 space-y-3 animate-fadeIn">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-base text-white">تم إرسال طلب الصيانة بنجاح!</h4>
+                  <p className="text-xs text-emerald-300">
+                    تم إنشاء كرت الصيانة الإلكتروني وحفظه في حسابك. جاري تحويلك إلى قائمة الطلبات...
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateNewRequest} className="space-y-4">
+                  {/* Select Registered Car or Custom Car */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-300 block">
+                      السيارة المطلوبة للصيانة *
+                    </label>
+
+                    {customer.cars && customer.cars.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {customer.cars.map(c => {
+                          const label = `${c.make} ${c.model} (${c.year})`;
+                          const isSel = newReqCarModel === label;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => setNewReqCarModel(label)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                                isSel 
+                                  ? 'bg-[#F52B35] text-white border-[#F52B35] shadow-md shadow-[#F52B35]/25' 
+                                  : 'bg-white/5 text-gray-300 border-white/10 hover:border-white/30'
+                              }`}
+                            >
+                              🚘 {c.make} {c.model}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <input
+                      type="text"
+                      required
+                      value={newReqCarModel}
+                      onChange={e => setNewReqCarModel(e.target.value)}
+                      placeholder="مثال: تويوتا كامري 2023 أو مازدا CX9"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35]"
+                    />
+                  </div>
+
+                  {/* Service Type Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300 block">
+                      نوع خدمة الصيانة *
+                    </label>
+                    <select
+                      value={newReqServiceType}
+                      onChange={e => setNewReqServiceType(e.target.value)}
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35] cursor-pointer"
+                    >
+                      <option value="فحص وبرمجة كمبيوتر شامل">🔍 فحص وبرمجة كمبيوتر شامل وكشف الأعطال</option>
+                      <option value="صيانة ميكانيكية متنقلة">🔧 صيانة ميكانيكية متنقلة عند موقعك</option>
+                      <option value="فحص بطارية وكهرباء ودينمو">⚡ فحص وشحن بطارية ودينمو وكهرباء السيارة</option>
+                      <option value="فحص شامل قبل الشراء">📋 فحص شامل ودقيق للسيارة قبل الشراء</option>
+                      <option value="صيانة الفرامل ونظام التعليق">🛑 صيانة الفرامل (الأقمشة والهوبات) والتعليق</option>
+                      <option value="صيانة دورية وتغيير زيوت وفلاتر">🛢️ صيانة دورية وسريعة وتغيير زيوت وفلاتر</option>
+                      <option value="فحص حرارة وتهريب سوائل ورديتر">🌡️ فحص حرارة المحرك والرديتر ونظام التبريد</option>
+                    </select>
+                  </div>
+
+                  {/* Location in Jeddah */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300 block">
+                      الحي أو الموقع بجدة *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        value={newReqLocation}
+                        onChange={e => setNewReqLocation(e.target.value)}
+                        placeholder="مثال: حي الروضة، حي الصفا، حي الزهراء..."
+                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35]"
+                      />
+                      <MapPin className="w-4 h-4 text-[#F52B35] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  {/* Notes / Problem Description */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-300 block">
+                      وصف المشكلة أو ملاحظات إضافية (اختياري)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={newReqNotes}
+                      onChange={e => setNewReqNotes(e.target.value)}
+                      placeholder="اشرح أي صوت أو لمبة تحذير ظهرت في الطبلون..."
+                      className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35] resize-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submittingNewReq}
+                    className="w-full py-3 bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-sm rounded-xl transition-all cursor-pointer shadow-lg shadow-[#F52B35]/25 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                  >
+                    {submittingNewReq ? (
+                      <span>جاري إرسال الطلب وحفظه...</span>
+                    ) : (
+                      <>
+                        <Wrench className="w-4 h-4" />
+                        <span>إرسال طلب الصيانة الآن وحفظه في حسابي</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 4: الإشعارات (Notifications)                                          */}
+          {/* ========================================================================= */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-[#F52B35]" />
+                  <span>مركز الإشعارات والتنبيهات المباشرة</span>
+                </h4>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  تحديثات حالة طلباتك، المواعيد المعتمدة، والمكافآت الحصرية
+                </p>
+              </div>
+
+              <div className="space-y-2.5">
+                {/* 1. Welcome Notification */}
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#F52B35]/15 text-[#F52B35] flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between text-xs font-bold text-white">
+                      <span>أهلاً بك في dr.fix لصيانة السيارات!</span>
+                      <span className="text-[10px] text-gray-400 font-mono">الآن</span>
+                    </div>
+                    <p className="text-[11px] text-gray-300 mt-1 leading-relaxed">
+                      حسابك مفعل بنجاح. سنقوم بإرسال إشعارات فورية عن حالة الفني عند التوجه لموقعك، ومراحل الصيانة أولاً بأول.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Dynamic Notifications from customer's bookings */}
+                {myBookings.map((b) => {
+                  const isDone = b.status === 'completed';
+                  const isOnWay = b.status === 'on_the_way';
+                  const isInProg = b.status === 'in-progress';
+                  const isAccepted = b.status === 'accepted';
+
+                  return (
+                    <div 
+                      key={b.id} 
+                      onClick={() => setActiveTab('bookings')}
+                      className="p-3.5 rounded-xl bg-black/40 border border-white/10 hover:border-[#F52B35]/40 transition-all cursor-pointer flex items-start gap-3 group"
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                        isDone ? 'bg-emerald-500/20 text-emerald-400' :
+                        isOnWay ? 'bg-purple-500/20 text-purple-400' :
+                        isInProg ? 'bg-orange-500/20 text-orange-400' :
+                        isAccepted ? 'bg-blue-500/20 text-blue-400' : 'bg-white/10 text-gray-300'
+                      }`}>
+                        {isDone ? <Check className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between text-xs font-bold text-white">
+                          <span className="truncate">طلب الصيانة: {b.carModel}</span>
+                          <span className="text-[10px] text-gray-400 font-mono">
+                            {b.bookingId || `#${b.id.slice(0, 6)}`}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-300 mt-1 leading-relaxed">
+                          {isDone ? 'اكتملت الصيانة بنجاح وتم توثيق تقرير الفحص والضمان الذهبي.' :
+                           isOnWay ? 'الفني في الطريق الآن لموقعك في جدة! يرجى إبقاء الهاتف متاحاً.' :
+                           isInProg ? 'يقوم الفني الآن بأعمال الفحص والصيانة الميدانية.' :
+                           isAccepted ? 'تم قبول طلبك واعتماد موعد الصيانة من إدارة العمليات.' :
+                           'تم استلام طلبك وهو قيد المراجعة السريعة.'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* 3. Loyalty Reward Notification */}
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                      <span>مكافأة عميل dr.fix المعتمد</span>
+                      <span className="text-[10px] font-mono bg-emerald-500/20 px-1.5 py-0.2 rounded">نشط</span>
+                    </div>
+                    <p className="text-[11px] text-gray-300 mt-1 leading-relaxed">
+                      يسري لحسابك ضمان الصيانة الذهبي المعتمد وخصم 15% على الفحص الشامل القادم.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* TAB 5: حسابي (My Account / Profile & Cars)                                */}
+          {/* ========================================================================= */}
           {activeTab === 'profile' && (
-            <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div>
-                <h4 className="text-sm font-bold text-white mb-1">البيانات الشخصية</h4>
-                <p className="text-xs text-gray-400 mb-3">تحديث بيانات الاتصال والعنوان لتسهيل وصول الفني</p>
+            <div className="space-y-6 animate-fadeIn">
+              {/* Profile Details Form */}
+              <form onSubmit={handleSaveProfile} className="space-y-3.5">
+                <div>
+                  <h4 className="text-sm font-bold text-white mb-0.5">بيانات الحساب الشخصي</h4>
+                  <p className="text-xs text-gray-400">تحديث الاسم وبيانات الاتصال لتسهيل وصول الفني</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-300 block mb-1">الاسم الكريم</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-300 block mb-1">رقم الجوال</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={e => setEditPhone(e.target.value)}
+                    placeholder="05XXXXXXXX"
+                    dir="ltr"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35] text-right font-mono"
+                  />
+                  <span className="text-[10px] text-gray-400 mt-1 block">يُستخدم لتأكيد مواعيد الصيانة وربط كروت الصيانة</span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-300 block mb-1">البريد الإلكتروني</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={e => setEditEmail(e.target.value)}
+                    placeholder="example@gmail.com"
+                    dir="ltr"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35] text-right"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-300 block mb-1">العنوان الافتراضي في جدة</label>
+                  <input
+                    type="text"
+                    value={editAddress}
+                    onChange={e => setEditAddress(e.target.value)}
+                    placeholder="مثال: حي الروضة، شارع الكيال"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#F52B35]"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="px-5 py-2.5 bg-[#F52B35] hover:bg-[#D11C25] text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    {savingProfile ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                  </button>
+                </div>
+              </form>
+
+              {/* Cars Management Section */}
+              <div className="pt-4 border-t border-white/10 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">إدارة سياراتي</h4>
+                    <p className="text-xs text-gray-400">السيارات المحفوظة في ملفك للصيانة السريعة</p>
+                  </div>
+                  {!showAddCarForm && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCarForm(true)}
+                      className="px-3 py-1.5 bg-[#F52B35] hover:bg-[#D11C25] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>إضافة سيارة</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Add Car Form */}
+                {showAddCarForm && (
+                  <form onSubmit={handleSaveNewCar} className="p-4 rounded-2xl bg-black/60 border border-[#F52B35]/30 space-y-3 animate-fadeIn">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-[#FF414A] flex items-center gap-1.5">
+                        <Car className="w-4 h-4" />
+                        إضافة سيارة جديدة
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowAddCarForm(false)}
+                        className="text-gray-400 hover:text-white text-xs cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-gray-400 block mb-1">الشركة المصنعة *</label>
+                        <input
+                          type="text"
+                          required
+                          value={newMake}
+                          onChange={e => setNewMake(e.target.value)}
+                          placeholder="تويوتا، مازدا، نيسان..."
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#F52B35]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-gray-400 block mb-1">الموديل *</label>
+                        <input
+                          type="text"
+                          required
+                          value={newModel}
+                          onChange={e => setNewModel(e.target.value)}
+                          placeholder="كامري، CX9، باترول..."
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#F52B35]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-gray-400 block mb-1">سنة الصنع</label>
+                        <input
+                          type="text"
+                          value={newYear}
+                          onChange={e => setNewYear(e.target.value)}
+                          placeholder="2024"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#F52B35]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-gray-400 block mb-1">رقم اللوحة</label>
+                        <input
+                          type="text"
+                          value={newPlate}
+                          onChange={e => setNewPlate(e.target.value)}
+                          placeholder="أ ب ج 1234"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#F52B35]"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={addingCar}
+                      className="w-full py-2.5 bg-[#F52B35] hover:bg-[#D11C25] text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      {addingCar ? 'جاري الحفظ...' : 'حفظ السيارة في حسابي'}
+                    </button>
+                  </form>
+                )}
+
+                {/* Cars List */}
+                {(!customer.cars || customer.cars.length === 0) ? (
+                  <div className="text-center py-6 bg-black/30 border border-white/5 rounded-2xl p-4">
+                    <Car className="w-10 h-10 text-gray-600 mx-auto mb-2 opacity-50" />
+                    <p className="text-xs text-gray-400">لم تقم بإضافة أي سيارة حتى الآن.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {customer.cars.map(car => (
+                      <div 
+                        key={car.id} 
+                        className="p-3 rounded-2xl bg-black/40 border border-white/10 flex flex-col justify-between"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="p-2 rounded-xl bg-[#F52B35]/10 border border-[#F52B35]/20 text-[#F52B35] shrink-0">
+                              <Car className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h5 className="font-bold text-xs text-white truncate">{car.make} {car.model}</h5>
+                              <span className="text-[10px] text-gray-400">موديل {car.year} {car.plateNumber ? `• ${car.plateNumber}` : ''}</span>
+                            </div>
+                          </div>
+
+                          {confirmDeleteCarId === car.id ? (
+                            <div className="flex items-center gap-1 shrink-0 animate-fadeIn">
+                              <button
+                                type="button"
+                                disabled={deletingCar}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setDeletingCar(true);
+                                  await removeCar(car.id);
+                                  setDeletingCar(false);
+                                  setConfirmDeleteCarId(null);
+                                }}
+                                className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold"
+                              >
+                                {deletingCar ? '...' : 'تأكيد'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCarId(null)}
+                                className="px-1.5 py-0.5 bg-white/10 text-gray-300 rounded text-[10px]"
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteCarId(car.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg cursor-pointer shrink-0"
+                              title="حذف السيارة"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-gray-300 block mb-1">الاسم الكريم</label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-300 block mb-1">رقم الجوال</label>
-                <input
-                  type="tel"
-                  value={editPhone}
-                  onChange={e => setEditPhone(e.target.value)}
-                  placeholder="05XXXXXXXX"
-                  dir="ltr"
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red text-right font-mono"
-                />
-                <span className="text-[10px] text-gray-400 mt-1 block">يُستخدم لتأكيد مواعيد الصيانة ومطابقة سجل حجوزاتك</span>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-300 block mb-1">البريد الإلكتروني (اختياري)</label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={e => setEditEmail(e.target.value)}
-                  placeholder="example@gmail.com"
-                  dir="ltr"
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red text-right"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-gray-300 block mb-1">العنوان الافتراضي في جدة (اختياري)</label>
-                <input
-                  type="text"
-                  value={editAddress}
-                  onChange={e => setEditAddress(e.target.value)}
-                  placeholder="مثال: حي الروضة، شارع الكيال"
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-brand-red"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+              {/* Logout Button */}
+              <div className="pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={logout}
-                  className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
-                  تسجيل الخروج من هذا الجهاز
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={savingProfile}
-                  className="px-5 py-2.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {savingProfile ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                  <LogOut className="w-4 h-4" />
+                  <span>تسجيل الخروج من الحساب</span>
                 </button>
               </div>
-            </form>
+            </div>
           )}
         </div>
+
+        {/* ========================================================================= */}
+        {/* Bottom Dock Navigation: الرئيسية | طلباتي | طلب جديد | الإشعارات | حسابي | داكن */}
+        {/* ========================================================================= */}
+        <div className={`absolute bottom-0 inset-x-0 border-t ${
+          isDarkMode ? 'bg-[#090B0E]/95 border-white/10' : 'bg-white/95 border-gray-200'
+        } backdrop-blur-xl px-2 py-1.5 pb-safe z-30 shadow-2xl`}>
+          <div className="flex items-center justify-around gap-1 max-w-lg mx-auto">
+            {/* 1. الرئيسية */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] active:scale-95 ${
+                activeTab === 'overview'
+                  ? 'bg-[#F52B35]/15 text-[#FF414A] font-bold border border-[#F52B35]/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 mb-0.5" />
+              <span className="text-[10px] truncate">الرئيسية</span>
+            </button>
+
+            {/* 2. طلباتي */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('bookings')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] relative active:scale-95 ${
+                activeTab === 'bookings'
+                  ? 'bg-[#F52B35]/15 text-[#FF414A] font-bold border border-[#F52B35]/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="relative">
+                <FileText className="w-4 h-4 mb-0.5" />
+                {myBookings.length > 0 && (
+                  <span className="absolute -top-1.5 -right-2 px-1 bg-[#F52B35] text-white text-[8px] font-black rounded-full min-w-[14px] h-[14px] flex items-center justify-center">
+                    {myBookings.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] truncate">طلباتي</span>
+            </button>
+
+            {/* 3. طلب جديد (Center Highlighted Button) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('new_booking')}
+              className={`flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] active:scale-95 ${
+                activeTab === 'new_booking'
+                  ? 'bg-[#F52B35] text-white shadow-lg shadow-[#F52B35]/30 font-bold'
+                  : 'bg-[#F52B35]/20 text-[#FF414A] hover:bg-[#F52B35] hover:text-white font-bold'
+              }`}
+            >
+              <PlusCircle className="w-4 h-4 mb-0.5" />
+              <span className="text-[10px] truncate">طلب جديد</span>
+            </button>
+
+            {/* 4. الإشعارات */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('notifications')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] relative active:scale-95 ${
+                activeTab === 'notifications'
+                  ? 'bg-[#F52B35]/15 text-[#FF414A] font-bold border border-[#F52B35]/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="relative">
+                <Bell className="w-4 h-4 mb-0.5" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#F52B35] animate-ping" />
+              </div>
+              <span className="text-[10px] truncate">الإشعارات</span>
+            </button>
+
+            {/* 5. حسابي */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('profile')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] active:scale-95 ${
+                activeTab === 'profile'
+                  ? 'bg-[#F52B35]/15 text-[#FF414A] font-bold border border-[#F52B35]/30'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <User className="w-4 h-4 mb-0.5" />
+              <span className="text-[10px] truncate">حسابي</span>
+            </button>
+
+            {/* 6. داكن / فاتح (Theme Button) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all cursor-pointer min-h-[46px] active:scale-95 ${
+                isDarkMode ? 'text-amber-300 hover:bg-white/5' : 'text-amber-500 hover:bg-gray-100'
+              }`}
+              title={isDarkMode ? 'التحويل للوضع الفاتح' : 'التحويل للوضع الداكن'}
+            >
+              {isDarkMode ? <Moon className="w-4 h-4 mb-0.5" /> : <Sun className="w-4 h-4 mb-0.5" />}
+              <span className="text-[10px] truncate">{isDarkMode ? 'داكن' : 'فاتح'}</span>
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   );
