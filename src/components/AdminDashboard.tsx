@@ -2383,15 +2383,13 @@ const AdminDashboard = ({
 
   const isSuperAdmin = !currentStaffUser || currentStaffUser.role === 'super_admin';
   const hasWorkshopIntake = currentStaffUser?.permissions?.workshop_vehicle_intake === true;
-  // Dedicated workshop staff has workshop_vehicle_intake without full booking/dashboard admin permissions
-  const isWorkshopIntakeOnly = !isSuperAdmin && hasWorkshopIntake && 
-    !userPermissions.canViewDashboard && 
-    !userPermissions.canManageBookings && 
-    !userPermissions.canManageStaff;
+  // External workshop employee: any user with workshop_vehicle_intake who is not super_admin
+  const isWorkshopUser = !isSuperAdmin && hasWorkshopIntake;
+  const canAccessAdminSections = !isTechnician && !isWorkshopUser;
 
   // Strictly restrict navigation tabs for workshop intake and technicians to eliminate clutter & permission leaks
-  const allowedNavTabs = isWorkshopIntakeOnly ? [
-    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
+  const allowedNavTabs = isWorkshopUser ? [
+    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات (الورشة) 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
   ] : isTechnician ? [
     { id: 'bookings', label: lang === 'ar' ? 'مهامي الميدانية 🔧' : 'My Field Tasks', icon: Wrench, allowed: true },
     { id: 'calendar', label: lang === 'ar' ? 'جدول مواعيدي 📅' : 'My Schedule', icon: CalendarCheck, allowed: true },
@@ -2423,9 +2421,9 @@ const AdminDashboard = ({
     { id: 'manual', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
   ].filter(tab => tab.allowed);
 
-  // Enforce auto-redirect: workshop employees and technicians land ONLY on their authorized tabs
+  // Enforce auto-redirect: workshop employees land EXCLUSIVELY on handovers tab
   useEffect(() => {
-    if (isWorkshopIntakeOnly) {
+    if (isWorkshopUser) {
       if (activeTab !== 'handovers') {
         setActiveTab('handovers');
       }
@@ -2436,7 +2434,7 @@ const AdminDashboard = ({
     } else if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
       setActiveTab((allowedNavTabs[0]?.id as AdminTabId) || 'overview');
     }
-  }, [currentStaffUser, isTechnician, isWorkshopIntakeOnly, activeTab]);
+  }, [currentStaffUser, isTechnician, isWorkshopUser, activeTab]);
 
   if (!isAdmin) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -2474,20 +2472,34 @@ const AdminDashboard = ({
           lang={lang}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          onQuickNewBooking={() => setIsAdding(true)}
-          onNavigateToTab={(tab) => setActiveTab(tab)}
+          onQuickNewBooking={() => {
+            if (!canAccessAdminSections) return;
+            setIsAdding(true);
+          }}
+          onNavigateToTab={(tab) => {
+            if (isWorkshopUser && tab !== 'handovers') return;
+            setActiveTab(tab);
+          }}
           currentStaffUser={currentStaffUser}
           unreadAlertsCount={records.filter(r => r.status === 'pending' || r.status === 'new').length}
-          canManageBookings={!isTechnician && userPermissions.canManageBookings !== false}
+          canManageBookings={canAccessAdminSections && userPermissions.canManageBookings !== false}
         />
 
         {/* Global Quick Search Command Palette (Ctrl+K) */}
         <AdminCommandPalette
           isOpen={isCommandPaletteOpen}
           onClose={() => setIsCommandPaletteOpen(false)}
-          onNavigateToTab={(tab) => setActiveTab(tab)}
-          onQuickNewBooking={() => setIsAdding(true)}
+          onNavigateToTab={(tab) => {
+            if (isWorkshopUser && tab !== 'handovers') return;
+            setActiveTab(tab);
+          }}
+          onQuickNewBooking={() => {
+            if (!canAccessAdminSections) return;
+            setIsAdding(true);
+          }}
           lang={lang}
+          allowedTabs={allowedNavTabs.map(t => t.id as AdminTabId)}
+          canManageBookings={canAccessAdminSections && userPermissions.canManageBookings !== false}
         />
 
         {/* Main Content View Container */}
@@ -2542,7 +2554,7 @@ const AdminDashboard = ({
 
           <AnimatePresence mode="wait">
             {/* 1. Overview Page */}
-            {!isTechnician && (activeTab === 'overview' || activeTab === 'dashboard') && (
+            {canAccessAdminSections && (activeTab === 'overview' || activeTab === 'dashboard') && (
               <motion.div
                 key="overview"
                 initial={{ opacity: 0, y: 12 }}
@@ -2566,7 +2578,7 @@ const AdminDashboard = ({
               </motion.div>
             )}
 
-          {activeTab === 'bookings' && (
+          {!isWorkshopUser && activeTab === 'bookings' && (
             <motion.div 
               key="bookings"
               initial={{ opacity: 0 }}
@@ -3433,7 +3445,7 @@ const AdminDashboard = ({
           )}
 
           {/* Calendar & Appointments Tab */}
-          {activeTab === 'calendar' && (
+          {!isWorkshopUser && activeTab === 'calendar' && (
             <motion.div 
               key="calendar"
               initial={{ opacity: 0, y: 15 }}
@@ -3749,7 +3761,7 @@ const AdminDashboard = ({
           )}
 
           {/* Analytics & Business Intelligence Tab */}
-          {!isTechnician && activeTab === 'analytics' && (
+          {canAccessAdminSections && activeTab === 'analytics' && (
             <motion.div 
               key="analytics"
               initial={{ opacity: 0, y: 15 }}
@@ -3868,7 +3880,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'reports' && (
+          {canAccessAdminSections && activeTab === 'reports' && (
             <motion.div 
               key="reports"
               initial={{ opacity: 0, y: 15 }}
@@ -3880,7 +3892,7 @@ const AdminDashboard = ({
           )}
 
           {/* Dedicated Services Management Page */}
-          {!isTechnician && activeTab === 'services' && (
+          {canAccessAdminSections && activeTab === 'services' && (
             <motion.div
               key="services"
               initial={{ opacity: 0, y: 12 }}
@@ -3899,7 +3911,7 @@ const AdminDashboard = ({
           )}
 
           {/* Dedicated Special Offers Page */}
-          {!isTechnician && activeTab === 'offers' && (
+          {canAccessAdminSections && activeTab === 'offers' && (
             <motion.div
               key="offers"
               initial={{ opacity: 0, y: 12 }}
@@ -3919,7 +3931,7 @@ const AdminDashboard = ({
           )}
 
           {/* Dedicated Media Gallery Page */}
-          {!isTechnician && activeTab === 'gallery' && (
+          {canAccessAdminSections && activeTab === 'gallery' && (
             <motion.div
               key="gallery"
               initial={{ opacity: 0, y: 12 }}
@@ -3937,7 +3949,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'content' && (
+          {canAccessAdminSections && activeTab === 'content' && (
             <motion.div 
               key="content"
               initial={{ opacity: 0 }}
@@ -4233,7 +4245,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'customers' && (
+          {canAccessAdminSections && activeTab === 'customers' && (
             <motion.div 
               key="customers"
               initial={{ opacity: 0 }}
@@ -4244,7 +4256,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && (activeTab === 'testimonials' || activeTab === 'reviews') && (
+          {canAccessAdminSections && (activeTab === 'testimonials' || activeTab === 'reviews') && (
             <motion.div 
               key="testimonials"
               initial={{ opacity: 0 }}
@@ -4473,7 +4485,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'notifications' && (
+          {canAccessAdminSections && activeTab === 'notifications' && (
             <motion.div
               key="notifications"
               initial={{ opacity: 0, y: 20 }}
@@ -4808,7 +4820,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'settings' && (
+          {canAccessAdminSections && activeTab === 'settings' && (
             <motion.div
               key="settings"
               initial={{ opacity: 0, x: 20 }}
@@ -6428,7 +6440,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && (activeTab === 'staff' || activeTab === 'team') && (
+          {canAccessAdminSections && (activeTab === 'staff' || activeTab === 'team') && (
             <motion.div
               key="staff"
               initial={{ opacity: 0, y: 20 }}
@@ -6444,7 +6456,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'partners' && (
+          {canAccessAdminSections && activeTab === 'partners' && (
             <motion.div
               key="partners"
               initial={{ opacity: 0, y: 20 }}
@@ -6462,7 +6474,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {!isTechnician && activeTab === 'contracts' && (
+          {canAccessAdminSections && activeTab === 'contracts' && (
             <motion.div
               key="contracts"
               initial={{ opacity: 0, y: 20 }}
@@ -6482,7 +6494,7 @@ const AdminDashboard = ({
             </motion.div>
           )}
 
-          {(activeTab === 'manual' || activeTab === 'help') && (
+          {!isWorkshopUser && (activeTab === 'manual' || activeTab === 'help') && (
             <motion.div
               key="manual"
               initial={{ opacity: 0, y: 20 }}
@@ -6496,7 +6508,7 @@ const AdminDashboard = ({
 
         {/* Add New Modal */}
         <AnimatePresence>
-          {isAdding && (
+          {isAdding && canAccessAdminSections && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
               <motion.div 
                 initial={{ opacity: 0 }}

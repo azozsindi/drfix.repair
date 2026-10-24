@@ -543,7 +543,7 @@ export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   canManageStaff: true,
   canManageContracts: true,
   canDeleteBookings: true,
-  workshop_vehicle_intake: true,
+  workshop_vehicle_intake: false, // صلاحية مستقلة ومخصصة لموظفي الورش الخارجية (لا تُمنح تلقائياً)
 };
 
 export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string; permissions: StaffPermissions }> = {

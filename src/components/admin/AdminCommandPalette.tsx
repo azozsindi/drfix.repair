@@ -12,6 +12,8 @@ interface AdminCommandPaletteProps {
   onNavigateToTab: (tabId: AdminTabId) => void;
   onQuickNewBooking: () => void;
   lang: 'ar' | 'en';
+  allowedTabs?: AdminTabId[];
+  canManageBookings?: boolean;
 }
 
 export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
@@ -19,7 +21,9 @@ export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
   onClose,
   onNavigateToTab,
   onQuickNewBooking,
-  lang
+  lang,
+  allowedTabs,
+  canManageBookings = true
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -57,6 +61,7 @@ export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
   const cleanQuery = query.trim().toLowerCase();
 
   const filteredItems = ADMIN_NAV_ITEMS.filter((item) => {
+    if (allowedTabs && !allowedTabs.includes(item.id)) return false;
     if (!cleanQuery) return true;
     const label = (lang === 'ar' ? item.labelAr : item.labelEn).toLowerCase();
     return label.includes(cleanQuery) || item.id.includes(cleanQuery);
@@ -136,33 +141,39 @@ export const AdminCommandPalette: React.FC<AdminCommandPaletteProps> = ({
             <span className="text-[#A1A6B2] text-[11px] font-bold px-2 shrink-0">
               {lang === 'ar' ? 'إجراءات سريعة:' : 'Quick Actions:'}
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onQuickNewBooking();
-              }}
-              className="px-2.5 py-1 rounded-lg bg-[#F52B35]/20 hover:bg-[#F52B35]/30 text-[#FF414A] border border-[#F52B35]/30 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? 'إضافة حجز جديد' : 'New Booking'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelect('reports')}
-              className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? 'تقارير الصيانة' : 'Reports'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelect('notifications')}
-              className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>{lang === 'ar' ? 'إشعارات FCM' : 'FCM Push'}</span>
-            </button>
+            {canManageBookings && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onQuickNewBooking();
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[#F52B35]/20 hover:bg-[#F52B35]/30 text-[#FF414A] border border-[#F52B35]/30 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'إضافة حجز جديد' : 'New Booking'}</span>
+              </button>
+            )}
+            {(!allowedTabs || allowedTabs.includes('reports')) && (
+              <button
+                type="button"
+                onClick={() => handleSelect('reports')}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'تقارير الصيانة' : 'Reports'}</span>
+              </button>
+            )}
+            {(!allowedTabs || allowedTabs.includes('notifications')) && (
+              <button
+                type="button"
+                onClick={() => handleSelect('notifications')}
+                className="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 font-bold flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>{lang === 'ar' ? 'إشعارات FCM' : 'FCM Push'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

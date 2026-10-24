@@ -45,7 +45,8 @@ import {
   onSnapshot, 
   serverTimestamp, 
   query, 
-  orderBy 
+  orderBy,
+  where 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { StaffUser, MaintenanceRecord } from '../types';
@@ -78,8 +79,16 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
   const isSuperAdmin = !currentStaffUser || currentStaffUser.role === 'super_admin';
   const hasWorkshopIntake = currentStaffUser?.permissions?.workshop_vehicle_intake === true;
   const isTechnician = currentStaffUser?.role === 'technician';
-  const isWorkshopUser = isTechnician || hasWorkshopIntake;
-  const isRestrictedWorkshopUser = isWorkshopUser && !isSuperAdmin && !currentStaffUser?.permissions?.canManageBookings;
+  
+  // Restricted workshop employee: any user with workshop_vehicle_intake (or technician) who is not super admin
+  const isRestrictedWorkshopUser = !isSuperAdmin && (hasWorkshopIntake || isTechnician);
+  const isWorkshopUser = isRestrictedWorkshopUser;
+
+  // Management creation permission: only super admin or management staff with canManageBookings (and not restricted workshop)
+  const canCreateVehicleIntake = isSuperAdmin || (Boolean(currentStaffUser?.permissions?.canManageBookings) && !hasWorkshopIntake);
+
+  // Final delivery approval permission: only super admin or management staff
+  const canApproveFinalDelivery = isSuperAdmin || (Boolean(currentStaffUser?.permissions?.canManageBookings) && !hasWorkshopIntake);
   const isEn = lang === 'en';
 
   // Core records state
@@ -107,12 +116,31 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
   // -------------------------------------------------------------
   useEffect(() => {
     setLoading(true);
-    const qHandovers = query(collection(db, 'vehicle_handovers'), orderBy('createdAt', 'desc'));
+    let qHandovers;
+    if (isRestrictedWorkshopUser && currentStaffUser?.id) {
+      // Query Firestore directly so only vehicles assigned to this workshop account are fetched
+      qHandovers = query(
+        collection(db, 'vehicle_handovers'),
+        where('assignedMechanicId', '==', currentStaffUser.id)
+      );
+    } else {
+      // Management sees all vehicles
+      qHandovers = query(collection(db, 'vehicle_handovers'), orderBy('createdAt', 'desc'));
+    }
+
     const unsubHandovers = onSnapshot(qHandovers, (snapshot) => {
       const records: VehicleHandoverRecord[] = [];
       snapshot.forEach(docSnap => {
         records.push({ id: docSnap.id, ...docSnap.data() } as VehicleHandoverRecord);
       });
+
+      // Guarantee descending sort order client-side regardless of server index
+      records.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
       setHandovers(records);
       setLoading(false);
 
@@ -142,11 +170,17 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       unsubHandovers();
       unsubLogs();
     };
-  }, []);
+  }, [isRestrictedWorkshopUser, currentStaffUser?.id]);
 
-  // Filter mechanics from staffList
+  // Filter mechanics & workshop staff from staffList for assignment by management
   const activeMechanics = useMemo(() => {
-    return staffList.filter(s => s.role === 'technician' || s.roleTitleAr?.includes('فني') || s.roleTitleAr?.includes('ميكانيكي'));
+    return staffList.filter(s => 
+      s.role === 'technician' || 
+      s.roleTitleAr?.includes('فني') || 
+      s.roleTitleAr?.includes('ميكانيكي') || 
+      s.roleTitleAr?.includes('ورشة') ||
+      s.permissions?.workshop_vehicle_intake === true
+    );
   }, [staffList]);
 
   // Record Audit Trail Helper
@@ -517,6 +551,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
   const handleCreateNewIntake = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!canCreateVehicleIntake) {
+      alert('عفواً، تسجيل استلام السيارات الجديدة محصور على إدارة DR.FIX فقط.');
+      return;
+    }
 
     // 1. Mandatory Field Validations
     if (!newPlate.trim()) return alert('يرجى كتابة رقم اللوحة');
@@ -1024,6 +1063,10 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
     e.preventDefault();
     if (!selectedRecord) return;
 
+    if (!canApproveFinalDelivery) {
+      return alert('عفواً، اعتماد التسليم النهائي للعميل محصور بإدارة DR.FIX فقط.');
+    }
+
     if (finalOdometerVal === '' || Number(finalOdometerVal) < (selectedRecord.intake?.odometer || 0)) {
       return alert('قراءة العداد النهائية يجب أن تكون مساوية أو أكبر من قراءة الاستلام');
     }
@@ -1091,9 +1134,9 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
             <span>استلام وتسليم السيارات والتوثيق الميداني</span>
           </h2>
           <p className="text-xs sm:text-sm text-gray-400 max-w-2xl">
-            {isTechnician ? (
+            {isRestrictedWorkshopUser ? (
               <span className="text-emerald-400 font-bold">
-                👨‍🔧 لوحة الميكانيكي: تظهر لك فقط السيارات المسندة إليك للمعاينة وتأكيد الاستلام وتسجيل الأعطال ورفع الصور والفيديوهات وطلب التسليم.
+                👨‍🔧 لوحة موظف الورشة: تظهر لك فقط السيارات المسندة إليك للمعاينة وتوقيع الاستلام إلكترونياً وتسجيل الأعطال ورفع الصور والفيديوهات وطلب التسليم.
               </span>
             ) : (
               'توثيق استلام المركبات، العدادات، صور البودي، إسناد الميكانيكي، التواقيع الإلكترونية، تتبع الأعطال، واعتماد التسليم النهائي.'
@@ -1101,8 +1144,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           </p>
         </div>
 
-        {/* Action Button: Only admin / non-technician can create new intakes */}
-        {!isTechnician && (
+        {/* Action Button: Strictly management alone can create new vehicle intakes */}
+        {canCreateVehicleIntake && (
           <div className="relative z-10 shrink-0">
             <button
               type="button"
@@ -1191,11 +1234,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           <Car className="w-12 h-12 text-gray-600 mx-auto opacity-50" />
           <h4 className="text-sm font-bold text-white">لا توجد سيارات مطابقة</h4>
           <p className="text-xs text-gray-400 max-w-md mx-auto">
-            {isTechnician 
-              ? 'لا توجد سيارات مسندة إليك حالياً في هذا التصنيف.'
+            {isRestrictedWorkshopUser 
+              ? 'لا توجد سيارات مسندة إلى حسابك حالياً في هذا التصنيف.'
               : 'لم يتم العثور على أي سيارة مستلمة. يمكنك الضغط على "استلام سيارة جديدة" لتوثيق أول عملية استلام.'}
           </p>
-          {!isTechnician && (
+          {canCreateVehicleIntake && (
             <button
               type="button"
               onClick={() => setShowNewIntakeModal(true)}
@@ -1391,8 +1434,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                   </button>
                 )}
 
-                {/* Admin Direct Action: Final Handover & Closure */}
-                {!isRestrictedWorkshopUser && !isTechnician && selectedRecord.status === 'ready_for_handover' && (
+                {/* Admin Direct Action: Final Handover & Closure (Strictly Management) */}
+                {canApproveFinalDelivery && selectedRecord.status === 'ready_for_handover' && (
                   <button
                     type="button"
                     onClick={() => setShowFinalDeliveryModal(true)}
@@ -1472,10 +1515,45 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                   </div>
 
                   <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <span className="text-[10px] text-gray-400 block">الميكانيكي المسؤول:</span>
-                    <span className="text-xs font-bold text-gray-200 mt-0.5 block">
-                      {selectedRecord.assignedMechanicName || 'لم يتم التعيين'}
-                    </span>
+                    <span className="text-[10px] text-gray-400 block">الميكانيكي / الورشة المسندة:</span>
+                    {canCreateVehicleIntake ? (
+                      <select
+                        value={selectedRecord.assignedMechanicId || ''}
+                        onChange={async (e) => {
+                          const newId = e.target.value;
+                          const found = activeMechanics.find(m => m.id === newId);
+                          try {
+                            const docRef = doc(db, 'vehicle_handovers', selectedRecord.id);
+                            await updateDoc(docRef, {
+                              assignedMechanicId: newId || null,
+                              assignedMechanicName: found?.fullName || null,
+                              assignedAt: new Date().toISOString(),
+                              updatedAt: serverTimestamp()
+                            });
+                            await recordAudit(
+                              selectedRecord.id,
+                              selectedRecord.handoverCode,
+                              selectedRecord.plateNumber,
+                              'mechanic_assigned',
+                              'إعادة إسناد السيارة',
+                              `تم إسناد السيارة بواسطة الإدارة إلى: ${found?.fullName || 'غير مسند'}`
+                            );
+                          } catch (err: any) {
+                            alert(`فشل تحديث الإسناد: ${err?.message}`);
+                          }
+                        }}
+                        className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-white outline-none focus:border-[#F52B35] mt-1 w-full cursor-pointer"
+                      >
+                        <option value="">-- غير مسند --</option>
+                        {activeMechanics.map(m => (
+                          <option key={m.id} value={m.id}>{m.fullName} ({m.roleTitleAr || 'ورشة'})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs font-bold text-gray-200 mt-0.5 block">
+                        {selectedRecord.assignedMechanicName || 'لم يتم التعيين'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="bg-white/5 p-3 rounded-xl border border-white/5">
@@ -1841,9 +1919,9 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 6. MODAL: New Intake Form (Admin)                                         */}
+      {/* 6. MODAL: New Intake Form (Strictly Management)                           */}
       {/* ========================================================================= */}
-      {showNewIntakeModal && (
+      {showNewIntakeModal && canCreateVehicleIntake && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn" dir="rtl">
           <div className="relative w-full max-w-3xl bg-[#0E1117] border border-white/15 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
             <div className="p-4 sm:p-5 border-b border-white/10 bg-[#0A0C10] flex items-center justify-between shrink-0">
