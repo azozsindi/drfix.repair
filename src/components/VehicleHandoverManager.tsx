@@ -48,7 +48,7 @@ import {
   orderBy 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { StaffUser } from '../types';
+import { StaffUser, MaintenanceRecord } from '../types';
 import { 
   VehicleHandoverRecord, 
   VehicleHandoverStatus, 
@@ -66,14 +66,20 @@ interface VehicleHandoverManagerProps {
   currentStaffUser?: StaffUser | null;
   staffList?: StaffUser[];
   lang?: 'ar' | 'en';
+  systemRecords?: MaintenanceRecord[];
 }
 
 export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
   currentStaffUser,
   staffList = [],
-  lang = 'ar'
+  lang = 'ar',
+  systemRecords = []
 }) => {
+  const isSuperAdmin = !currentStaffUser || currentStaffUser.role === 'super_admin';
+  const hasWorkshopIntake = currentStaffUser?.permissions?.workshop_vehicle_intake === true;
   const isTechnician = currentStaffUser?.role === 'technician';
+  const isWorkshopUser = isTechnician || hasWorkshopIntake;
+  const isRestrictedWorkshopUser = isWorkshopUser && !isSuperAdmin && !currentStaffUser?.permissions?.canManageBookings;
   const isEn = lang === 'en';
 
   // Core records state
@@ -176,16 +182,23 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
   // -------------------------------------------------------------
   const filteredRecords = useMemo(() => {
     return handovers.filter(record => {
-      // 1. Role constraint: Technicians see ONLY assigned vehicles
-      if (isTechnician) {
-        if (record.assignedMechanicId !== currentStaffUser?.id) {
+      // 1. Role constraint: Restricted workshop staff see ONLY assigned vehicles
+      if (isRestrictedWorkshopUser) {
+        const matchesId = record.assignedMechanicId === currentStaffUser?.id;
+        const matchesName = record.assignedMechanicName && currentStaffUser?.fullName && 
+          record.assignedMechanicName.trim().toLowerCase() === currentStaffUser.fullName.trim().toLowerCase();
+        if (!matchesId && !matchesName) {
           return false;
         }
       }
 
       // 2. Status filter
-      if (statusFilter !== 'all' && record.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'received') {
+          if (record.status !== 'received') return false;
+        } else if (record.status !== statusFilter) {
+          return false;
+        }
       }
 
       // 3. Search query
@@ -201,43 +214,63 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
       return true;
     });
-  }, [handovers, isTechnician, currentStaffUser?.id, statusFilter, searchQuery]);
+  }, [handovers, isRestrictedWorkshopUser, currentStaffUser?.id, currentStaffUser?.fullName, statusFilter, searchQuery]);
 
   // Counts for KPI tabs
   const kpiCounts = useMemo(() => {
-    const list = isTechnician 
-      ? handovers.filter(r => r.assignedMechanicId === currentStaffUser?.id)
+    const list = isRestrictedWorkshopUser 
+      ? handovers.filter(r => 
+          r.assignedMechanicId === currentStaffUser?.id ||
+          (r.assignedMechanicName && currentStaffUser?.fullName && r.assignedMechanicName.trim().toLowerCase() === currentStaffUser.fullName.trim().toLowerCase())
+        )
       : handovers;
 
     return {
       total: list.length,
+      pending_workshop: list.filter(r => r.status === 'received' && !r.mechanicAccepted).length,
       received: list.filter(r => r.status === 'received').length,
       under_inspection: list.filter(r => r.status === 'under_inspection').length,
       in_repair: list.filter(r => r.status === 'in_repair').length,
       ready_for_handover: list.filter(r => r.status === 'ready_for_handover').length,
       delivered: list.filter(r => r.status === 'delivered').length
     };
-  }, [handovers, isTechnician, currentStaffUser?.id]);
+  }, [handovers, isRestrictedWorkshopUser, currentStaffUser?.id, currentStaffUser?.fullName]);
 
-  const getStatusBadge = (status: VehicleHandoverStatus) => {
+  const getStatusBadge = (status: VehicleHandoverStatus, record?: VehicleHandoverRecord) => {
     switch (status) {
       case 'received':
+        if (record && !record.mechanicAccepted) {
+          return {
+            label: 'بانتظار استلام الورشة ⏳',
+            badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse',
+            dotClass: 'bg-amber-400',
+            icon: Clock
+          };
+        }
+        if (record && record.mechanicAccepted) {
+          return {
+            label: 'تم الاستلام بالورشة ✓',
+            badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+            dotClass: 'bg-emerald-400',
+            icon: CheckCircle2
+          };
+        }
         return {
-          label: 'تم الاستلام الأولي',
+          label: 'بانتظار استلام الورشة',
           badgeClass: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
           dotClass: 'bg-amber-400',
           icon: Clock
         };
       case 'under_inspection':
         return {
-          label: 'قيد الفحص والتشخيص',
+          label: 'تم الاستلام بالورشة - قيد الفحص',
           badgeClass: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
           dotClass: 'bg-blue-400',
           icon: Gauge
         };
       case 'in_repair':
         return {
-          label: 'قيد الإصلاح المباشر',
+          label: 'قيد الإصلاح المباشر بالورشة',
           badgeClass: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
           dotClass: 'bg-orange-400',
           icon: Wrench
@@ -251,7 +284,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         };
       case 'delivered':
         return {
-          label: 'تم التسليم والإغلاق',
+          label: 'تم التسليم النهائي للعميل ✓',
           badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
           dotClass: 'bg-emerald-400',
           icon: ShieldCheck
@@ -288,42 +321,180 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
   const [newIntakeNotes, setNewIntakeNotes] = useState('');
   const [newAssignedMechId, setNewAssignedMechId] = useState('');
 
-  // Required Photos
-  const [odometerPhoto, setOdometerPhoto] = useState<string>('');
-  const [frontPhoto, setFrontPhoto] = useState<string>('');
-  const [rearPhoto, setRearPhoto] = useState<string>('');
-  const [leftPhoto, setLeftPhoto] = useState<string>('');
-  const [rightPhoto, setRightPhoto] = useState<string>('');
+  // Structured photo slots with instant object preview, upload progress, retry, and cloud persistence
+  interface IntakePhotoSlot {
+    file: File | null;
+    previewUrl: string;
+    savedUrl: string;
+    status: 'idle' | 'uploading' | 'saved' | 'error';
+    progress: number;
+    errorMessage?: string;
+  }
+
+  const initialPhotoSlots: Record<'odometer' | 'front' | 'rear' | 'left' | 'right', IntakePhotoSlot> = {
+    odometer: { file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 },
+    front: { file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 },
+    rear: { file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 },
+    left: { file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 },
+    right: { file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 }
+  };
+
+  const [intakePhotos, setIntakePhotos] = useState(initialPhotoSlots);
+
+  const [damageSlot, setDamageSlot] = useState<IntakePhotoSlot>({
+    file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0
+  });
 
   // Pre-existing damages list
   const [damagesList, setDamagesList] = useState<PreExistingDamage[]>([]);
   const [damageLoc, setDamageLoc] = useState('');
   const [damageDesc, setDamageDesc] = useState('');
-  const [damagePhoto, setDamagePhoto] = useState('');
 
   // Intake Digital Signature
   const [intakeSignature, setIntakeSignature] = useState<string>('');
-  const [uploadingIntakePhotoKey, setUploadingIntakePhotoKey] = useState<string | null>(null);
   const [intakeSubmitting, setIntakeSubmitting] = useState(false);
 
-  const handleUploadIntakePhoto = async (e: React.ChangeEvent<HTMLInputElement>, photoKey: 'odometer' | 'front' | 'rear' | 'left' | 'right' | 'damage') => {
+  // Quick Select from existing system records / bookings (No redundant data entry)
+  const [selectedBookingId, setSelectedBookingId] = useState<string>('');
+  const [bookingSearchQuery, setBookingSearchQuery] = useState<string>('');
+
+  const matchingBookings = useMemo(() => {
+    if (!systemRecords || systemRecords.length === 0) return [];
+    const q = bookingSearchQuery.trim().toLowerCase();
+    if (!q) return systemRecords.slice(0, 6);
+    return systemRecords.filter(r => {
+      const matchName = (r.customerName || '').toLowerCase().includes(q);
+      const matchPhone = (r.customerPhone || '').includes(q);
+      const matchCar = (r.carModel || '').toLowerCase().includes(q);
+      const matchPlate = (r.plateNumber || '').toLowerCase().includes(q);
+      return matchName || matchPhone || matchCar || matchPlate;
+    }).slice(0, 8);
+  }, [systemRecords, bookingSearchQuery]);
+
+  const handleSelectBooking = (rec: MaintenanceRecord) => {
+    setSelectedBookingId(rec.id);
+    if (rec.plateNumber) setNewPlate(rec.plateNumber);
+
+    const car = (rec.carModel || '').trim();
+    const parts = car.split(/\s+/);
+    if (parts.length > 1) {
+      setNewMake(parts[0]);
+      setNewModel(parts.slice(1).join(' '));
+    } else if (parts.length === 1 && parts[0]) {
+      setNewModel(parts[0]);
+    }
+
+    if (rec.customerName) setNewCustName(rec.customerName);
+    if (rec.customerPhone) setNewCustPhone(rec.customerPhone);
+
+    if (rec.assignedStaffId) {
+      const mech = activeMechanics.find(m => m.id === rec.assignedStaffId);
+      if (mech) setNewAssignedMechId(mech.id);
+    }
+
+    const preNotes = [
+      rec.serviceType ? `الخدمة المطلوبة: ${rec.serviceType}` : '',
+      rec.notes ? `ملاحظات الحجز: ${rec.notes}` : ''
+    ].filter(Boolean).join(' • ');
+    if (preNotes) setNewIntakeNotes(preNotes);
+
+    setBookingSearchQuery('');
+  };
+
+  const handleClearSelectedBooking = () => {
+    setSelectedBookingId('');
+  };
+
+  // Immediate preview + robust cloud upload with retry
+  const uploadSinglePhoto = async (file: File, key: 'odometer' | 'front' | 'rear' | 'left' | 'right' | 'damage') => {
+    // 1. Instant local object URL preview (0ms latency for mobile camera)
+    const localPreview = URL.createObjectURL(file);
+    if (key === 'damage') {
+      setDamageSlot({
+        file,
+        previewUrl: localPreview,
+        savedUrl: '',
+        status: 'uploading',
+        progress: 10
+      });
+    } else {
+      setIntakePhotos(prev => ({
+        ...prev,
+        [key]: {
+          file,
+          previewUrl: localPreview,
+          savedUrl: '',
+          status: 'uploading',
+          progress: 10
+        }
+      }));
+    }
+
+    // 2. Perform resilient Firebase Storage upload
+    try {
+      const code = newPlate.trim() ? `VH-${newPlate.replace(/\s+/g, '_')}` : `VH-${Date.now().toString().slice(-4)}`;
+      const res = await uploadHandoverMediaFile(file, 'intake', code, (prog) => {
+        if (key === 'damage') {
+          setDamageSlot(prev => ({ ...prev, progress: Math.max(10, prog.progressPercent) }));
+        } else {
+          setIntakePhotos(prev => ({
+            ...prev,
+            [key]: { ...prev[key], progress: Math.max(10, prog.progressPercent) }
+          }));
+        }
+      });
+
+      if (key === 'damage') {
+        setDamageSlot(prev => ({
+          ...prev,
+          savedUrl: res.downloadUrl,
+          status: 'saved',
+          progress: 100,
+          errorMessage: undefined
+        }));
+      } else {
+        setIntakePhotos(prev => ({
+          ...prev,
+          [key]: {
+            ...prev[key],
+            savedUrl: res.downloadUrl,
+            status: 'saved',
+            progress: 100,
+            errorMessage: undefined
+          }
+        }));
+      }
+    } catch (err: any) {
+      console.error(`Failed uploading ${key}:`, err);
+      if (key === 'damage') {
+        setDamageSlot(prev => ({
+          ...prev,
+          status: 'error',
+          errorMessage: err?.message || 'فشل رفع الصورة للسحابة'
+        }));
+      } else {
+        setIntakePhotos(prev => ({
+          ...prev,
+          [key]: {
+            ...prev[key],
+            status: 'error',
+            errorMessage: err?.message || 'فشل رفع الصورة للسحابة'
+          }
+        }));
+      }
+    }
+  };
+
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>, key: 'odometer' | 'front' | 'rear' | 'left' | 'right' | 'damage') => {
     const file = e.target.files?.[0];
     if (!file) return;
+    uploadSinglePhoto(file, key);
+  };
 
-    setUploadingIntakePhotoKey(photoKey);
-    try {
-      const code = `VH-${Date.now().toString().slice(-4)}`;
-      const res = await uploadHandoverMediaFile(file, 'intake', code);
-      if (photoKey === 'odometer') setOdometerPhoto(res.downloadUrl);
-      if (photoKey === 'front') setFrontPhoto(res.downloadUrl);
-      if (photoKey === 'rear') setRearPhoto(res.downloadUrl);
-      if (photoKey === 'left') setLeftPhoto(res.downloadUrl);
-      if (photoKey === 'right') setRightPhoto(res.downloadUrl);
-      if (photoKey === 'damage') setDamagePhoto(res.downloadUrl);
-    } catch (err: any) {
-      alert(`فشل رفع الصورة: ${err?.message}`);
-    } finally {
-      setUploadingIntakePhotoKey(null);
+  const handleRetryPhotoUpload = (key: 'odometer' | 'front' | 'rear' | 'left' | 'right' | 'damage') => {
+    const targetFile = key === 'damage' ? damageSlot.file : intakePhotos[key].file;
+    if (targetFile) {
+      uploadSinglePhoto(targetFile, key);
     }
   };
 
@@ -336,12 +507,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       id: `dmg_${Date.now()}`,
       location: damageLoc.trim(),
       description: damageDesc.trim(),
-      photoUrl: damagePhoto || ''
+      photoUrl: damageSlot.savedUrl || damageSlot.previewUrl || ''
     };
     setDamagesList(prev => [...prev, newDamage]);
     setDamageLoc('');
     setDamageDesc('');
-    setDamagePhoto('');
+    setDamageSlot({ file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 });
   };
 
   const handleCreateNewIntake = async (e: React.FormEvent) => {
@@ -351,10 +522,31 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
     if (!newPlate.trim()) return alert('يرجى كتابة رقم اللوحة');
     if (!newMake.trim() || !newModel.trim()) return alert('يرجى تحديد صانع وموديل السيارة');
     if (newOdometer === '' || Number(newOdometer) < 0) return alert('يرجى إدخال قراءة عداد المسافة بالكيلومترات');
-    if (!odometerPhoto) return alert('صورة عداد المسافة إلزامية');
-    if (!frontPhoto || !rearPhoto || !leftPhoto || !rightPhoto) {
-      return alert('صور البودي من الأمام والخلف والجانبين إلزامية لتوثيق استلام السيارة');
+
+    // 2. Strict cloud persistence validation for all 5 mandatory photos
+    const mandatoryKeys: ('odometer' | 'front' | 'rear' | 'left' | 'right')[] = ['odometer', 'front', 'rear', 'left', 'right'];
+    const labelsMap: Record<string, string> = {
+      odometer: 'صورة عداد المسافة',
+      front: 'صورة البودي من الأمام',
+      rear: 'صورة البودي من الخلف',
+      left: 'صورة الجانب الأيسر',
+      right: 'صورة الجانب الأيمن'
+    };
+
+    for (const k of mandatoryKeys) {
+      const slot = intakePhotos[k];
+      if (!slot.savedUrl || slot.status !== 'saved') {
+        if (slot.status === 'uploading') {
+          alert(`يرجى الانتظار، ${labelsMap[k]} قيد الرفع إلى السحابة حالياً (${slot.progress}%)...`);
+        } else if (slot.status === 'error') {
+          alert(`تعذر رفع ${labelsMap[k]} إلى السحابة. يرجى الضغط على زر "إعادة المحاولة 🔄" بجوار الصورة لحفظها.`);
+        } else {
+          alert(`يرجى التقاط أو رفع ${labelsMap[k]} (إلزامية لتوثيق استلام السيارة).`);
+        }
+        return;
+      }
     }
+
     if (!newAssignedMechId) {
       return alert('يرجى اختيار وتعيين الميكانيكي المسؤول عن استلام وفحص السيارة');
     }
@@ -366,6 +558,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
       const newRecord: Omit<VehicleHandoverRecord, 'id'> = {
         handoverCode,
+        bookingId: selectedBookingId || undefined,
         plateNumber: newPlate.trim(),
         carMake: newMake.trim(),
         carModel: newModel.trim(),
@@ -376,11 +569,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         status: 'received',
         intake: {
           odometer: Number(newOdometer),
-          odometerPhotoUrl: odometerPhoto,
-          frontPhotoUrl: frontPhoto,
-          rearPhotoUrl: rearPhoto,
-          leftSidePhotoUrl: leftPhoto,
-          rightSidePhotoUrl: rightPhoto,
+          odometerPhotoUrl: intakePhotos.odometer.savedUrl,
+          frontPhotoUrl: intakePhotos.front.savedUrl,
+          rearPhotoUrl: intakePhotos.rear.savedUrl,
+          leftSidePhotoUrl: intakePhotos.left.savedUrl,
+          rightSidePhotoUrl: intakePhotos.right.savedUrl,
           fuelLevel: newFuelLevel,
           preExistingDamages: damagesList,
           notes: newIntakeNotes.trim(),
@@ -399,7 +592,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         repairMedia: [
           {
             id: `media_${Date.now()}_1`,
-            url: odometerPhoto,
+            url: intakePhotos.odometer.savedUrl,
             mediaType: 'image',
             caption: `عداد المسافة عند الاستلام (${newOdometer} كم)`,
             stage: 'intake',
@@ -410,7 +603,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           },
           {
             id: `media_${Date.now()}_2`,
-            url: frontPhoto,
+            url: intakePhotos.front.savedUrl,
             mediaType: 'image',
             caption: 'البودي من الأمام (الاستلام الأولي)',
             stage: 'intake',
@@ -421,7 +614,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           },
           {
             id: `media_${Date.now()}_3`,
-            url: rearPhoto,
+            url: intakePhotos.rear.savedUrl,
             mediaType: 'image',
             caption: 'البودي من الخلف (الاستلام الأولي)',
             stage: 'intake',
@@ -432,7 +625,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           },
           {
             id: `media_${Date.now()}_4`,
-            url: leftPhoto,
+            url: intakePhotos.left.savedUrl,
             mediaType: 'image',
             caption: 'الجانب الأيسر (الاستلام الأولي)',
             stage: 'intake',
@@ -443,7 +636,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           },
           {
             id: `media_${Date.now()}_5`,
-            url: rightPhoto,
+            url: intakePhotos.right.savedUrl,
             mediaType: 'image',
             caption: 'الجانب الأيمن (الاستلام الأولي)',
             stage: 'intake',
@@ -465,8 +658,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         handoverCode,
         newPlate.trim(),
         'created',
-        'إنشاء سجل استلام السيارة الأولي',
-        `تم استلام السيارة ${newMake} ${newModel} بقراءة عداد ${newOdometer} كم وتعيين الميكانيكي ${selectedMech?.fullName || newAssignedMechId}`
+        'إنشاء وتوثيق استلام السيارة وتحويلها للورشة',
+        `تم تسليم السيارة ${newMake} ${newModel} (لوحة: ${newPlate.trim()}) للورشة بعد توثيق العداد ${newOdometer} كم والصور الخمس وتعيين الميكانيكي ${selectedMech?.fullName || newAssignedMechId}`
       );
 
       if (intakeSignature) {
@@ -485,14 +678,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       setNewPlate('');
       setNewModel('');
       setNewOdometer('');
-      setOdometerPhoto('');
-      setFrontPhoto('');
-      setRearPhoto('');
-      setLeftPhoto('');
-      setRightPhoto('');
+      setIntakePhotos(initialPhotoSlots);
+      setDamageSlot({ file: null, previewUrl: '', savedUrl: '', status: 'idle', progress: 0 });
       setDamagesList([]);
       setIntakeSignature('');
-      alert('تم إنشاء وتوثيق سجل استلام السيارة وإسنادها للميكانيكي بنجاح!');
+      setSelectedBookingId('');
+      alert('تم إنشاء وتوثيق استلام السيارة وتحويلها للورشة بنجاح!');
     } catch (err: any) {
       console.error('Error creating intake record:', err);
       alert(`فشل إنشاء السجل: ${err?.message}`);
@@ -523,6 +714,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         mechanicAccepted: true,
         mechanicAcceptanceSignatureUrl: mechanicSignature,
         mechanicAcceptanceTimestamp: new Date().toISOString(),
+        mechanicAcceptedByStaffId: currentStaffUser?.id || 'workshop_staff',
+        mechanicAcceptedByStaffName: currentStaffUser?.fullName || selectedRecord.assignedMechanicName || 'الميكانيكي المسؤول',
         mechanicAcceptanceNotes: mechanicNotes.trim() || undefined,
         updatedAt: serverTimestamp()
       };
@@ -1016,7 +1209,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredRecords.map((record) => {
-            const stBadge = getStatusBadge(record.status);
+            const stBadge = getStatusBadge(record.status, record);
             const faultsCount = record.faults?.length || 0;
             const repairedCount = record.faults?.filter(f => f.status === 'repaired').length || 0;
             const mediaCount = record.repairMedia?.length || 0;
@@ -1157,44 +1350,49 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
               {/* Status & Immediate Action Banner */}
               <div className="p-4 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-2 ${getStatusBadge(selectedRecord.status).badgeClass}`}>
-                    <span className={`w-2 h-2 rounded-full ${getStatusBadge(selectedRecord.status).dotClass}`} />
-                    <span>الحالة الحالية: {getStatusBadge(selectedRecord.status).label}</span>
+                  <span className={`px-3 py-1.5 rounded-full border text-xs font-bold inline-flex items-center gap-2 ${getStatusBadge(selectedRecord.status, selectedRecord).badgeClass}`}>
+                    <span className={`w-2 h-2 rounded-full ${getStatusBadge(selectedRecord.status, selectedRecord).dotClass}`} />
+                    <span>الحالة الحالية: {getStatusBadge(selectedRecord.status, selectedRecord).label}</span>
                   </span>
-                  {selectedRecord.mechanicAccepted && (
+                  {selectedRecord.mechanicAccepted ? (
                     <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
                       <Check className="w-3.5 h-3.5" />
-                      <span>تم تأكيد استلام الميكانيكي</span>
+                      <span>تم استلام وتوقيع الورشة</span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-amber-400 font-bold flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>بانتظار توقيع الورشة</span>
                     </span>
                   )}
                 </div>
 
-                {/* Mechanic Direct Action: Confirm Receipt */}
-                {isTechnician && selectedRecord.status === 'received' && !selectedRecord.mechanicAccepted && (
+                {/* Mechanic / Workshop Direct Action: Confirm Receipt */}
+                {(isWorkshopUser || isSuperAdmin) && selectedRecord.status === 'received' && !selectedRecord.mechanicAccepted && (
                   <button
                     type="button"
                     onClick={() => setShowMechanicAcceptModal(true)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95 animate-pulse"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer active:scale-95 animate-pulse"
                   >
                     <PenTool className="w-4 h-4" />
-                    <span>تأكيد استلام السيارة عهدتي والتوقيع</span>
+                    <span>تأكيد استلام السيارة (ورشة) والتوقيع إلكترونياً ✍️</span>
                   </button>
                 )}
 
-                {/* Mechanic Direct Action: Request Handover */}
-                {isTechnician && (selectedRecord.status === 'under_inspection' || selectedRecord.status === 'in_repair') && (
+                {/* Mechanic / Workshop Direct Action: Request Handover */}
+                {(isWorkshopUser || isSuperAdmin) && (selectedRecord.status === 'under_inspection' || selectedRecord.status === 'in_repair') && (
                   <button
                     type="button"
                     onClick={() => setShowHandoverRequestModal(true)}
                     className="w-full sm:w-auto px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer active:scale-95"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>طلب تسليم السيارة للإدارة</span>
+                    <span>طلب تسليم السيارة للإدارة ↗️</span>
                   </button>
                 )}
 
                 {/* Admin Direct Action: Final Handover & Closure */}
-                {!isTechnician && selectedRecord.status === 'ready_for_handover' && (
+                {!isRestrictedWorkshopUser && !isTechnician && selectedRecord.status === 'ready_for_handover' && (
                   <button
                     type="button"
                     onClick={() => setShowFinalDeliveryModal(true)}
@@ -1219,6 +1417,44 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                     وثّقه: <strong className="text-gray-200">{selectedRecord.intake?.staffName}</strong> • {new Date(selectedRecord.intake?.date || '').toLocaleString('ar-SA')}
                   </span>
                 </div>
+
+                {/* Workshop Intake Receipt Status Card */}
+                {selectedRecord.mechanicAccepted ? (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                        <Check className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-white block text-xs">تم توقيع وتأكيد استلام السيارة بالورشة ✓</span>
+                        <span className="text-[11px] text-gray-300">
+                          المستلم: <strong>{selectedRecord.assignedMechanicName || 'الميكانيكي المسؤول'}</strong> • {selectedRecord.mechanicAcceptanceTimestamp ? new Date(selectedRecord.mechanicAcceptanceTimestamp).toLocaleString('ar-SA') : ''}
+                        </span>
+                      </div>
+                    </div>
+                    {selectedRecord.mechanicAcceptanceSignatureUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMediaUrl({ url: selectedRecord.mechanicAcceptanceSignatureUrl!, type: 'image', caption: 'توقيع استلام الورشة الإلكتروني' })}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-[11px] transition-colors cursor-pointer"
+                      >
+                        عرض توقيع الورشة
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-5 h-5 text-amber-400 shrink-0" />
+                      <div>
+                        <span className="font-bold text-amber-300 block text-xs">السيارة مسلّمة للورشة وبانتظار توقيع الاستلام</span>
+                        <span className="text-[11px] text-gray-400">
+                          المسؤول: <strong>{selectedRecord.assignedMechanicName || 'غير محدد'}</strong> (لم يوقع الاستلام بعد)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="bg-white/5 p-3 rounded-xl border border-white/5">
@@ -1631,6 +1867,69 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
             <form onSubmit={handleCreateNewIntake} className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 text-xs">
               
+              {/* 1. Quick Select From Existing Bookings (No redundant data entry) */}
+              {systemRecords && systemRecords.length > 0 && (
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-brand-red/10 via-black to-black border border-brand-red/30 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-brand-red/20 text-brand-red flex items-center justify-center shrink-0">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-bold text-white">استيراد سيارة من حجوزات النظام (دون تكرار الإدخال)</span>
+                    </div>
+                    {selectedBookingId ? (
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                        تم ربط حجز #{selectedBookingId.slice(0, 6)} ✓
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">اختر الحجز لملء الحقول تلقائيًا</span>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={bookingSearchQuery}
+                      onChange={e => setBookingSearchQuery(e.target.value)}
+                      placeholder="ابحث باسم العميل أو رقم اللوحة أو موديل السيارة..."
+                      className="w-full bg-black/60 border border-white/10 rounded-xl pr-9 pl-3 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-brand-red"
+                    />
+                  </div>
+
+                  {selectedBookingId ? (
+                    <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs">
+                      <span className="text-emerald-300 font-bold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        تمت تعبئة بيانات السيارة والعميل بنجاح من سجلات المركز
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleClearSelectedBooking}
+                        className="text-[11px] text-gray-400 hover:text-white underline cursor-pointer"
+                      >
+                        إلغاء وتفريغ
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto no-scrollbar pt-1">
+                      {matchingBookings.map(b => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => handleSelectBooking(b)}
+                          className="text-right px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-brand-red/20 hover:border-brand-red/40 border border-white/5 transition-all text-[11px] text-gray-200 cursor-pointer flex items-center gap-2"
+                        >
+                          <span className="font-bold text-white">{b.customerName || 'عميل'}</span>
+                          <span className="text-gray-400">({b.carModel || 'سيارة'}{b.plateNumber ? ` • ${b.plateNumber}` : ''})</span>
+                          <span className="text-brand-red font-bold text-[10px]">استيراد ↵</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Car & Customer Basics */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -1702,14 +2001,14 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-gray-300 font-bold block mb-1">الميكانيكي المسؤول *</label>
+                  <label className="text-gray-300 font-bold block mb-1">الميكانيكي المسؤول (المستلم بالورشة) *</label>
                   <select
                     required
                     value={newAssignedMechId}
                     onChange={e => setNewAssignedMechId(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-white outline-none focus:border-[#F52B35] cursor-pointer"
                   >
-                    <option value="">-- اختر الميكانيكي --</option>
+                    <option value="">-- اختر الميكانيكي المسؤول بالورشة --</option>
                     {activeMechanics.map(m => (
                       <option key={m.id} value={m.id}>
                         {m.fullName} ({m.roleTitleAr || 'فني صيانة'})
@@ -1749,62 +2048,117 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                 </div>
               </div>
 
-              {/* Mandatory Photos Grid */}
+              {/* 5 Mandatory Photos Grid with Instant Preview & Retry */}
               <div className="space-y-2 p-3.5 rounded-2xl bg-black/40 border border-white/5">
-                <span className="text-xs font-bold text-gray-200 block">
-                  الصور الإلزامية لتوثيق حالة السيارة (كاميرا الجوال أو الألبوم) *
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-200 block">
+                    الصور الإلزامية لتوثيق حالة السيارة (كاميرا الجوال أو الألبوم) *
+                  </span>
+                  <span className="text-[10px] text-gray-400">معاينة فورية وحفظ سحابي مباشر</span>
+                </div>
                 <p className="text-[11px] text-gray-400">
-                  لا يسمح بإسناد السيارة إلا بعد استكمال جميع الصور الخمس
+                  لا يسمح بإسناد السيارة إلا بعد استكمال جميع الصور الخمس وحفظها في السحابة
                 </p>
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-1">
                   {[
-                    { key: 'odometer' as const, label: 'صورة العداد *', url: odometerPhoto },
-                    { key: 'front' as const, label: 'البودي (أمام) *', url: frontPhoto },
-                    { key: 'rear' as const, label: 'البودي (خلف) *', url: rearPhoto },
-                    { key: 'left' as const, label: 'الجانب الأيسر *', url: leftPhoto },
-                    { key: 'right' as const, label: 'الجانب الأيمن *', url: rightPhoto }
-                  ].map((p) => (
-                    <label 
-                      key={p.key}
-                      className={`p-2.5 rounded-xl border border-dashed flex flex-col items-center justify-center text-center cursor-pointer transition-all aspect-video relative overflow-hidden ${
-                        p.url 
-                          ? 'border-emerald-500/50 bg-emerald-950/20' 
-                          : 'border-white/20 hover:border-[#F52B35]/50 bg-white/5'
-                      }`}
-                    >
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={e => handleUploadIntakePhoto(e, p.key)}
-                        disabled={uploadingIntakePhotoKey === p.key}
-                        className="hidden"
-                      />
+                    { key: 'odometer' as const, label: 'صورة العداد *' },
+                    { key: 'front' as const, label: 'البودي (أمام) *' },
+                    { key: 'rear' as const, label: 'البودي (خلف) *' },
+                    { key: 'left' as const, label: 'الجانب الأيسر *' },
+                    { key: 'right' as const, label: 'الجانب الأيمن *' }
+                  ].map((p) => {
+                    const slot = intakePhotos[p.key];
+                    const hasPreview = !!slot.previewUrl;
+                    const isUploading = slot.status === 'uploading';
+                    const isSaved = slot.status === 'saved';
+                    const isError = slot.status === 'error';
 
-                      {uploadingIntakePhotoKey === p.key ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-5 h-5 border-2 border-[#F52B35] border-t-transparent rounded-full animate-spin" />
-                          <span className="text-[9px] text-gray-400">جاري الرفع...</span>
-                        </div>
-                      ) : p.url ? (
-                        <>
-                          <img src={p.url} alt={p.label} className="absolute inset-0 w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center text-white p-1">
-                            <Check className="w-4 h-4 text-emerald-400 mb-0.5" />
-                            <span className="text-[9px] font-bold text-center leading-tight">{p.label} (تم)</span>
+                    return (
+                      <div 
+                        key={p.key}
+                        className={`p-2 rounded-xl border flex flex-col justify-between text-center transition-all min-h-[140px] relative overflow-hidden ${
+                          isSaved 
+                            ? 'border-emerald-500/50 bg-emerald-950/20' 
+                            : isError
+                            ? 'border-red-500/50 bg-red-950/20'
+                            : isUploading
+                            ? 'border-amber-500/50 bg-amber-950/20'
+                            : 'border-white/15 hover:border-brand-red/50 bg-white/5'
+                        }`}
+                      >
+                        {/* Instant visual preview if captured/selected */}
+                        {hasPreview ? (
+                          <div className="relative aspect-video rounded-lg overflow-hidden bg-black/60 mb-2">
+                            <img 
+                              src={slot.previewUrl} 
+                              alt={p.label} 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => {
+                                // If blob URL is released, fallback to savedUrl
+                                if (slot.savedUrl) (e.currentTarget as HTMLImageElement).src = slot.savedUrl;
+                              }}
+                            />
+                            
+                            {/* Overlay Status Badge */}
+                            {isUploading && (
+                              <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center p-1 text-amber-300">
+                                <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mb-1" />
+                                <span className="text-[10px] font-bold">جاري الرفع ({slot.progress}%)</span>
+                              </div>
+                            )}
+
+                            {isSaved && (
+                              <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-md bg-emerald-500/90 text-white text-[9px] font-bold flex items-center gap-1 shadow">
+                                <Check className="w-3 h-3" /> محفوظة في السحابة
+                              </div>
+                            )}
+
+                            {isError && (
+                              <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center p-1 text-red-300">
+                                <AlertTriangle className="w-5 h-5 text-red-400 mb-1" />
+                                <span className="text-[10px] font-bold">فشل الحفظ</span>
+                              </div>
+                            )}
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <Camera className="w-5 h-5 text-gray-400 mb-1" />
-                          <span className="text-[10px] font-bold text-gray-300">{p.label}</span>
-                          <span className="text-[8px] text-gray-500">اضغط للتصوير</span>
-                        </>
-                      )}
-                    </label>
-                  ))}
+                        ) : (
+                          <div className="aspect-video rounded-lg bg-black/40 border border-dashed border-white/10 flex flex-col items-center justify-center text-gray-400 mb-2 p-1">
+                            <Camera className="w-5 h-5 text-gray-500 mb-1" />
+                            <span className="text-[9px] text-gray-400">لم يتم التصوير</span>
+                          </div>
+                        )}
+
+                        <span className="text-[11px] font-bold text-gray-200 block truncate">{p.label}</span>
+
+                        {/* Action Buttons: Pick Photo or Retry */}
+                        <div className="mt-1.5 pt-1.5 border-t border-white/10 flex items-center justify-center gap-1">
+                          {isError ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRetryPhotoUpload(p.key)}
+                              className="w-full py-1 px-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>إعادة المحاولة 🔄</span>
+                            </button>
+                          ) : (
+                            <label className="w-full py-1 px-2 rounded-lg bg-white/10 hover:bg-brand-red text-white font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={e => handlePhotoFileChange(e, p.key)}
+                                disabled={isUploading}
+                                className="hidden"
+                              />
+                              <Camera className="w-3 h-3" />
+                              <span>{hasPreview ? 'تغيير الصورة' : 'التقاط الصورة'}</span>
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1830,20 +2184,22 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                     className="bg-black/50 border border-white/10 rounded-xl px-3 py-1.5 text-white outline-none focus:border-[#F52B35]"
                   />
                   <div className="flex gap-2">
-                    <label className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-center cursor-pointer truncate">
+                    <label className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-center cursor-pointer truncate flex items-center justify-center gap-1">
                       <input
                         type="file"
                         accept="image/*"
                         capture="environment"
-                        onChange={e => handleUploadIntakePhoto(e, 'damage')}
+                        onChange={e => handlePhotoFileChange(e, 'damage')}
+                        disabled={damageSlot.status === 'uploading'}
                         className="hidden"
                       />
-                      <span>{damagePhoto ? 'تمت إضافة صورة ✓' : 'إرفاق صورة'}</span>
+                      <Camera className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{damageSlot.savedUrl || damageSlot.previewUrl ? 'تمت إضافة صورة ✓' : 'إرفاق صورة'}</span>
                     </label>
                     <button
                       type="button"
                       onClick={handleAddDamageItem}
-                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold shrink-0"
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold shrink-0 cursor-pointer"
                     >
                       إضافة
                     </button>
@@ -1858,7 +2214,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                         <button
                           type="button"
                           onClick={() => setDamagesList(prev => prev.filter(d => d.id !== dmg.id))}
-                          className="text-red-400 hover:text-red-300 font-bold"
+                          className="text-red-400 hover:text-red-300 font-bold cursor-pointer"
                         >
                           حذف
                         </button>
@@ -1929,11 +2285,41 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
               </button>
             </div>
 
-            <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs space-y-1">
-              <div>السيارة: <strong className="text-white">{selectedRecord.carMake} {selectedRecord.carModel} ({selectedRecord.plateNumber})</strong></div>
-              <div>عداد الاستلام: <strong className="text-amber-400 font-mono">{selectedRecord.intake?.odometer} كم</strong></div>
+            <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div>السيارة: <strong className="text-white">{selectedRecord.carMake} {selectedRecord.carModel} ({selectedRecord.plateNumber})</strong></div>
+                <div>عداد الاستلام: <strong className="text-amber-400 font-mono">{selectedRecord.intake?.odometer?.toLocaleString()} كم</strong></div>
+              </div>
+
+              {/* Photos inspection preview */}
+              <div className="space-y-1 pt-1 border-t border-white/10">
+                <span className="text-[10px] text-gray-400 block font-bold">صور توثيق الاستلام الأولي للمعاينة:</span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[
+                    { label: 'العداد', url: selectedRecord.intake?.odometerPhotoUrl },
+                    { label: 'أمام', url: selectedRecord.intake?.frontPhotoUrl },
+                    { label: 'خلف', url: selectedRecord.intake?.rearPhotoUrl },
+                    { label: 'يسار', url: selectedRecord.intake?.leftSidePhotoUrl },
+                    { label: 'يمين', url: selectedRecord.intake?.rightSidePhotoUrl },
+                  ].map((p, idx) => (
+                    <div 
+                      key={idx} 
+                      onClick={() => p.url && setPreviewMediaUrl({ url: p.url, type: 'image', caption: p.label })}
+                      className="aspect-video rounded-lg overflow-hidden bg-black/60 border border-white/10 relative cursor-pointer group"
+                    >
+                      {p.url ? (
+                        <img src={p.url} alt={p.label} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-500">{p.label}</div>
+                      )}
+                      <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] text-center text-gray-300 py-0.5">{p.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <p className="text-[11px] text-gray-400 pt-1">
-                بتوقيعك أدناه تؤكد استلامك الفعلي للمركبة، ومطابقة حالة البودي والعداد مع توثيق الإدارة، وبدء مهام الفحص والإصلاح.
+                بتوقيعك أدناه تؤكد استلامك الفعلي للمركبة، ومطابقة حالة البودي والعداد مع توثيق الإدارة، وبدء مهام الفحص والإصلاح بالورشة.
               </p>
             </div>
 

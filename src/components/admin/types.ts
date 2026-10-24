@@ -112,6 +112,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
     path: '/admin/handovers',
     icon: Car,
     category: 'operations',
+    permissionKey: 'workshop_vehicle_intake',
     technicianAllowed: true
   },
   {

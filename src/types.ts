@@ -334,6 +334,7 @@ export interface StaffPermissions {
   canManageStaff: boolean;
   canManageContracts?: boolean;
   canDeleteBookings?: boolean;
+  workshop_vehicle_intake?: boolean; // استلام سيارة (ورشة)
 }
 
 // ==========================================================
@@ -542,6 +543,7 @@ export const DEFAULT_SUPER_ADMIN_PERMISSIONS: StaffPermissions = {
   canManageStaff: true,
   canManageContracts: true,
   canDeleteBookings: true,
+  workshop_vehicle_intake: true,
 };
 
 export const ROLE_PRESETS: Record<StaffRole, { titleAr: string; titleEn: string; permissions: StaffPermissions }> = {

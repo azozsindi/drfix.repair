@@ -123,6 +123,7 @@ export interface VehicleHandoverRecord {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  bookingId?: string;     // معرف الحجز الأصلي المرتبط في النظام
   
   status: VehicleHandoverStatus;
 
@@ -137,6 +138,8 @@ export interface VehicleHandoverRecord {
   mechanicAccepted?: boolean;
   mechanicAcceptanceSignatureUrl?: string;
   mechanicAcceptanceTimestamp?: string;
+  mechanicAcceptedByStaffId?: string;
+  mechanicAcceptedByStaffName?: string;
   mechanicAcceptanceNotes?: string;
 
   // الأعطال المسجلة

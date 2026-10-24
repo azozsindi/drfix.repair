@@ -2381,8 +2381,18 @@ const AdminDashboard = ({
     return records;
   }, [records, isTechnician, currentStaffUser]);
 
-  // Strictly restrict navigation tabs for technicians to eliminate clutter & permission leaks
-  const allowedNavTabs = isTechnician ? [
+  const isSuperAdmin = !currentStaffUser || currentStaffUser.role === 'super_admin';
+  const hasWorkshopIntake = currentStaffUser?.permissions?.workshop_vehicle_intake === true;
+  // Dedicated workshop staff has workshop_vehicle_intake without full booking/dashboard admin permissions
+  const isWorkshopIntakeOnly = !isSuperAdmin && hasWorkshopIntake && 
+    !userPermissions.canViewDashboard && 
+    !userPermissions.canManageBookings && 
+    !userPermissions.canManageStaff;
+
+  // Strictly restrict navigation tabs for workshop intake and technicians to eliminate clutter & permission leaks
+  const allowedNavTabs = isWorkshopIntakeOnly ? [
+    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
+  ] : isTechnician ? [
     { id: 'bookings', label: lang === 'ar' ? 'مهامي الميدانية 🔧' : 'My Field Tasks', icon: Wrench, allowed: true },
     { id: 'calendar', label: lang === 'ar' ? 'جدول مواعيدي 📅' : 'My Schedule', icon: CalendarCheck, allowed: true },
     { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
@@ -2393,7 +2403,7 @@ const AdminDashboard = ({
     { id: 'dashboard', label: lang === 'ar' ? 'الرئيسية ونظرة عامة' : 'Dashboard Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
     { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
     { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
-    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات' : 'Vehicle Handover & Tracking', icon: Car, allowed: true },
+    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات' : 'Vehicle Handover & Tracking', icon: Car, allowed: isSuperAdmin || hasWorkshopIntake || userPermissions.canManageBookings !== false },
     { id: 'customers', label: lang === 'ar' ? 'العملاء وسجل السيارات' : 'Customers & Vehicles', icon: User, allowed: userPermissions.canManageCustomers !== false },
     { id: 'contracts', label: lang === 'ar' ? 'إدارة العقود (ورش وشركات)' : 'Contracts (Workshops & Fleets)', icon: FileCheck, allowed: userPermissions.canManageContracts !== false },
     { id: 'reports', label: lang === 'ar' ? 'التقارير وسندات الصيانة (Word & PDF)' : 'Reports & Work Orders (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
@@ -2413,16 +2423,20 @@ const AdminDashboard = ({
     { id: 'manual', label: lang === 'ar' ? 'دليل ومزايا النظام' : 'System Manual & Guide', icon: BookOpen, allowed: true },
   ].filter(tab => tab.allowed);
 
-  // Enforce auto-redirect: technicians can NEVER land on unauthorized admin tabs
+  // Enforce auto-redirect: workshop employees and technicians land ONLY on their authorized tabs
   useEffect(() => {
-    if (isTechnician) {
+    if (isWorkshopIntakeOnly) {
+      if (activeTab !== 'handovers') {
+        setActiveTab('handovers');
+      }
+    } else if (isTechnician) {
       if (activeTab !== 'bookings' && activeTab !== 'calendar' && activeTab !== 'handovers' && activeTab !== 'manual' && activeTab !== 'help') {
         setActiveTab('bookings');
       }
     } else if (allowedNavTabs.length > 0 && !allowedNavTabs.some(t => t.id === activeTab)) {
-      setActiveTab('overview');
+      setActiveTab((allowedNavTabs[0]?.id as AdminTabId) || 'overview');
     }
-  }, [currentStaffUser, isTechnician, activeTab]);
+  }, [currentStaffUser, isTechnician, isWorkshopIntakeOnly, activeTab]);
 
   if (!isAdmin) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -2449,7 +2463,7 @@ const AdminDashboard = ({
           newReviews: testimonials.filter(t => !t.reply).length,
           unreadAlerts: records.filter(r => r.status === 'pending' || r.status === 'new').length
         }}
-        allowedTabs={isTechnician ? ['bookings', 'calendar', 'help'] : undefined}
+        allowedTabs={allowedNavTabs.map(t => t.id as AdminTabId)}
       />
 
       {/* 2. Main Content Column beside the Sidebar */}
@@ -3729,6 +3743,7 @@ const AdminDashboard = ({
                 currentStaffUser={currentStaffUser}
                 staffList={staffList}
                 lang={lang}
+                systemRecords={records}
               />
             </motion.div>
           )}

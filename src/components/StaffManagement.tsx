@@ -295,6 +295,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
     { key: 'canViewAnalytics', title: 'التحليلات ومؤشرات الأداء', desc: 'تحليل أداء الحجوزات ونسب الإنجاز ونمو العمليات', icon: '📈' },
     { key: 'canManageContent', title: 'إدارة المحتوى والعروض', desc: 'تعديل الخدمات، باقات العروض، ومعرض صور الأعمال', icon: '📝' },
     { key: 'canManageSettings', title: 'الإعدادات العامة والهوية', desc: 'تغيير نصوص الموقع، الألوان، أرقام التواصل وروابط السوشيال', icon: '⚙️' },
+    { key: 'workshop_vehicle_intake', title: 'استلام سيارة (ورشة)', desc: 'صلاحية استلام وتوثيق السيارات المحولة للورشة، التوقيع الإلكتروني، رفع صور الإصلاح، وإكمال فحص الأعطال', icon: '🚙' },
     { key: 'canManageStaff', title: 'إدارة الموظفين والصلاحيات', desc: 'إنشاء وتعديل حسابات الموظفين وكلمات المرور وتحديد الأدوار', icon: '🛡️' },
   ];
 
@@ -714,7 +715,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-brand-red uppercase tracking-wider flex items-center gap-2">
                       <Lock className="w-4 h-4" />
-                      3. تفصيل وتخصيص الصلاحيات (13 صلاحية دقيقة)
+                      3. تفصيل وتخصيص الصلاحيات (14 صلاحية دقيقة)
                     </h4>
                     <span className="text-[11px] text-gray-500">يمكنك تعديل أي صلاحية يدوياً</span>
                   </div>
