@@ -652,63 +652,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         assignedAt: new Date().toISOString(),
         mechanicAccepted: false,
         faults: [],
-        repairMedia: [
-          {
-            id: `media_${Date.now()}_1`,
-            url: intakePhotos.odometer.savedUrl,
-            mediaType: 'image',
-            caption: `عداد المسافة عند الاستلام (${newOdometer} كم)`,
-            stage: 'intake',
-            uploadedByStaffId: currentStaffUser?.id || 'admin',
-            uploadedByStaffName: currentStaffUser?.fullName || 'الإدارة',
-            uploadedByRole: currentStaffUser?.role || 'admin',
-            uploadedAt: new Date().toISOString()
-          },
-          {
-            id: `media_${Date.now()}_2`,
-            url: intakePhotos.front.savedUrl,
-            mediaType: 'image',
-            caption: 'البودي من الأمام (الاستلام الأولي)',
-            stage: 'intake',
-            uploadedByStaffId: currentStaffUser?.id || 'admin',
-            uploadedByStaffName: currentStaffUser?.fullName || 'الإدارة',
-            uploadedByRole: currentStaffUser?.role || 'admin',
-            uploadedAt: new Date().toISOString()
-          },
-          {
-            id: `media_${Date.now()}_3`,
-            url: intakePhotos.rear.savedUrl,
-            mediaType: 'image',
-            caption: 'البودي من الخلف (الاستلام الأولي)',
-            stage: 'intake',
-            uploadedByStaffId: currentStaffUser?.id || 'admin',
-            uploadedByStaffName: currentStaffUser?.fullName || 'الإدارة',
-            uploadedByRole: currentStaffUser?.role || 'admin',
-            uploadedAt: new Date().toISOString()
-          },
-          {
-            id: `media_${Date.now()}_4`,
-            url: intakePhotos.left.savedUrl,
-            mediaType: 'image',
-            caption: 'الجانب الأيسر (الاستلام الأولي)',
-            stage: 'intake',
-            uploadedByStaffId: currentStaffUser?.id || 'admin',
-            uploadedByStaffName: currentStaffUser?.fullName || 'الإدارة',
-            uploadedByRole: currentStaffUser?.role || 'admin',
-            uploadedAt: new Date().toISOString()
-          },
-          {
-            id: `media_${Date.now()}_5`,
-            url: intakePhotos.right.savedUrl,
-            mediaType: 'image',
-            caption: 'الجانب الأيمن (الاستلام الأولي)',
-            stage: 'intake',
-            uploadedByStaffId: currentStaffUser?.id || 'admin',
-            uploadedByStaffName: currentStaffUser?.fullName || 'الإدارة',
-            uploadedByRole: currentStaffUser?.role || 'admin',
-            uploadedAt: new Date().toISOString()
-          }
-        ],
+        repairMedia: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };

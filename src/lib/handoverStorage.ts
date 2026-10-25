@@ -14,7 +14,7 @@ export interface UploadProgress {
  * High-performance client-side image compression using HTML5 Canvas.
  * Compresses smartphone camera photos (often 5-15MB) into high-clarity 150-250KB JPEGs.
  */
-export async function compressImageForHandover(file: File, maxDimension = 1200, quality = 0.72): Promise<Blob> {
+export async function compressImageForHandover(file: File, maxDimension = 800, quality = 0.60): Promise<Blob> {
   // If not an image, return raw file
   if (!file.type.startsWith('image/')) {
     return file;
@@ -159,7 +159,7 @@ export async function uploadHandoverMediaFile(
 
   if (isImage) {
     try {
-      uploadPayload = await compressImageForHandover(file, 1200, 0.72);
+      uploadPayload = await compressImageForHandover(file, 800, 0.60);
       fallbackDataUrlPromise = blobToDataUrl(uploadPayload);
     } catch (err) {
       console.warn('Client image compression skipped, using original:', err);
