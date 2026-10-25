@@ -63,6 +63,30 @@ import {
 import { uploadHandoverMediaFile, UploadProgress } from '../lib/handoverStorage';
 import { DigitalSignaturePad } from './common/DigitalSignaturePad';
 
+// Recursively strip undefined values to ensure 100% Firestore payload validity
+function sanitizeFirestorePayload<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeFirestorePayload(item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    // Preserve Firestore sentinels like serverTimestamp()
+    if (obj.constructor && obj.constructor.name !== 'Object') {
+      return obj;
+    }
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, any>)) {
+      if (value !== undefined) {
+        clean[key] = sanitizeFirestorePayload(value);
+      }
+    }
+    return clean as T;
+  }
+  return obj;
+}
+
 interface VehicleHandoverManagerProps {
   currentStaffUser?: StaffUser | null;
   staffList?: StaffUser[];
@@ -205,7 +229,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         performedByRole: currentStaffUser?.role || 'super_admin',
         timestamp: new Date().toISOString()
       };
-      await addDoc(collection(db, 'handover_audit_logs'), logEntry);
+      await addDoc(collection(db, 'handover_audit_logs'), sanitizeFirestorePayload(logEntry));
     } catch (e) {
       console.warn('Failed to record audit log:', e);
     }
@@ -597,12 +621,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
       const newRecord: Omit<VehicleHandoverRecord, 'id'> = {
         handoverCode,
-        bookingId: selectedBookingId || undefined,
+        bookingId: selectedBookingId || '',
         plateNumber: newPlate.trim(),
         carMake: newMake.trim(),
         carModel: newModel.trim(),
         carYear: newYear.trim() || '2024',
-        vin: newVin.trim() || undefined,
+        vin: newVin.trim() || '',
         customerName: newCustName.trim() || 'عميل كريم',
         customerPhone: newCustPhone.trim() || '',
         status: 'received',
@@ -619,8 +643,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           date: new Date().toISOString(),
           staffId: currentStaffUser?.id || 'admin',
           staffName: currentStaffUser?.fullName || 'مسؤول الاستقبال',
-          signatureUrl: intakeSignature || undefined,
-          signatureTimestamp: intakeSignature ? new Date().toISOString() : undefined
+          signatureUrl: intakeSignature || '',
+          signatureTimestamp: intakeSignature ? new Date().toISOString() : ''
         },
         assignedMechanicId: selectedMech?.id || newAssignedMechId,
         assignedMechanicName: selectedMech?.fullName || 'فني صيانة',
@@ -689,7 +713,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         updatedAt: serverTimestamp()
       };
 
-      const docRef = await addDoc(collection(db, 'vehicle_handovers'), newRecord);
+      const docRef = await addDoc(collection(db, 'vehicle_handovers'), sanitizeFirestorePayload(newRecord));
 
       // Audit logs
       await recordAudit(
@@ -755,11 +779,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         mechanicAcceptanceTimestamp: new Date().toISOString(),
         mechanicAcceptedByStaffId: currentStaffUser?.id || 'workshop_staff',
         mechanicAcceptedByStaffName: currentStaffUser?.fullName || selectedRecord.assignedMechanicName || 'الميكانيكي المسؤول',
-        mechanicAcceptanceNotes: mechanicNotes.trim() || undefined,
+        mechanicAcceptanceNotes: mechanicNotes.trim() || '',
         updatedAt: serverTimestamp()
       };
 
-      await updateDoc(docRef, updateData);
+      await updateDoc(docRef, sanitizeFirestorePayload(updateData));
 
       // Record immutable audit
       await recordAudit(
@@ -823,7 +847,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         id: `fault_${Date.now()}`,
         title: faultTitle.trim(),
         description: faultDesc.trim(),
-        diagnosisNotes: faultDiagnosis.trim() || undefined,
+        diagnosisNotes: faultDiagnosis.trim() || '',
         status: faultStatus,
         isDraft: faultIsDraft,
         media: faultMediaList.map(m => ({
@@ -831,7 +855,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           url: m.url,
           mediaType: m.isVideo ? 'video' : 'image',
           uploadedAt: new Date().toISOString(),
-          caption: m.caption
+          caption: m.caption || ''
         })),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -848,11 +872,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       }
 
       const docRef = doc(db, 'vehicle_handovers', selectedRecord.id);
-      await updateDoc(docRef, {
+      await updateDoc(docRef, sanitizeFirestorePayload({
         faults: updatedFaults,
         status: nextStatus,
         updatedAt: serverTimestamp()
-      });
+      }));
 
       await recordAudit(
         selectedRecord.id,
@@ -956,11 +980,11 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
       const updatedMediaList = [...(selectedRecord.repairMedia || []), newMedia];
       const docRef = doc(db, 'vehicle_handovers', selectedRecord.id);
-      await updateDoc(docRef, {
+      await updateDoc(docRef, sanitizeFirestorePayload({
         repairMedia: updatedMediaList,
         status: selectedRecord.status === 'under_inspection' ? 'in_repair' : selectedRecord.status,
         updatedAt: serverTimestamp()
-      });
+      }));
 
       await recordAudit(
         selectedRecord.id,
@@ -1081,9 +1105,9 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         status: 'delivered' as VehicleHandoverStatus,
         finalDelivery: {
           finalOdometer: Number(finalOdometerVal),
-          finalOdometerPhotoUrl: finalOdoPhoto || undefined,
+          finalOdometerPhotoUrl: finalOdoPhoto || '',
           finalBodyPhotos: finalBodyPhotoList,
-          notes: finalAdminNotes.trim() || undefined,
+          notes: finalAdminNotes.trim() || '',
           adminSignatureUrl: finalAdminSignature,
           adminSignatureTimestamp: new Date().toISOString(),
           adminStaffId: currentStaffUser?.id || 'admin',
@@ -1093,7 +1117,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         updatedAt: serverTimestamp()
       };
 
-      await updateDoc(docRef, deliveryData);
+      await updateDoc(docRef, sanitizeFirestorePayload(deliveryData));
 
       await recordAudit(
         selectedRecord.id,
