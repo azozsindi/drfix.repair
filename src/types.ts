@@ -955,7 +955,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   snapchat: "https://www.snapchat.com",
   tiktok: "https://www.tiktok.com",
   instagram: "https://www.instagram.com",
-  twitter: "https://x.com",
   heroButtonText: "احجز الآن",
   heroImageBadgeTitle: "خدمة متنقلة وسريعة",
   heroImageBadgeSubtitle: "نصلك أينما كنت بجدة",

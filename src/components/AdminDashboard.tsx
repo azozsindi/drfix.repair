@@ -100,9 +100,7 @@ import {
   PhoneCall,
   AlignLeft,
   Camera,
-  Facebook,
   Instagram,
-  Twitter,
   Globe,
   ArrowRight,
   BarChart,
@@ -5943,30 +5941,6 @@ const AdminDashboard = ({
                               placeholder="https://instagram.com/your-account"
                               value={settingsForm.instagram}
                               onChange={e => setSettingsForm({...settingsForm, instagram: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
-                              <img src="/social/twitter.svg" alt="X (Twitter)" className="w-4 h-4 object-contain rounded-sm" /> منصة إكس (تويتر)
-                            </label>
-                            <input 
-                              type="text"
-                              placeholder="https://x.com/your-account"
-                              value={settingsForm.twitter}
-                              onChange={e => setSettingsForm({...settingsForm, twitter: e.target.value})}
-                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-gray-300 uppercase flex items-center gap-2">
-                              <img src="/social/facebook.svg" alt="Facebook" className="w-4 h-4 object-contain rounded-sm" /> فيسبوك
-                            </label>
-                            <input 
-                              type="text"
-                              placeholder="https://facebook.com/your-page"
-                              value={settingsForm.facebook}
-                              onChange={e => setSettingsForm({...settingsForm, facebook: e.target.value})}
                               className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-sm"
                             />
                           </div>

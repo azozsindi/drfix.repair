@@ -61,8 +61,6 @@ import {
   EyeOff,
   AlignLeft,
   ShieldAlert,
-  Twitter,
-  Facebook,
   Youtube,
   MousePointer2,
   Edit3,
@@ -633,7 +631,6 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   snapchat: "https://www.snapchat.com",
   tiktok: "https://www.tiktok.com",
   instagram: "https://www.instagram.com",
-  twitter: "https://x.com",
   heroButtonText: "احجز الآن",
   heroImageBadgeTitle: "خدمة متنقلة وسريعة",
   heroImageBadgeSubtitle: "نصلك أينما كنت بجدة",
@@ -3805,26 +3802,6 @@ const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppS
             </motion.a>
           )}
 
-          {/* X / Twitter */}
-          {(settings.twitter || DEFAULT_APP_SETTINGS.twitter) && (
-            <motion.a 
-              whileHover={{ y: -2, scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              href={settings.twitter || DEFAULT_APP_SETTINGS.twitter} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
-              title="X (Twitter) - منصة إكس"
-            >
-              <img 
-                src="/social/twitter.svg" 
-                alt="منصة إكس - X" 
-                className="w-5 h-5 object-contain group-hover:scale-110 transition-transform" 
-                loading="lazy"
-              />
-            </motion.a>
-          )}
-
           {/* WhatsApp */}
           {(settings.whatsapp || DEFAULT_APP_SETTINGS.whatsapp) && (
             <motion.a 
@@ -3839,26 +3816,6 @@ const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppS
               <img 
                 src="/social/whatsapp.svg" 
                 alt="واتساب - WhatsApp" 
-                className="w-5 h-5 object-contain group-hover:scale-110 transition-transform" 
-                loading="lazy"
-              />
-            </motion.a>
-          )}
-
-          {/* Facebook */}
-          {settings.facebook && (
-            <motion.a 
-              whileHover={{ y: -2, scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              href={settings.facebook} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
-              title="Facebook - فيسبوك"
-            >
-              <img 
-                src="/social/facebook.svg" 
-                alt="فيسبوك - Facebook" 
                 className="w-5 h-5 object-contain group-hover:scale-110 transition-transform" 
                 loading="lazy"
               />
