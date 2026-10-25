@@ -449,7 +449,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         previewUrl: localPreview,
         savedUrl: '',
         status: 'uploading',
-        progress: 10
+        progress: 30
       });
     } else {
       setIntakePhotos(prev => ({
@@ -459,7 +459,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           previewUrl: localPreview,
           savedUrl: '',
           status: 'uploading',
-          progress: 10
+          progress: 30
         }
       }));
     }
@@ -1128,10 +1128,10 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         <div className="relative z-10 space-y-1">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F52B35]/15 border border-[#F52B35]/30 text-[#FF414A] text-xs font-bold mb-1">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>نظام استلام وتسليم وتتبع صيانة السيارات (Vehicle Handover & Repair Tracking)</span>
+            <span>نظام تسليم وتتبع صيانة السيارات بالورش الخارجية (Vehicle Handover & Repair Tracking)</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-display font-black text-white tracking-tight flex items-center gap-2 flex-wrap">
-            <span>استلام وتسليم السيارات والتوثيق الميداني</span>
+            <span>تسليم السيارات للورش ومتابعة الإصلاحات</span>
           </h2>
           <p className="text-xs sm:text-sm text-gray-400 max-w-2xl">
             {isRestrictedWorkshopUser ? (
@@ -1139,12 +1139,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                 👨‍🔧 لوحة موظف الورشة: تظهر لك فقط السيارات المسندة إليك للمعاينة وتوقيع الاستلام إلكترونياً وتسجيل الأعطال ورفع الصور والفيديوهات وطلب التسليم.
               </span>
             ) : (
-              'توثيق استلام المركبات، العدادات، صور البودي، إسناد الميكانيكي، التواقيع الإلكترونية، تتبع الأعطال، واعتماد التسليم النهائي.'
+              'تسجيل تسليم المركبات للورش الخارجية، قراءة العدادات، صور البودي، إسناد الميكانيكي، التواقيع الإلكترونية، واعتماد التسليم النهائي.'
             )}
           </p>
         </div>
 
-        {/* Action Button: Strictly management alone can create new vehicle intakes */}
+        {/* Action Button: Strictly management alone can create new vehicle handovers */}
         {canCreateVehicleIntake && (
           <div className="relative z-10 shrink-0">
             <button
@@ -1153,7 +1153,7 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
               className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-[#F52B35] to-[#B3121B] hover:from-[#FF414A] hover:to-[#C91620] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#F52B35]/25 transition-all cursor-pointer active:scale-95"
             >
               <Plus className="w-4 h-4" />
-              <span>استلام سيارة جديدة (Intake)</span>
+              <span>تسليم سيارة للورشة 🚗</span>
             </button>
           </div>
         )}
@@ -1236,16 +1236,16 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
           <p className="text-xs text-gray-400 max-w-md mx-auto">
             {isRestrictedWorkshopUser 
               ? 'لا توجد سيارات مسندة إلى حسابك حالياً في هذا التصنيف.'
-              : 'لم يتم العثور على أي سيارة مستلمة. يمكنك الضغط على "استلام سيارة جديدة" لتوثيق أول عملية استلام.'}
+              : 'لم يتم العثور على أي سيارة. يمكنك الضغط على "تسليم سيارة للورشة" لتسجيل وإسناد أول سيارة.'}
           </p>
           {canCreateVehicleIntake && (
             <button
               type="button"
               onClick={() => setShowNewIntakeModal(true)}
-              className="mt-2 px-4 py-2 rounded-xl bg-[#F52B35] text-white text-xs font-bold inline-flex items-center gap-1.5"
+              className="mt-2 px-4 py-2 rounded-xl bg-[#F52B35] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>تسجيل استلام سيارة الآن</span>
+              <span>تسليم أول سيارة للورشة الآن 🚗</span>
             </button>
           )}
         </div>
@@ -1930,8 +1930,8 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                   <Plus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-display font-black text-base text-white">توثيق استلام سيارة جديدة (Vehicle Intake)</h3>
-                  <p className="text-xs text-gray-400">تسجيل بيانات السيارة، العداد، صور البودي، والخدوش المسبقة وإسناد الميكانيكي</p>
+                  <h3 className="font-display font-black text-base text-white">تسجيل تسليم سيارة للورشة وتوثيق الحالة (Vehicle Handover)</h3>
+                  <p className="text-xs text-gray-400">تسجيل بيانات السيارة، العداد، صور البودي، والخدوش المسبقة وإسنادها لورشة الصيانة</p>
                 </div>
               </div>
               <button
@@ -2316,9 +2316,9 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
 
               {/* Electronic Signature */}
               <DigitalSignaturePad
-                title="توقيع موظف الاستقبال الإلكتروني"
-                subtitle="وقّع لتأكيد اكتمال الفحص المبدئي ومطابقة الصور مع واقع السيارة"
-                signerName={currentStaffUser?.fullName || 'موظف الاستقبال'}
+                title="توقيع مسؤول التسليم للورشة الإلكتروني"
+                subtitle="وقّع لتأكيد اكتمال الفحص المبدئي وتسليم السيارة للورشة الخارجية"
+                signerName={currentStaffUser?.fullName || 'مسؤول التسليم'}
                 onSave={sig => setIntakeSignature(sig)}
                 onClear={() => setIntakeSignature('')}
               />
@@ -2332,12 +2332,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
                   {intakeSubmitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>جاري حفظ السجل وإسناد السيارة...</span>
+                      <span>جاري حفظ السجل وإسناد السيارة للورشة...</span>
                     </>
                   ) : (
                     <>
                       <Check className="w-5 h-5" />
-                      <span>اعتماد الاستلام وإسناد السيارة للميكانيكي</span>
+                      <span>اعتماد تسليم السيارة وإسنادها للورشة 🚗</span>
                     </>
                   )}
                 </button>

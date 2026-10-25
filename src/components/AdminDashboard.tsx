@@ -2389,11 +2389,11 @@ const AdminDashboard = ({
 
   // Strictly restrict navigation tabs for workshop intake and technicians to eliminate clutter & permission leaks
   const allowedNavTabs = isWorkshopUser ? [
-    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات (الورشة) 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
+    { id: 'handovers', label: lang === 'ar' ? 'السيارات المستلمة من المركز (الورشة) 🚗' : 'Assigned Vehicles (Workshop)', icon: Car, allowed: true },
   ] : isTechnician ? [
     { id: 'bookings', label: lang === 'ar' ? 'مهامي الميدانية 🔧' : 'My Field Tasks', icon: Wrench, allowed: true },
     { id: 'calendar', label: lang === 'ar' ? 'جدول مواعيدي 📅' : 'My Schedule', icon: CalendarCheck, allowed: true },
-    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
+    { id: 'handovers', label: lang === 'ar' ? 'تسليم السيارات للورش ومتابعتها 🚗' : 'Vehicle Handovers', icon: Car, allowed: true },
     { id: 'help', label: lang === 'ar' ? 'دليل الفني الميداني 📖' : 'Field Manual', icon: BookOpen, allowed: true },
     { id: 'manual', label: lang === 'ar' ? 'دليل الفني الميداني 📖' : 'Field Manual', icon: BookOpen, allowed: true },
   ] : [
@@ -2401,7 +2401,7 @@ const AdminDashboard = ({
     { id: 'dashboard', label: lang === 'ar' ? 'الرئيسية ونظرة عامة' : 'Dashboard Overview', icon: BarChart, allowed: userPermissions.canViewDashboard !== false },
     { id: 'bookings', label: lang === 'ar' ? 'الحجوزات والعمليات' : 'Bookings & Operations', icon: Calendar, allowed: userPermissions.canManageBookings !== false },
     { id: 'calendar', label: lang === 'ar' ? 'التقويم والمواعيد' : 'Calendar & Schedule', icon: CalendarCheck, allowed: userPermissions.canViewCalendar !== false },
-    { id: 'handovers', label: lang === 'ar' ? 'استلام وتسليم السيارات' : 'Vehicle Handover & Tracking', icon: Car, allowed: isSuperAdmin || hasWorkshopIntake || userPermissions.canManageBookings !== false },
+    { id: 'handovers', label: lang === 'ar' ? 'تسليم السيارات للورش ومتابعتها 🚗' : 'Vehicle Handovers & Workshops', icon: Car, allowed: isSuperAdmin || hasWorkshopIntake || userPermissions.canManageBookings !== false },
     { id: 'customers', label: lang === 'ar' ? 'العملاء وسجل السيارات' : 'Customers & Vehicles', icon: User, allowed: userPermissions.canManageCustomers !== false },
     { id: 'contracts', label: lang === 'ar' ? 'إدارة العقود (ورش وشركات)' : 'Contracts (Workshops & Fleets)', icon: FileCheck, allowed: userPermissions.canManageContracts !== false },
     { id: 'reports', label: lang === 'ar' ? 'التقارير وسندات الصيانة (Word & PDF)' : 'Reports & Work Orders (Word & PDF)', icon: Printer, allowed: userPermissions.canViewReports !== false },
