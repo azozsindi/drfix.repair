@@ -96,10 +96,10 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
           </kbd>
         </button>
 
-        {/* Back to Website Button */}
+        {/* Back to Website Button (Desktop only; on mobile it is in the menu and quick actions) */}
         <Link
           to="/"
-          className="flex items-center justify-center gap-1.5 w-10 h-10 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.12] hover:border-[#F52B35]/60 text-white text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95 shrink-0"
+          className="hidden sm:flex items-center justify-center gap-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.12] hover:border-[#F52B35]/60 text-white text-xs font-bold transition-all cursor-pointer shadow-sm group active:scale-95 shrink-0"
           title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
         >
           <Globe className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
@@ -110,14 +110,14 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
 
         {/* Language Switcher */}
         <div className="shrink-0">
-          <LanguageToggle className="bg-[#141720] border-white/[0.08]" />
+          <LanguageToggle className="bg-[#141720] border-white/[0.08] px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs" />
         </div>
 
         {/* Notifications Icon with Unread Pill */}
         <button
           type="button"
           onClick={() => onNavigateToTab('notifications')}
-          className="relative w-10 h-10 flex items-center justify-center rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-gray-300 hover:text-white transition-all cursor-pointer shadow-sm group shrink-0 active:scale-95"
+          className="relative w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-[#141720] hover:bg-[#1C202A] border border-white/[0.08] text-gray-300 hover:text-white transition-all cursor-pointer shadow-sm group shrink-0 active:scale-95"
           title={lang === 'ar' ? 'مركز التنبيهات والإشعارات' : 'Notifications Hub'}
           aria-label={lang === 'ar' ? 'الإشعارات' : 'Notifications'}
         >
@@ -134,7 +134,7 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
           <button
             type="button"
             onClick={onQuickNewBooking}
-            className="flex items-center justify-center gap-1.5 w-10 h-10 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#F52B35]/25 hover:shadow-lg cursor-pointer shrink-0 active:scale-95"
+            className="flex items-center justify-center gap-1.5 w-9 h-9 sm:w-auto sm:h-auto sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] hover:from-[#FF414A] hover:to-[#E0242E] text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#F52B35]/25 hover:shadow-lg cursor-pointer shrink-0 active:scale-95"
             title={lang === 'ar' ? 'حجز جديد' : 'New Booking'}
           >
             <Plus className="w-4 h-4" />

@@ -1731,23 +1731,28 @@ const AdminDashboard = ({
         const ids = Array.from(selectedBookingIds);
         const count = ids.length;
 
-        // Optimistic UI update immediately
-        setRecords(prev => prev.filter(r => !selectedBookingIds.has(r.id)));
-        setSelectedBookingIds(new Set());
-
         // Delete all from Firestore in parallel
         await Promise.all(ids.map(id => deleteDoc(doc(db, 'maintenance', String(id)))));
+
+        // Update UI state
+        setRecords(prev => prev.filter(r => !selectedBookingIds.has(r.id)));
+        setSelectedBookingIds(new Set());
+        if (selectedBookingDetails && ids.includes(selectedBookingDetails.id)) {
+          setSelectedBookingDetails(null);
+        }
 
         setDeleteConfirmTarget(null);
         setDeleteToast({ message: `تم حذف (${count}) حجز بنجاح!`, type: 'success' });
       } else if (deleteConfirmTarget.type === 'batch_offers') {
         const offersToDelete = [...offers];
-        setOffers([]);
         await Promise.all(offersToDelete.map(o => deleteDoc(doc(db, 'offers', o.id))));
+        setOffers([]);
         setDeleteConfirmTarget(null);
         setDeleteToast({ message: 'تم حذف جميع العروض بنجاح!', type: 'success' });
       } else if (deleteConfirmTarget.type === 'single' && deleteConfirmTarget.collectionName && deleteConfirmTarget.id) {
         const { collectionName, id } = deleteConfirmTarget;
+
+        await deleteDoc(doc(db, collectionName, id));
 
         if (collectionName === 'maintenance') {
           setRecords(prev => prev.filter(r => r.id !== id));
@@ -1769,13 +1774,15 @@ const AdminDashboard = ({
           setTestimonials(prev => prev.filter(t => t.id !== id));
         }
 
-        await deleteDoc(doc(db, collectionName, id));
         setDeleteConfirmTarget(null);
         setDeleteToast({ message: 'تم الحذف بنجاح!', type: 'success' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error executing deletion:", error);
-      setDeleteToast({ message: 'حدث خطأ أثناء محاولة الحذف، يرجى المحاولة ثانية.', type: 'error' });
+      const detailMsg = error?.code === 'permission-denied'
+        ? 'تم رفض الصلاحية من قاعدة البيانات'
+        : (error?.message || 'يرجى المحاولة ثانية.');
+      setDeleteToast({ message: `حدث خطأ أثناء محاولة الحذف: ${detailMsg}`, type: 'error' });
     } finally {
       setIsDeletingProcess(false);
       setTimeout(() => {

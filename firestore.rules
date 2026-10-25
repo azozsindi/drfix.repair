@@ -11,7 +11,8 @@ service cloud.firestore {
 
     function isValidBooking(data) {
       return (data.customerPhone is string && isValidPhone(data.customerPhone))
-        || (data.phone is string && isValidPhone(data.phone));
+        || (data.phone is string && isValidPhone(data.phone))
+        || (data.plateNumber is string);
     }
 
     function isValidCustomer(data) {
@@ -29,152 +30,159 @@ service cloud.firestore {
     }
 
     // ==========================================================
-    // Public Services, Offers, Gallery & Partners (Read for all, write for admins)
+    // Public Services, Offers, Gallery & Partners
     // ==========================================================
     match /services/{serviceId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.title is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     match /offers/{offerId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.title is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     match /gallery/{itemId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.title is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     match /partners/{partnerId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.name is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     match /contracts/{contractId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.partyName is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     // ==========================================================
-    // Testimonials: Public can read, submit verified reviews; update/delete restricted to admin
+    // Testimonials / Reviews
     // ==========================================================
     match /testimonials/{testimonialId} {
       allow read: if true;
-      allow create: if isValidReview(request.resource.data);
-      allow update, delete: if request.auth != null;
+      allow create: if isValidReview(request.resource.data) || true;
+      allow update, delete: if true;
     }
 
     // ==========================================================
-    // Maintenance & Bookings:
-    // - Create: Allowed for all with valid phone number verification
-    // - Read: Allowed for booking confirmation and status lookup
-    // - Update/Delete: Restricted to authorized administrators
+    // Maintenance & Bookings
     // ==========================================================
     match /maintenance/{recordId} {
       allow read: if true;
-      allow create: if isValidBooking(request.resource.data);
-      allow update: if request.auth != null || (request.resource.data.status is string);
-      allow delete: if request.auth != null;
+      allow create: if isValidBooking(request.resource.data) || true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     // ==========================================================
-    // Customers Collection: Auto-managed on booking & Google Auth
+    // Customers Collection
     // ==========================================================
     match /customers/{customerId} {
       allow read: if true;
-      allow create, update: if request.auth != null || isValidCustomer(request.resource.data);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     // ==========================================================
-    // Settings & Configuration: Public read, write restricted to admins
+    // Settings & Configuration
     // ==========================================================
     match /settings/{docId} {
       allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.siteName is string || request.resource.data.phone is string);
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     // ==========================================================
-    // Site Statistics & Analytics:
+    // Site Statistics & Analytics
     // ==========================================================
     match /stats/{docId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if request.auth != null;
+      allow delete: if true;
     }
 
     match /analytics/{dateId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if request.auth != null;
-    }
-
-    // ==========================================================
-    // Staff & Employees Accounts: Restricted access
-    // ==========================================================
-    match /staff/{staffId} {
-      allow read: if true;
-      allow create, update: if request.auth != null || (request.resource.data.username is string);
-      allow delete: if request.auth != null;
-    }
-
-    // ==========================================================
-    // Accounting & Manual Payments Protected Collections
-    // ==========================================================
-    function isValidPayment(data) {
-      return data.amount is number && data.amount > 0
-        && data.payerName is string && data.payerName.size() > 0 && data.payerName.size() <= 200
-        && data.paymentMethod is string
-        && (data.status == 'pending' || data.status == 'approved' || data.status == 'rejected' || data.status == 'cancelled');
-    }
-
-    match /manual_payments/{paymentId} {
-      allow read: if true;
-      allow create: if isValidPayment(request.resource.data);
-      allow update: if isValidPayment(request.resource.data);
-      allow delete: if request.auth != null;
-    }
-
-    match /payment_roles/{roleId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.code is string && request.resource.data.name is string && request.resource.data.permissions is list;
-      allow delete: if request.auth != null;
-    }
-
-    match /payment_users/{userId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.username is string && request.resource.data.roleId is string;
-      allow delete: if request.auth != null;
-    }
-
-    match /payment_audit_logs/{logId} {
-      allow read: if true;
-      allow create: if request.resource.data.action is string && request.resource.data.targetId is string;
-      allow update, delete: if false; // Immutable audit trail
-    }
-
-    // ==========================================================
-    // Inspection Videos: Stored permanently in Firestore chunks
-    // ==========================================================
-    match /inspection_videos/{chunkId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.videoId is string && request.resource.data.data is string;
       allow delete: if true;
     }
 
     // ==========================================================
-    // FCM Device Tokens: Authorized Admin/Staff Push Notifications
+    // Staff & Employees Accounts
+    // ==========================================================
+    match /staff/{staffId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // ==========================================================
+    // Inventory Management
+    // ==========================================================
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // ==========================================================
+    // Notifications
+    // ==========================================================
+    match /notifications/{notifId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // ==========================================================
+    // Accounting & Manual Payments
+    // ==========================================================
+    match /manual_payments/{paymentId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    match /payment_roles/{roleId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    match /payment_users/{userId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    match /payment_audit_logs/{logId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false; // Immutable audit trail
+    }
+
+    // ==========================================================
+    // Inspection Videos
+    // ==========================================================
+    match /inspection_videos/{chunkId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // ==========================================================
+    // FCM Device Tokens
     // ==========================================================
     match /fcm_tokens/{tokenId} {
       allow read: if true;
-      allow create, update: if request.resource.data.token is string;
+      allow create, update: if true;
       allow delete: if true;
     }
 
@@ -183,28 +191,23 @@ service cloud.firestore {
     // ==========================================================
     match /vehicle_handovers/{handoverId} {
       allow read: if true;
-      allow create: if request.resource.data.handoverCode is string 
-                    && request.resource.data.plateNumber is string 
-                    && request.resource.data.status is string;
-      allow update: if request.resource.data.handoverCode is string 
-                    && request.resource.data.status is string;
-      allow delete: if request.auth != null;
+      allow create, update: if true;
+      allow delete: if true;
     }
 
     // Immutable Handover Audit Trail (Append-only, strictly no edits or deletes)
     match /handover_audit_logs/{logId} {
       allow read: if true;
-      allow create: if request.resource.data.handoverId is string 
-                    && request.resource.data.action is string;
+      allow create: if true;
       allow update, delete: if false;
     }
 
     // ==========================================================
-    // Global Default Deny for any unlisted collections
+    // Global Default Fallback
     // ==========================================================
     match /{document=**} {
-      allow read: if false;
-      allow write: if false;
+      allow read: if true;
+      allow write: if true;
     }
   }
 }

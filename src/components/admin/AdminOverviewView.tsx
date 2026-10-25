@@ -23,7 +23,10 @@ import {
   Phone,
   Eye,
   FileText,
-  Globe
+  Globe,
+  ChevronDown,
+  SlidersHorizontal,
+  X
 } from 'lucide-react';
 import { AdminTrendChart, AdminBarChart } from './AdminCharts';
 import { MaintenanceRecord, Partner, Contract } from '../../types';
@@ -147,73 +150,24 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
     }
   };
 
-  // Interactive touch and drag scrolling logic for mobile & desktop
-  const actionBarRef = React.useRef<HTMLDivElement>(null);
-  const isDraggingRef = React.useRef(false);
-  const startXRef = React.useRef(0);
-  const startScrollLeftRef = React.useRef(0);
-  const hasMovedRef = React.useRef(false);
+  // Mobile Quick Actions Dropdown State
+  const [showMobileDropdown, setShowMobileDropdown] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!actionBarRef.current) return;
-    isDraggingRef.current = true;
-    hasMovedRef.current = false;
-    startXRef.current = e.touches[0].clientX;
-    startScrollLeftRef.current = actionBarRef.current.scrollLeft;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDraggingRef.current || !actionBarRef.current) return;
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - startXRef.current;
-    if (Math.abs(diff) > 4) {
-      hasMovedRef.current = true;
+  // Close dropdown when tapping outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowMobileDropdown(false);
+      }
+    };
+    if (showMobileDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
-    // Update scroll position directly for instant tactile movement
-    actionBarRef.current.scrollLeft = startScrollLeftRef.current - diff;
-  };
-
-  const handleTouchEnd = () => {
-    isDraggingRef.current = false;
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!actionBarRef.current) return;
-    isDraggingRef.current = true;
-    hasMovedRef.current = false;
-    startXRef.current = e.clientX;
-    startScrollLeftRef.current = actionBarRef.current.scrollLeft;
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current || !actionBarRef.current) return;
-    const currentX = e.clientX;
-    const diff = currentX - startXRef.current;
-    if (Math.abs(diff) > 4) {
-      hasMovedRef.current = true;
-    }
-    actionBarRef.current.scrollLeft = startScrollLeftRef.current - diff;
-  };
-
-  const handleMouseUp = () => {
-    isDraggingRef.current = false;
-  };
-
-  const handleItemClick = (e: React.MouseEvent) => {
-    if (hasMovedRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      hasMovedRef.current = false;
-    }
-  };
-
-  const handleScrollBy = (amount: number) => {
-    if (!actionBarRef.current) return;
-    actionBarRef.current.scrollBy({
-      left: isRtl ? -amount : amount,
-      behavior: 'smooth'
-    });
-  };
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showMobileDropdown]);
 
   return (
     <motion.div
@@ -242,138 +196,201 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           </p>
         </div>
 
-        {/* Action Buttons Container with Active Drag, Touch Movement & Navigation Arrows */}
-        <div className="relative flex items-center gap-2.5 w-full sm:w-auto min-w-0 max-w-full">
-          {/* Mobile slide button (Right in RTL / Left in LTR) */}
+        {/* Desktop Actions (sm and above): Sleek inline buttons */}
+        <div className="hidden sm:flex items-center gap-2.5 shrink-0">
+          <Link
+            to="/"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
+            title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
+          >
+            <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
+            <span>{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Site'}</span>
+          </Link>
           <button
             type="button"
-            onClick={() => handleScrollBy(-130)}
-            className="sm:hidden w-10 h-10 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm flex items-center justify-center"
-            title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide left'}
-            aria-label="تحريك الأزرار"
+            onClick={onOpenNewBookingModal}
+            className="flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
           >
-            {isRtl ? <ChevronRight className="w-5 h-5 text-gray-200" /> : <ChevronLeft className="w-5 h-5 text-gray-200" />}
+            <PlusCircle className="w-4 h-4" />
+            <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
           </button>
-
-          {/* Interactive touch-draggable container */}
-          <div
-            ref={actionBarRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            className="flex items-center gap-3 w-full sm:w-auto overflow-x-auto min-w-0 max-w-full pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain flex-nowrap sm:flex-wrap select-none scroll-smooth cursor-grab active:cursor-grabbing"
-            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-          >
-            <Link
-              to="/"
-              onClick={handleItemClick}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] hover:border-[#F52B35]/40 text-gray-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer group shadow-sm shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
-              title={lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}
-            >
-              <Globe className="w-4 h-4 text-[#F52B35] group-hover:scale-110 transition-transform" />
-              <span>{lang === 'ar' ? 'الرجوع إلى الموقع' : 'Back to Site'}</span>
-            </Link>
-            <button
-              type="button"
-              onClick={(e) => {
-                if (hasMovedRef.current) {
-                  e.preventDefault();
-                  hasMovedRef.current = false;
-                  return;
-                }
-                onOpenNewBookingModal();
-              }}
-              className="flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-[#F52B35] hover:bg-[#FF414A] text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-[#F52B35]/25 hover:shadow-xl hover:shadow-[#F52B35]/35 cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                if (hasMovedRef.current) {
-                  e.preventDefault();
-                  hasMovedRef.current = false;
-                  return;
-                }
-                onNavigateTab('reports');
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
-            >
-              <FileText className="w-4 h-4 text-[#F52B35]" />
-              <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
-            </button>
-          </div>
-
-          {/* Mobile slide button (Left in RTL / Right in LTR) */}
           <button
             type="button"
-            onClick={() => handleScrollBy(130)}
-            className="sm:hidden w-10 h-10 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] active:bg-[#F52B35]/25 text-gray-300 hover:text-white border border-white/[0.08] shrink-0 transition-colors cursor-pointer shadow-sm flex items-center justify-center"
-            title={lang === 'ar' ? 'تحريك الأزرار' : 'Slide right'}
-            aria-label="تحريك الأزرار"
+            onClick={() => onNavigateTab('reports')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-gray-200 text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 min-h-[42px]"
           >
-            {isRtl ? <ChevronLeft className="w-5 h-5 text-gray-200" /> : <ChevronRight className="w-5 h-5 text-gray-200" />}
+            <FileText className="w-4 h-4 text-[#F52B35]" />
+            <span>{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
           </button>
+        </div>
+
+        {/* Mobile App-Style Actions Bar with Dropdown Menu (sm:hidden) */}
+        <div className="sm:hidden flex items-center gap-2 w-full pt-3 mt-1 border-t border-white/[0.08] relative" ref={dropdownRef}>
+          {/* Main Primary Action Button */}
+          <button
+            type="button"
+            onClick={onOpenNewBookingModal}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] active:from-[#FF414A] active:to-[#E0242E] text-white font-black text-xs shadow-md shadow-[#F52B35]/25 transition-all cursor-pointer"
+          >
+            <PlusCircle className="w-4 h-4 shrink-0" />
+            <span className="truncate">{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
+          </button>
+
+          {/* Quick Actions Dropdown Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setShowMobileDropdown(!showMobileDropdown)}
+            className={cn(
+              "flex items-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer shrink-0",
+              showMobileDropdown
+                ? "bg-[#F52B35]/20 border-[#F52B35] text-white shadow-sm"
+                : "bg-white/[0.06] hover:bg-white/[0.1] border-white/10 text-gray-200 active:bg-white/15"
+            )}
+            aria-expanded={showMobileDropdown}
+            aria-label={lang === 'ar' ? 'قائمة الإجراءات السريعة' : 'Quick Actions Menu'}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#F52B35]" />
+            <span>{lang === 'ar' ? 'الإجراءات' : 'Actions'}</span>
+            <ChevronDown className={cn("w-3.5 h-3.5 text-gray-400 transition-transform duration-200", showMobileDropdown && "rotate-180 text-white")} />
+          </button>
+
+          {/* Native Mobile-App Style Dropdown Menu */}
+          {showMobileDropdown && (
+            <div 
+              className={cn(
+                "absolute top-full left-0 right-0 mt-2 z-40 p-2 rounded-2xl bg-[#141720] border border-white/15 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 space-y-1",
+                isRtl ? "text-right" : "text-left"
+              )}
+            >
+              <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-white/5 flex items-center justify-between">
+                <span>{lang === 'ar' ? 'الإجراءات السريعة والمباشرة' : 'Quick Actions'}</span>
+                <button 
+                  type="button" 
+                  onClick={() => setShowMobileDropdown(false)}
+                  className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <Link
+                to="/"
+                onClick={() => setShowMobileDropdown(false)}
+                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <Globe className="w-3.5 h-3.5 text-[#F52B35]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}</span>
+                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'عرض الصفحة الرئيسية للعملاء' : 'View customer-facing homepage'}</span>
+                </div>
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileDropdown(false);
+                  onNavigateTab('reports');
+                }}
+                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
+                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'سندات القبض والفواتير والتقارير' : 'Invoices & operational reports'}</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileDropdown(false);
+                  onNavigateTab('contracts');
+                }}
+                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'إدارة العقود والشركات' : 'Corporate Contracts'}</span>
+                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'عقود الصيانة الدورية للشركات' : 'Corporate fleet maintenance contracts'}</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileDropdown(false);
+                  onNavigateTab('offers');
+                }}
+                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'العروض الترويجية والخصومات' : 'Special Offers'}</span>
+                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'تحديث وتفعيل العروض الحالية' : 'Manage active discounts & bundles'}</span>
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Quick Action Navigation Grid (Swipeable / Scrollable on Mobile) */}
-      <div 
-        className="flex sm:grid sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 overflow-x-auto sm:overflow-visible pb-1 pt-0.5 no-scrollbar touch-pan-x overscroll-contain w-full min-w-0 max-w-full select-none scroll-smooth"
-        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
-      >
+      {/* Quick Action Navigation Grid (Clean Responsive 3-col on Mobile, 6-col on Desktop) */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 sm:gap-3 w-full">
         <button 
           type="button"
           onClick={onOpenNewBookingModal} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-[#F52B35]/30 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm hover:border-[#F52B35] shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-[#F52B35]/15 border border-[#F52B35]/30 hover:border-[#F52B35] flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <PlusCircle className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'حجز جديد' : 'New Booking'}</span>
+          <PlusCircle className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'حجز جديد' : 'New Booking'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('contracts')} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-white/10 border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <FileCheck className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'إدارة العقود' : 'Contracts'}</span>
+          <FileCheck className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'إدارة العقود' : 'Contracts'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('offers')} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-white/10 border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <Tag className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'العروض الخاصة' : 'Offers'}</span>
+          <Tag className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'العروض الخاصة' : 'Offers'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('services')} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-white/10 border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <Wrench className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'إدارة الخدمات' : 'Services'}</span>
+          <Wrench className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'إدارة الخدمات' : 'Services'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('gallery')} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-white/10 border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <Camera className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'المعرض والوسائط' : 'Gallery'}</span>
+          <Camera className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'المعرض والوسائط' : 'Gallery'}</span>
         </button>
         <button 
           type="button"
           onClick={() => onNavigateTab('partners')} 
-          className="min-w-[120px] sm:min-w-0 p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1.5 transition-all group text-center cursor-pointer shadow-sm shrink-0 sm:shrink"
+          className="w-full p-2.5 sm:p-3.5 rounded-xl bg-[#141720] hover:bg-[#1C202C] active:bg-white/10 border border-white/[0.08] hover:border-[#F52B35]/40 flex flex-col items-center justify-center gap-1 sm:gap-1.5 transition-all group text-center cursor-pointer shadow-sm active:scale-95"
         >
-          <Handshake className="w-5 h-5 text-[#F52B35] group-hover:scale-110 transition-transform" />
-          <span className="text-xs font-bold text-white whitespace-nowrap">{lang === 'ar' ? 'شركاء النجاح' : 'Partners'}</span>
+          <Handshake className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-[#F52B35] group-hover:scale-110 transition-transform shrink-0" />
+          <span className="text-[11px] sm:text-xs font-bold text-white truncate w-full">{lang === 'ar' ? 'شركاء النجاح' : 'Partners'}</span>
         </button>
       </div>
 
