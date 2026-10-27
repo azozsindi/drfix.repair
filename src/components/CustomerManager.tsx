@@ -47,7 +47,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
-import { findExistingCustomerInFirestore, purgeDuplicateCustomersInFirestore } from '../lib/customerDeduplication';
+import { findExistingCustomerInFirestore, purgeDuplicateCustomersInFirestore, deduplicateCustomerProfiles } from '../lib/customerDeduplication';
 import { exportSingleBookingWord } from '../lib/reportUtils';
 import { useScrollLock } from '../lib/scrollLock';
 
@@ -175,48 +175,8 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         });
       });
 
-      // Deduplicate into unified customer cards in UI so no duplicate rows appear
-      const unifiedMap = new Map<string, CustomerProfile>();
-
-      rawList.forEach((item) => {
-        const cleanP = unifySaudiPhone(item.phone) || item.phone.trim();
-        const cleanE = item.email ? item.email.toLowerCase().trim() : '';
-        const key = cleanE ? `email:${cleanE}` : (cleanP ? `phone:${cleanP}` : `id:${item.id}`);
-
-        if (!unifiedMap.has(key)) {
-          unifiedMap.set(key, { ...item, phone: cleanP || item.phone });
-        } else {
-          const prev = unifiedMap.get(key)!;
-          // Merge vehicles
-          const combinedVehicles = [...prev.vehicles];
-          item.vehicles.forEach(v => {
-            if (!combinedVehicles.some(cv => cv.model.toLowerCase() === v.model.toLowerCase() && cv.plateNumber === v.plateNumber)) {
-              combinedVehicles.push(v);
-            }
-          });
-
-          // Pick best name
-          const bestName = (prev.name && prev.name !== 'عميل' && prev.name !== 'عميل كريم')
-            ? prev.name
-            : (item.name && item.name !== 'عميل' && item.name !== 'عميل كريم' ? item.name : prev.name);
-
-          unifiedMap.set(key, {
-            ...prev,
-            id: prev.id.length > 20 ? prev.id : (item.id.length > 20 ? item.id : prev.id),
-            name: bestName,
-            phone: prev.phone || cleanP,
-            email: prev.email || cleanE,
-            vehicles: combinedVehicles,
-            totalVisits: Math.max(prev.totalVisits, item.totalVisits),
-            totalSpent: Math.max(prev.totalSpent, item.totalSpent),
-            status: (prev.totalVisits >= 3 || item.totalVisits >= 3) ? 'vip' : (prev.status === 'vip' || item.status === 'vip' ? 'vip' : prev.status),
-            notes: prev.notes && item.notes && !prev.notes.includes(item.notes) ? `${prev.notes} | ${item.notes}` : (prev.notes || item.notes),
-            lastVisitDate: prev.lastVisitDate || item.lastVisitDate
-          });
-        }
-      });
-
-      const unifiedList = Array.from(unifiedMap.values());
+      // Deduplicate into unified customer cards in UI comparing BOTH Phone and Customer Name
+      const unifiedList = deduplicateCustomerProfiles(rawList);
       setCustomers(unifiedList);
       try { localStorage.setItem('drfix_cached_customers_manager', JSON.stringify(unifiedList)); } catch {}
       setLoading(false);
@@ -231,6 +191,13 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Background Firestore deduplication to automatically merge existing duplicates
+  useEffect(() => {
+    purgeDuplicateCustomersInFirestore(db).catch(err => {
+      console.warn('Background customer auto-deduplication error:', err);
+    });
   }, []);
 
   const [isDeduplicating, setIsDeduplicating] = useState(false);

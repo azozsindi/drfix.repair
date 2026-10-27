@@ -33,6 +33,8 @@ import { MaintenanceRecord, Partner, Contract } from '../../types';
 import { AdminTabId } from './types';
 import { cn } from '../../lib/utils';
 import { safeFormatDate } from '../../lib/dateUtils';
+import { unifySaudiPhone } from '../../lib/phoneUtils';
+import { areCustomerNamesMatching, areCustomerPhonesMatching, isGenericCustomerName } from '../../lib/customerDeduplication';
 
 interface AdminOverviewViewProps {
   records: MaintenanceRecord[];
@@ -71,14 +73,45 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
   const newReviewsCount = testimonials.filter(t => !t.reply).length;
   const activeContractsCount = contracts.length;
 
-  // Unique customers based on phone number
+  // Unique customers deduplicated by matching Phone AND Customer Name
   const uniqueCustomersCount = React.useMemo(() => {
-    const phones = new Set<string>();
+    const uniquePersons: { phone: string; name: string }[] = [];
+
     records.forEach(r => {
-      const p = (r.customerPhone || '').trim();
-      if (p) phones.add(p);
+      const p = unifySaudiPhone(r.customerPhone) || (r.customerPhone || '').trim();
+      const n = (r.customerName || (r as any).name || '').trim();
+
+      if (!p && !n) return;
+
+      const alreadyExists = uniquePersons.some(existing => {
+        // Match phone
+        if (p && existing.phone && areCustomerPhonesMatching(p, existing.phone)) {
+          return true;
+        }
+        // Match name (non-generic)
+        if (n && existing.name && areCustomerNamesMatching(n, existing.name)) {
+          return true;
+        }
+        return false;
+      });
+
+      if (!alreadyExists) {
+        uniquePersons.push({ phone: p, name: n });
+      } else {
+        const idx = uniquePersons.findIndex(existing => 
+          (p && existing.phone && areCustomerPhonesMatching(p, existing.phone)) ||
+          (n && existing.name && areCustomerNamesMatching(n, existing.name))
+        );
+        if (idx !== -1) {
+          if (!uniquePersons[idx].phone && p) uniquePersons[idx].phone = p;
+          if ((!uniquePersons[idx].name || isGenericCustomerName(uniquePersons[idx].name)) && n && !isGenericCustomerName(n)) {
+            uniquePersons[idx].name = n;
+          }
+        }
+      }
     });
-    return phones.size;
+
+    return uniquePersons.length;
   }, [records]);
 
   // 7-day bookings trend data

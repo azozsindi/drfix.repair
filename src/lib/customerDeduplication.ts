@@ -550,3 +550,94 @@ export const purgeDuplicateCustomersInFirestore = async (
 
   return { mergedGroupsCount, deletedDocsCount };
 };
+
+/**
+ * In-memory deduplication for customer profiles.
+ * Merges any profiles that share:
+ * - Phone number (unified)
+ * - Customer Name (normalized Arabic non-generic)
+ * - Email / Google UID
+ * Guarantees zero duplicate cards are shown in the UI.
+ */
+export const deduplicateCustomerProfiles = <T extends Record<string, any>>(profiles: T[]): T[] => {
+  if (!profiles || profiles.length === 0) return [];
+
+  const clusters: T[] = [];
+
+  profiles.forEach(item => {
+    const cleanP = item.phone ? (unifySaudiPhone(item.phone) || item.phone.trim()) : '';
+    const cleanE = item.email ? item.email.toLowerCase().trim() : '';
+    const cleanName = (item.name || '').trim();
+
+    // Find if item matches any existing cluster
+    const clusterIndex = clusters.findIndex(existing => {
+      // 1. Phone match
+      if (cleanP && existing.phone && areCustomerPhonesMatching(cleanP, existing.phone)) {
+        return true;
+      }
+      // 2. Name match (non-generic)
+      if (cleanName && existing.name && areCustomerNamesMatching(cleanName, existing.name)) {
+        return true;
+      }
+      // 3. Email match
+      if (cleanE && existing.email && cleanE === existing.email.toLowerCase().trim()) {
+        return true;
+      }
+      // 4. Google UID match
+      if (item.googleUid && existing.googleUid && item.googleUid === existing.googleUid) {
+        return true;
+      }
+      return false;
+    });
+
+    if (clusterIndex === -1) {
+      // New distinct customer
+      clusters.push({
+        ...item,
+        phone: cleanP || item.phone
+      });
+    } else {
+      // Match found: Merge into existing cluster!
+      const prev = clusters[clusterIndex];
+
+      // Merge vehicles without duplicate model
+      const existingVehicles = Array.isArray(prev.vehicles) ? [...prev.vehicles] : [];
+      if (Array.isArray(item.vehicles)) {
+        item.vehicles.forEach(v => {
+          if (!existingVehicles.some(ev => (ev.model || '').toLowerCase().trim() === (v.model || '').toLowerCase().trim() && ev.plateNumber === v.plateNumber)) {
+            existingVehicles.push(v);
+          }
+        });
+      }
+
+      // Best real name
+      let bestName = prev.name || cleanName || 'عميل كريم';
+      if (isGenericCustomerName(prev.name) && !isGenericCustomerName(cleanName)) {
+        bestName = cleanName;
+      }
+
+      // Notes
+      let mergedNotes = prev.notes || '';
+      if (item.notes && !mergedNotes.includes(item.notes)) {
+        mergedNotes = mergedNotes ? `${mergedNotes} | ${item.notes}` : item.notes;
+      }
+
+      clusters[clusterIndex] = {
+        ...prev,
+        name: bestName,
+        phone: prev.phone || cleanP,
+        email: prev.email || cleanE,
+        city: (prev.city && prev.city !== 'جدة') ? prev.city : (item.city || prev.city || 'جدة'),
+        vehicles: existingVehicles,
+        totalVisits: Math.max(Number(prev.totalVisits) || 0, Number(item.totalVisits) || 0, 1),
+        totalSpent: Math.max(Number(prev.totalSpent) || 0, Number(item.totalSpent) || 0),
+        status: (prev.totalVisits >= 3 || item.totalVisits >= 3 || prev.status === 'vip' || item.status === 'vip') ? 'vip' : prev.status,
+        notes: mergedNotes,
+        lastVisitDate: prev.lastVisitDate || item.lastVisitDate,
+        firstVisitDate: prev.firstVisitDate || item.firstVisitDate
+      };
+    }
+  });
+
+  return clusters;
+};
