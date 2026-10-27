@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
   PlusCircle, 
@@ -178,7 +178,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
       className="space-y-6 sm:space-y-8 w-full min-w-0 max-w-full"
     >
       {/* Executive Welcome Banner */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl w-full min-w-0 max-w-full overflow-hidden">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 sm:p-6 rounded-2xl bg-[#141720] border border-white/[0.08] shadow-xl w-full min-w-0 max-w-full relative z-20">
         <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
@@ -224,121 +224,313 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           </button>
         </div>
 
-        {/* Mobile App-Style Actions Bar with Dropdown Menu (sm:hidden) */}
-        <div className="sm:hidden flex items-center gap-2 w-full pt-3 mt-1 border-t border-white/[0.08] relative" ref={dropdownRef}>
+        {/* Mobile App-Style Actions Bar with Native Action Sheet (sm:hidden) */}
+        <div className="sm:hidden flex items-center gap-2 w-full pt-3 mt-1 border-t border-white/[0.08]" ref={dropdownRef}>
           {/* Main Primary Action Button */}
           <button
             type="button"
             onClick={onOpenNewBookingModal}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] active:from-[#FF414A] active:to-[#E0242E] text-white font-black text-xs shadow-md shadow-[#F52B35]/25 transition-all cursor-pointer"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] active:from-[#FF414A] active:to-[#E0242E] text-white font-black text-xs shadow-md shadow-[#F52B35]/25 transition-all cursor-pointer active:scale-95"
           >
             <PlusCircle className="w-4 h-4 shrink-0" />
             <span className="truncate">{lang === 'ar' ? 'إنشاء حجز جديد' : 'New Booking'}</span>
           </button>
 
-          {/* Quick Actions Dropdown Trigger Button */}
+          {/* Quick Actions Trigger Button */}
           <button
             type="button"
-            onClick={() => setShowMobileDropdown(!showMobileDropdown)}
+            onClick={() => setShowMobileDropdown(prev => !prev)}
             className={cn(
-              "flex items-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer shrink-0",
+              "flex items-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer shrink-0 select-none active:scale-95",
               showMobileDropdown
-                ? "bg-[#F52B35]/20 border-[#F52B35] text-white shadow-sm"
+                ? "bg-[#F52B35] border-[#F52B35] text-white shadow-md shadow-[#F52B35]/30"
                 : "bg-white/[0.06] hover:bg-white/[0.1] border-white/10 text-gray-200 active:bg-white/15"
             )}
             aria-expanded={showMobileDropdown}
             aria-label={lang === 'ar' ? 'قائمة الإجراءات السريعة' : 'Quick Actions Menu'}
           >
-            <SlidersHorizontal className="w-3.5 h-3.5 text-[#F52B35]" />
+            <SlidersHorizontal className={cn("w-3.5 h-3.5 transition-colors", showMobileDropdown ? "text-white" : "text-[#F52B35]")} />
             <span>{lang === 'ar' ? 'الإجراءات' : 'Actions'}</span>
-            <ChevronDown className={cn("w-3.5 h-3.5 text-gray-400 transition-transform duration-200", showMobileDropdown && "rotate-180 text-white")} />
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", showMobileDropdown ? "rotate-180 text-white" : "text-gray-400")} />
           </button>
 
-          {/* Native Mobile-App Style Dropdown Menu */}
-          {showMobileDropdown && (
-            <div 
-              className={cn(
-                "absolute top-full left-0 right-0 mt-2 z-40 p-2 rounded-2xl bg-[#141720] border border-white/15 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 space-y-1",
-                isRtl ? "text-right" : "text-left"
-              )}
-            >
-              <div className="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-white/5 flex items-center justify-between">
-                <span>{lang === 'ar' ? 'الإجراءات السريعة والمباشرة' : 'Quick Actions'}</span>
-                <button 
-                  type="button" 
+          {/* Native Mobile App Bottom Action Sheet */}
+          <AnimatePresence>
+            {showMobileDropdown && (
+              <div className="fixed inset-0 z-[120] flex flex-col justify-end">
+                {/* Backdrop with blur */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
                   onClick={() => setShowMobileDropdown(false)}
-                  className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white"
+                  className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+                />
+
+                {/* Bottom Action Sheet Card */}
+                <motion.div
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+                  className={cn(
+                    "relative w-full max-h-[85vh] bg-[#12141c] border-t border-white/20 rounded-t-[28px] shadow-2xl flex flex-col overflow-hidden z-10 safe-area-bottom",
+                    isRtl ? "text-right" : "text-left"
+                  )}
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                  {/* Top drag handle indicator */}
+                  <div className="w-12 h-1.5 bg-white/25 rounded-full mx-auto mt-3 mb-1 shrink-0" />
+
+                  {/* Header */}
+                  <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.02]">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#F52B35]/15 border border-[#F52B35]/30 flex items-center justify-center text-[#F52B35]">
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-white">
+                          {lang === 'ar' ? 'الإجراءات والعمليات السريعة' : 'Quick Actions'}
+                        </h3>
+                        <p className="text-[10px] text-gray-400">
+                          {lang === 'ar' ? 'الوصول المباشر لكافة عمليات وأقسام النظام' : 'Instant access to all operations'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileDropdown(false)}
+                      className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                      title={lang === 'ar' ? 'إغلاق' : 'Close'}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Action Items List */}
+                  <div className="p-4 space-y-2 overflow-y-auto overscroll-contain max-h-[60vh]">
+                    {/* Primary New Booking */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onOpenNewBookingModal();
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-[#F52B35] to-[#D11C25] text-white shadow-lg shadow-[#F52B35]/25 active:scale-[0.98] transition-transform cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                          <PlusCircle className="w-5 h-5 text-white" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-black">{lang === 'ar' ? 'إنشاء حجز موعد جديد' : 'New Appointment Booking'}</span>
+                          <span className="block text-[10px] text-white/80">{lang === 'ar' ? 'تسجيل حجز فوري لعميل جديد أو حالي' : 'Instant client booking'}</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">{lang === 'ar' ? 'فوري' : 'Instant'}</span>
+                    </button>
+
+                    {/* Website Link */}
+                    <Link
+                      to="/"
+                      onClick={() => setShowMobileDropdown(false)}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-[#F52B35]">
+                          <Globe className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'معاينة الواجهة الأمامية للعملاء' : 'View customer-facing homepage'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </Link>
+
+                    {/* Reports & Invoices */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('reports');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0 text-blue-400">
+                          <FileText className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'سندات القبض والفواتير وتحليلات الإيراد' : 'Invoices & financial reports'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Corporate Contracts */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('contracts');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-400">
+                          <FileCheck className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'إدارة العقود والشركات' : 'Corporate Contracts'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'عقود صيانة الأساطيل والاتفاقيات' : 'Corporate fleet agreements'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Offers */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('offers');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-400">
+                          <Tag className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'العروض الترويجية والخصومات' : 'Special Offers'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'تحديث وتفعيل العروض الحالية والخصومات' : 'Manage active discounts'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Services */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('services');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0 text-purple-400">
+                          <Wrench className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'إدارة خدمات الصيانة' : 'Maintenance Services'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'قائمة الخدمات وأسعارها وتفاصيلها' : 'Service catalog & pricing'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Gallery */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('gallery');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-cyan-400">
+                          <Camera className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'معرض الأعمال والوسائط' : 'Media & Gallery'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'صور قبل وبعد وتوثيق الصيانة' : 'Before/after work showcase'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Partners */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('partners');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0 text-rose-400">
+                          <Handshake className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'شركاء النجاح والرعاة' : 'Partners & Sponsors'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'شعارات الشركاء وموردي قطع الغيار' : 'Affiliates & parts suppliers'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Calendar */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('calendar');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 text-indigo-400">
+                          <Calendar className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'جدول المواعيد والتقويم' : 'Calendar & Schedule'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'استعراض مواعيد الفنيين والميدان' : 'Weekly and monthly schedule'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+
+                    {/* Customers */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileDropdown(false);
+                        onNavigateTab('customers');
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-[#F52B35]/10 border border-white/[0.08] text-white transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center shrink-0 text-teal-400">
+                          <Users className="w-4.5 h-4.5" />
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'إدارة العملاء والملفات' : 'Customer Database'}</span>
+                          <span className="block text-[10px] text-gray-400">{lang === 'ar' ? 'سجل العملاء وسياراتهم وسجل الزيارات' : 'Customer profiles & history'}</span>
+                        </div>
+                      </div>
+                      {isRtl ? <ChevronLeft className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    </button>
+                  </div>
+
+                  {/* Dismiss Button */}
+                  <div className="px-4 pt-2 pb-4 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileDropdown(false)}
+                      className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer text-center"
+                    >
+                      {lang === 'ar' ? 'إغلاق القائمة' : 'Close Menu'}
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-
-              <Link
-                to="/"
-                onClick={() => setShowMobileDropdown(false)}
-                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors"
-              >
-                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                  <Globe className="w-3.5 h-3.5 text-[#F52B35]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'الرجوع إلى الموقع الرئيسي' : 'Back to Website'}</span>
-                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'عرض الصفحة الرئيسية للعملاء' : 'View customer-facing homepage'}</span>
-                </div>
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMobileDropdown(false);
-                  onNavigateTab('reports');
-                }}
-                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
-              >
-                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                  <FileText className="w-3.5 h-3.5 text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'التقارير وسندات الصيانة' : 'Reports & Invoices'}</span>
-                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'سندات القبض والفواتير والتقارير' : 'Invoices & operational reports'}</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMobileDropdown(false);
-                  onNavigateTab('contracts');
-                }}
-                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
-              >
-                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                  <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'إدارة العقود والشركات' : 'Corporate Contracts'}</span>
-                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'عقود الصيانة الدورية للشركات' : 'Corporate fleet maintenance contracts'}</span>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMobileDropdown(false);
-                  onNavigateTab('offers');
-                }}
-                className="flex items-center gap-2.5 w-full p-2.5 rounded-xl hover:bg-white/[0.08] active:bg-[#F52B35]/15 text-gray-200 hover:text-white text-xs font-bold transition-colors text-right"
-              >
-                <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                  <Tag className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="block text-xs font-bold text-white">{lang === 'ar' ? 'العروض الترويجية والخصومات' : 'Special Offers'}</span>
-                  <span className="block text-[10px] text-gray-400 font-normal">{lang === 'ar' ? 'تحديث وتفعيل العروض الحالية' : 'Manage active discounts & bundles'}</span>
-                </div>
-              </button>
-            </div>
-          )}
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
