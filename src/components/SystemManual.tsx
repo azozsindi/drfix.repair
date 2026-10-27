@@ -28,7 +28,8 @@ import {
   ChevronDown,
   ChevronUp,
   Handshake,
-  Tag
+  Tag,
+  Zap
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -340,49 +341,57 @@ export const SystemManual: React.FC<SystemManualProps> = ({ lang = 'ar' }) => {
     {
       id: 'calendar_module',
       number: '06',
-      titleAr: 'التقويم التفاعلي وجدولة المواعيد',
-      titleEn: 'Interactive Calendar & Appointment Scheduler',
+      titleAr: 'التقويم التفاعلي وجدولة المواعيد وتتبع الحالات اليومية',
+      titleEn: 'Interactive Calendar, Mobile Scheduling & Daily Status Tracking',
       categoryAr: 'field',
       categoryEn: 'field',
       icon: CalendarCheck,
-      badgeAr: 'توزيع زمني ذكي',
-      badgeEn: 'Smart Timeline Grid',
-      summaryAr: 'عرض شهري ويومي تفاعلي لجميع الحجوزات مع تلوين الحالات وسهولة إضافة وتعديل المواعيد بنقرة واحدة.',
-      summaryEn: 'Interactive monthly and daily schedule view with status color-coding and quick appointment creation by clicking any date.',
+      badgeAr: 'مطور للجوال بنسبة 100%',
+      badgeEn: '100% Mobile-First Grid',
+      summaryAr: 'عرض شهري ويومي تفاعلي لجميع الحجوزات مع مواءمة خاصة للهواتف الذكية، واستعراض فوري لكافة حجوزات اليوم المحدد وحالاتها الملونة وتحديثها بنقرة واحدة.',
+      summaryEn: 'Interactive monthly and daily schedule view optimized for mobile devices, featuring instant daily appointment inspection with colored status pills and 1-click updates.',
       featuresAr: [
         {
-          title: 'عرض تقويم شهري دقيق ومضبوط زمنياً',
-          desc: 'حساب دقيق لأيام الشهر بدون أي انزياح زمني، مع شارات رقمية توضح عدد الحجوزات لكل يوم.'
+          title: 'واجهة مخصصة ومحسنة للهواتف الذكية (Mobile-First Layout)',
+          desc: 'اختصار أسماء أيام الأسبوع على الشاشات الصغيرة لتجنب تداخل الحروف، مع استبدال نصوص السيارات الطويلة بنقاط ملونة تدل على حالات الطلبات وشارات رقمية بارزة لضمان وضوح كامل على الجوال.'
         },
         {
-          title: 'عزل حسابات الفنيين في التقويم',
+          title: 'التمرير التلقائي والاستعراض الشامل لحجوزات اليوم',
+          desc: 'بمجرد النقر على أي تاريخ في التقويم، يتم التمرير السلس التلقائي للوحة الحجوزات اليومية لعرض جميع الطلبات المجدولة في ذلك اليوم دون الحاجة للبحث أو التمرير اليدوي.'
+        },
+        {
+          title: 'شارات الحالات الملونة والمعدّل السريع (Instant Status Selector)',
+          desc: 'تمييز بصري فوري لكل حجز (✅ مكتمل / 👍 تم القبول / 🚗 الفني بالطريق / 🔧 قيد العمل / ⚡ جديد / ⏳ قيد الانتظار / ❌ ملغي) مع قائمة منسدلة داخل كل بطاقة لتغيير الحالة فوراً.'
+        },
+        {
+          title: 'أزرار التواصل والملاحة المباشرة',
+          desc: 'إمكانية مراسلة العميل واتساب برسالة مجهزة، إجراء اتصال هاتفي مباشر، أو تشغيل خرائط Google Maps GPS بنقرة زر واحدة.'
+        },
+        {
+          title: 'عزل حسابات الفنيين الميدانيين',
           desc: 'عند تسجيل دخول فني ميداني، يعرض التقويم مواعيده ومهامه الخاصة به فقط للحفاظ على الخصوصية والتركيز.'
-        },
-        {
-          title: 'إضافة موعد جديد مباشرة من اليوم المحدد',
-          desc: 'الضغط على أي يوم في التقويم يفتح نموذج إضافة موعد مسبق التعبئة بتاريخ ذلك اليوم.'
-        },
-        {
-          title: 'ترتيب المواعيد زمنياً',
-          desc: 'فرز مواعيد اليوم من الأبكر إلى الأحدث مع تبيان الفني المسؤول وحالة المركبة.'
         }
       ],
       featuresEn: [
         {
-          title: 'Accurate Calendar Grid',
-          desc: 'Timezone-corrected calendar grid displaying daily request badges and appointment density.'
+          title: 'Mobile-First Responsive Calendar Layout',
+          desc: 'Abbreviated weekday labels and smart status color dots preventing cramped text on mobile phones, paired with prominent booking count badges.'
         },
         {
-          title: 'Strict Technician Privacy View',
+          title: 'Smooth Auto-Scroll to Selected Date Appointments',
+          desc: 'Tapping any calendar cell automatically smooth-scrolls to the daily bookings panel, revealing all scheduled services for that day.'
+        },
+        {
+          title: 'Prominent Status Badges & 1-Click Status Dropdown',
+          desc: 'Color-coded status indicators (Completed, Accepted, En Route, In Progress, New, Pending, Cancelled) with an in-card status dropdown for instant updates.'
+        },
+        {
+          title: 'Direct WhatsApp, Phone Call & GPS Navigation',
+          desc: 'Quick action bar on every daily booking card to chat on WhatsApp, call customer, or launch Google Maps route directions.'
+        },
+        {
+          title: 'Strict Technician Privacy Isolation',
           desc: 'When logged in as a field technician, the calendar only displays the technician’s own assignments.'
-        },
-        {
-          title: 'One-Click Slot Scheduling',
-          desc: 'Clicking any date cell opens a booking form pre-populated with that selected day.'
-        },
-        {
-          title: 'Chronological Daily Timeline',
-          desc: 'Sorts daily tasks chronologically with vehicle model, location, and assigned staff.'
         }
       ]
     },
@@ -780,8 +789,8 @@ export const SystemManual: React.FC<SystemManualProps> = ({ lang = 'ar' }) => {
           desc: 'تعديل رقم الاتصال المباشر ورقم واتساب المركز الذي تتصل به كافة أزرار الموقع والتقارير تلقائياً.'
         },
         {
-          title: 'روابط السوشيال ميديا الرسمية',
-          desc: 'تخصيص حسابات المركز على (سناب شات، تيك توك، إنستغرام، وإكس) مع أيقونات ملونة وأصلية.'
+          title: 'منصات التواصل الاجتماعي المعتمدة والمخصصة للمملكة',
+          desc: 'ربط الحسابات الأكثر استخداماً وتأثيراً في صيانة السيارات بالمملكة (سناب شات، تيك توك، إنستغرام، واتساب، وقناة يوتيوب)، مع تنظيف النظام وإلغاء المنصات غير المستخدمة (فيسبوك وإكس) لضمان واجهة سريعة وفوتر مرتب وخالٍ من الروابط المهجورة.'
         },
         {
           title: 'وضع الصيانة الذكي (Maintenance Mode)',
@@ -976,6 +985,145 @@ export const SystemManual: React.FC<SystemManualProps> = ({ lang = 'ar' }) => {
         'Server generates temporary OTP and dispatches it automatically to customer WhatsApp',
         'Customer receives WhatsApp notification and confirms passcode on screen',
         'Account verified and booking confirmation + technician GPS link dispatched automatically'
+      ]
+    },
+    {
+      id: 'mobile_dock_navigation',
+      number: '19',
+      titleAr: 'شريط التنقل السفلي المطور للجوال (Admin Mobile Dock)',
+      titleEn: 'Admin Mobile Dock & Quick Thumb Navigation',
+      categoryAr: 'admin',
+      categoryEn: 'admin',
+      icon: Smartphone,
+      badgeAr: 'تنقل مريح باليد الواحدة',
+      badgeEn: '1-Thumb Ergonomics',
+      summaryAr: 'شريط تنقل سفلي حديث ومريح يثبت أسفل شاشة الهاتف الذكي، مرتب بحسب الأولوية من اليمين لليسار (الرئيسية ➔ الحجوزات ➔ الموقع ➔ الإعدادات) مع إزالة الأيقونات المكررة ومساحات لمس واسعة.',
+      summaryEn: 'Ergonomic bottom mobile navigation dock permanently accessible on smartphone screens, ordered RTL (Overview ➔ Bookings ➔ Website ➔ Settings) with zero clutter.',
+      featuresAr: [
+        {
+          title: 'الترتيب المعتمد المريح من اليمين إلى اليسار (RTL)',
+          desc: 'ترتيب متناسق مع اتجاه اليد باللغة العربية: (1) الرئيسية لمتابعة الإحصائيات، (2) الحجوزات لإدارة العمليات اليومية، (3) الموقع للانتقال السريع لصفحة العميل، (4) الإعدادات لضبط المنصة.'
+        },
+        {
+          title: 'إلغاء التكرار البصري وزيادة مساحات اللمس',
+          desc: 'حذف أيقونة القائمة المكررة من الشريط السفلي للاعتماد على زر الهيدر العلوي، مما منح كل زر مساحة لمس مريحة (min 50px) وأيقونات واضحة تمنع الضغط الخاطئ.'
+        },
+        {
+          title: 'عداد الحجوزات المعلقة التفاعلي (Live Pending Counter)',
+          desc: 'شارة رقمية نابضة باللون الأحمر على أيقونة الحجوزات توضح فوراً عدد الطلبات الجديدة بانتظار الإسناد أو القبول.'
+        },
+        {
+          title: 'التنقل الفوري بين لوحة الإدارة والموقع الحي',
+          desc: 'زر مميز لنقل المسؤول بنقرة واحدة إلى الواجهة العامة للعميل لمعاينة الخدمات والعروض كما تظهر للجمهور.'
+        }
+      ],
+      featuresEn: [
+        {
+          title: 'Ergonomic RTL Order (Right-to-Left)',
+          desc: 'Optimized button layout: (1) Overview, (2) Bookings, (3) Website, (4) Settings for effortless single-handed navigation.'
+        },
+        {
+          title: 'De-Cluttered & Spacious Touch Targets',
+          desc: 'Eliminated redundant menu button, allocating 50px+ touch areas per icon with high-contrast active states.'
+        },
+        {
+          title: 'Live Pending Bookings Counter Badge',
+          desc: 'Glowing notification badge over the Bookings icon displaying active incoming requests in real-time.'
+        },
+        {
+          title: 'Instant Jump to Live Public Portal',
+          desc: '1-tap switch from admin management directly to customer frontend.'
+        }
+      ]
+    },
+    {
+      id: 'vehicle_handovers_optimization',
+      number: '20',
+      titleAr: 'نظام تسليم ومتابعة المركبات للورش وحماية السعة السحابية',
+      titleEn: 'Vehicle Handovers to Workshops & Cloud Size Optimization',
+      categoryAr: 'field',
+      categoryEn: 'field',
+      icon: Car,
+      badgeAr: 'أمان واستقرار السحابة',
+      badgeEn: '100% Cloud Scalable',
+      summaryAr: 'نظام رقمي كامل لتوثيق استلام وتسليم المركبات للورش الشريكة، مع حماية فائقة تمنع تجاوز الحد الأقصى لمستندات Firestore (1MB Document Size Limit) عبر معالجة وضغط الصور ومراحل العمل.',
+      summaryEn: 'End-to-end digital vehicle handover management to partner workshops with advanced payload optimization preventing Firestore 1MB document quota overflow errors.',
+      featuresAr: [
+        {
+          title: 'سند تسليم واستلام رقمي للمركبة',
+          desc: 'توثيق كامل لبيانات السيارة، اسم الورشة المستلمة، الفني الميداني، فحص البودي، وتصوير العيوب قبل بدء أعمال المخرطة أو السمكرة.'
+        },
+        {
+          title: 'معالجة وضغط الصور الميدانية لمنع أخطاء السعة (Firestore 1MB Protection)',
+          desc: 'آلية تلقائية لضغط صور الفحص والمراحل بدقة عالية وحجم فائق الصغر، مما يمنع تجاوز الحد الأقصى المسموح به للمستندات في قاعدة البيانات (1,048,576 بايت) ويضمن استقرار النظام للأبد.'
+        },
+        {
+          title: 'متابعة مراحل الإصلاح لدى الورشة',
+          desc: 'تتبع حالة السيارة داخل الورشة الشريكة خطوة بخطوة حتى انتهاء التصليح وإعادة تسليمها إلى مركز DR.FIX أو العميل.'
+        },
+        {
+          title: 'الأرشفة برقم الحجز ورقم اللوحة',
+          desc: 'ربط كل سند تسليم بحساب العميل وسجل الحجز الأصلي للرجوع إلى توثيق الحالة في أي وقت.'
+        }
+      ],
+      featuresEn: [
+        {
+          title: 'Digital Vehicle Handover Certificate',
+          desc: 'Full documentation of workshop intake, receiving technician, vehicle condition, and preexisting defects.'
+        },
+        {
+          title: 'Field Photo Compression & 1MB Firestore Safeguard',
+          desc: 'Automatic client-side compression preserving visual clarity while keeping document sizes well below Firestore 1MB limit.'
+        },
+        {
+          title: 'Partner Workshop Repair Lifecycle Tracking',
+          desc: 'Monitors the vehicle journey from intake through outsourced machining/bodywork to final customer delivery.'
+        },
+        {
+          title: 'Plate Number & Booking ID Archival',
+          desc: 'Direct linkage between handover bonds and customer history records for comprehensive traceability.'
+        }
+      ]
+    },
+    {
+      id: 'performance_clean_ui',
+      number: '21',
+      titleAr: 'تحسينات الأداء والسرعة وتصفية الواجهة (Clean & Fast Engine)',
+      titleEn: 'Performance Acceleration & Distraction-Free UI',
+      categoryAr: 'core',
+      categoryEn: 'core',
+      icon: Zap,
+      badgeAr: 'سرعة تحميل فائقة',
+      badgeEn: 'Ultra Fast 60FPS',
+      summaryAr: 'تحديثات تسريع المنصة وإزالة العناصر الرسومية الثقيلة لضمان تشغيل خفيف وسلس بنسبة 100% على كافة أجهزة الهواتف الذكية وبأقل استهلاك لحزمة البيانات.',
+      summaryEn: 'Performance optimization and UI streamlining, eliminating heavy 3D WebGL assets to guarantee instantaneous page load, zero memory lag, and smooth 60fps scrolling.',
+      featuresAr: [
+        {
+          title: 'سرعة تحميل فورية دون تأخير',
+          desc: 'تخفيف حجم كود المنصة وإزالة الملفات ثلاثية الأبعاد الثقيلة ليتم فتح الموقع ولوحة الإدارة في أجزاء من الثانية.'
+        },
+        {
+          title: 'منع مشاكل التمرير والانزلاق الأفقي على الجوال (No Horizontal Overflow)',
+          desc: 'ضبط دقيق لكل الجداول والتقاويم والأزرار لمنع أي انزياح أو شريط تمرير أفقي على كافة قياسات الشاشات.'
+        },
+        {
+          title: 'استهلاك منخفض لبطارية الهاتف وحزم الإنترنت',
+          desc: 'تصميم يعتمد على Tailwind CSS النقي دون مكتبات جرافيك ثقيلة مما يوفر في استهلاك باقة الإنترنت لأصحاب الهواتف.'
+        }
+      ],
+      featuresEn: [
+        {
+          title: 'Instant Sub-Second Page Loading',
+          desc: 'Stripped unnecessary 3D assets to achieve lightning-fast initial renders and transitions.'
+        },
+        {
+          title: 'Zero Horizontal Overflow on Mobile',
+          desc: 'Rigorous viewport clamping preventing accidental horizontal scrolling or layout jumping on phones.'
+        },
+        {
+          title: 'Battery & Cellular Data Optimization',
+          desc: 'Optimized rendering pipeline designed for minimal battery drain and light data consumption.'
+        }
       ]
     }
   ], []);

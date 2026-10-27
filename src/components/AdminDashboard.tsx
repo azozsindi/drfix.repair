@@ -444,6 +444,16 @@ const AdminDashboard = ({
   const [techTaskFilter, setTechTaskFilter] = useState<'all' | 'my_tasks'>('all');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
+  const calendarBookingsListRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectCalendarDay = (date: Date) => {
+    setSelectedCalendarDate(date);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setTimeout(() => {
+        calendarBookingsListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  };
   const [galleryCategoryFilter, setGalleryCategoryFilter] = useState<string>('all');
   const [testimonialSearch, setTestimonialSearch] = useState('');
   const [testimonialRatingFilter, setTestimonialRatingFilter] = useState<number | 'all'>('all');
@@ -3525,16 +3535,50 @@ const AdminDashboard = ({
               </div>
 
               {/* Month Grid and Selected Date Appointment List */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
                 {/* Calendar Days Matrix */}
-                <div className="lg:col-span-2 glass-card p-6 border-white/5">
-                  <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-gray-400 mb-4 pb-2 border-b border-white/5">
-                    {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map(day => (
-                      <div key={day} className="py-1">{day}</div>
+                <div className="lg:col-span-2 glass-card p-3.5 sm:p-6 border-white/5 space-y-3 sm:space-y-4">
+                  {/* Quick Mobile Selected Day Banner */}
+                  <div className="lg:hidden flex items-center justify-between p-2.5 rounded-xl bg-black/50 border border-brand-red/30 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-brand-red animate-ping" />
+                      <span className="text-gray-300">اليوم المحدد:</span>
+                      <strong className="text-white font-bold">
+                        {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        calendarBookingsListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-brand-red/20 text-brand-red hover:bg-brand-red/30 border border-brand-red/40 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>عرض الحجوزات</span>
+                      <span>({(isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length})</span>
+                      <span>↓</span>
+                    </button>
+                  </div>
+
+                  {/* Day Names Header */}
+                  <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-[11px] sm:text-xs font-bold text-gray-400 pb-2 border-b border-white/5">
+                    {[
+                      { full: 'الأحد', short: 'أحد' },
+                      { full: 'الإثنين', short: 'إثنين' },
+                      { full: 'الثلاثاء', short: 'ثلاثاء' },
+                      { full: 'الأربعاء', short: 'أربعاء' },
+                      { full: 'الخميس', short: 'خميس' },
+                      { full: 'الجمعة', short: 'جمعة' },
+                      { full: 'السبت', short: 'سبت' },
+                    ].map((day, idx) => (
+                      <div key={idx} className="py-1">
+                        <span className="hidden sm:inline">{day.full}</span>
+                        <span className="sm:hidden">{day.short}</span>
+                      </div>
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-7 gap-2">
+                  <div className="grid grid-cols-7 gap-1 sm:gap-2">
                     {(() => {
                       const year = calendarMonth.getFullYear();
                       const month = calendarMonth.getMonth();
@@ -3545,7 +3589,7 @@ const AdminDashboard = ({
                       // Padding for previous month
                       for (let i = 0; i < firstDayIndex; i++) {
                         days.push(
-                          <div key={`empty-${i}`} className="min-h-[70px] p-2 rounded-xl bg-black/10 border border-transparent opacity-20" />
+                          <div key={`empty-${i}`} className="min-h-[50px] sm:min-h-[75px] p-1 sm:p-2 rounded-xl bg-black/10 border border-transparent opacity-20" />
                         );
                       }
 
@@ -3563,31 +3607,59 @@ const AdminDashboard = ({
                         days.push(
                           <div
                             key={`day-${day}`}
-                            onClick={() => setSelectedCalendarDate(currentDate)}
+                            onClick={() => handleSelectCalendarDay(currentDate)}
                             className={cn(
-                              "min-h-[75px] p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between text-right group",
+                              "min-h-[52px] sm:min-h-[75px] p-1.5 sm:p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between text-right group select-none active:scale-95",
                               isSelected 
-                                ? "bg-brand-red/15 border-brand-red shadow-lg shadow-brand-red/10" 
+                                ? "bg-brand-red/25 border-brand-red ring-2 ring-brand-red/50 shadow-lg shadow-brand-red/20 text-white" 
                                 : isToday
                                 ? "bg-white/10 border-white/20 hover:border-white/30"
                                 : "bg-black/30 border-white/5 hover:border-white/15 hover:bg-white/5"
                             )}
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between w-full">
                               <span className={cn(
-                                "text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center",
-                                isToday ? "bg-brand-red text-white" : isSelected ? "text-brand-red font-black" : "text-gray-300"
+                                "text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center transition-all",
+                                isToday ? "bg-brand-red text-white font-black" : isSelected ? "bg-white text-black font-black" : "text-gray-300"
                               )}>
                                 {day}
                               </span>
                               {dayBookings.length > 0 && (
-                                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-brand-red/20 text-brand-red border border-brand-red/30">
+                                <span className={cn(
+                                  "text-[10px] font-black px-1.5 py-0.5 rounded-full border shadow-sm leading-none",
+                                  isSelected 
+                                    ? "bg-brand-red text-white border-white/40" 
+                                    : "bg-brand-red/25 text-brand-red border-brand-red/30"
+                                )}>
                                   {dayBookings.length}
                                 </span>
                               )}
                             </div>
 
-                            <div className="space-y-1 mt-1">
+                            {/* Mobile status indicator dots */}
+                            <div className="flex sm:hidden items-center justify-center gap-1 mt-1">
+                              {dayBookings.slice(0, 3).map((b, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className={cn(
+                                    "w-1.5 h-1.5 rounded-full",
+                                    b.status === 'completed' ? "bg-green-400" :
+                                    b.status === 'accepted' ? "bg-emerald-400" :
+                                    b.status === 'on_the_way' ? "bg-indigo-400" :
+                                    b.status === 'in-progress' ? "bg-blue-400" :
+                                    b.status === 'cancelled' ? "bg-red-400" :
+                                    b.status === 'new' ? "bg-purple-400" :
+                                    "bg-amber-400"
+                                  )} 
+                                />
+                              ))}
+                              {dayBookings.length > 3 && (
+                                <span className="text-[8px] text-gray-400 font-bold leading-none">+</span>
+                              )}
+                            </div>
+
+                            {/* Desktop details */}
+                            <div className="hidden sm:block space-y-1 mt-1">
                               {dayBookings.slice(0, 2).map((b, idx) => (
                                 <div key={idx} className="text-[10px] truncate text-gray-300 bg-white/5 px-1 py-0.5 rounded">
                                   {b.carModel}
@@ -3609,14 +3681,27 @@ const AdminDashboard = ({
                 </div>
 
                 {/* Selected Day Bookings Detail Panel */}
-                <div className="glass-card p-6 border-white/5 space-y-4">
+                <div 
+                  ref={calendarBookingsListRef} 
+                  id="selected-day-bookings"
+                  className="glass-card p-4 sm:p-6 border-white/10 space-y-4 rounded-2xl scroll-mt-20"
+                >
                   <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                    <div>
-                      <h4 className="font-bold text-white text-base">
-                        مواعيد {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'long', month: 'numeric', day: 'numeric' })}
-                      </h4>
-                      <p className="text-xs text-gray-400">
-                        {(isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length} {isTechnician ? 'مهام مسندة' : 'مواعيد مجدولة'}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <CalendarCheck className="w-5 h-5 text-brand-red shrink-0" />
+                        <h4 className="font-bold text-white text-sm sm:text-base truncate">
+                          حجوزات {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                        </h4>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {(() => {
+                          const count = (isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length;
+                          if (count === 0) return 'لا توجد حجوزات مجدولة لهذا التاريخ';
+                          if (count === 1) return 'يوجد حجز واحد مسجل ومجدول';
+                          if (count === 2) return 'يوجد حجزان مسجلان ومجدولان';
+                          return `يوجد ${count} حجوزات مسجلة ومجدولة`;
+                        })()}
                       </p>
                     </div>
                     {!isTechnician && (
@@ -3636,15 +3721,16 @@ const AdminDashboard = ({
                           });
                           setIsAdding(true);
                         }}
-                        className="p-2 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white rounded-xl transition-all cursor-pointer"
+                        className="px-3 py-1.5 bg-brand-red hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm shadow-brand-red/20 shrink-0 flex items-center gap-1"
                         title="حجز موعد جديد في هذا اليوم"
                       >
-                        <PlusCircle className="w-5 h-5" />
+                        <PlusCircle className="w-4 h-4" />
+                        <span className="hidden sm:inline">حجز جديد</span>
                       </button>
                     )}
                   </div>
 
-                  <div className="space-y-3 max-h-[480px] overflow-y-auto no-scrollbar pr-1">
+                  <div className="space-y-3 max-h-[560px] overflow-y-auto no-scrollbar pr-1">
                     {(isTechnician ? accessibleRecords : records)
                       .filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString())
                       .sort((a, b) => getRecordDate(a.serviceDate).getTime() - getRecordDate(b.serviceDate).getTime())
@@ -3653,62 +3739,117 @@ const AdminDashboard = ({
                         const rDate = getRecordDate(record.serviceDate);
 
                         return (
-                          <div key={record.id} className="p-4 rounded-xl bg-black/40 border border-white/5 space-y-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <h5 className="font-bold text-white text-sm">{record.carModel}</h5>
-                                <span className="text-xs text-brand-red font-semibold">{record.serviceType}</span>
+                          <div 
+                            key={record.id} 
+                            className="p-4 rounded-xl bg-black/50 border border-white/10 hover:border-brand-red/40 transition-all space-y-3 shadow-md"
+                          >
+                            {/* Booking Header: Car & Status */}
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h5 className="font-bold text-white text-sm sm:text-base">{record.carModel || 'سيارة'} {record.carYear ? `(${record.carYear})` : ''}</h5>
+                                  <span className="text-[10px] font-mono text-gray-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">
+                                    #{record.bookingId || record.id.slice(0, 6)}
+                                  </span>
+                                </div>
+                                <span className="text-xs text-brand-red font-semibold flex items-center gap-1 mt-0.5">
+                                  <Wrench className="w-3 h-3" />
+                                  <span>{record.serviceType || 'صيانة متنقلة'}</span>
+                                </span>
                               </div>
-                              <span className={cn(
-                                "text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                                record.status === 'completed' ? "bg-green-500/10 text-green-400 border-green-500/30" :
-                                record.status === 'accepted' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
-                                record.status === 'on_the_way' ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/30" :
-                                record.status === 'in-progress' ? "bg-blue-500/10 text-blue-400 border-blue-500/30" :
-                                record.status === 'cancelled' ? "bg-red-500/10 text-red-400 border-red-500/30" :
-                                "bg-white/10 text-white border-white/20"
-                              )}>
-                                {record.status === 'completed' ? 'مكتمل' :
-                                 record.status === 'accepted' ? 'تم القبول' :
-                                 record.status === 'on_the_way' ? 'الفني بالطريق' :
-                                 record.status === 'in-progress' ? 'قيد العمل' :
-                                 record.status === 'cancelled' ? 'ملغي' : 'قيد الانتظار'}
-                              </span>
+
+                              {/* Prominent Status Pill */}
+                              <div className="shrink-0">
+                                <span className={cn(
+                                  "text-xs font-black px-2.5 py-1 rounded-full border shadow-sm inline-flex items-center gap-1",
+                                  record.status === 'completed' ? "bg-green-500/20 text-green-300 border-green-500/40" :
+                                  record.status === 'accepted' ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" :
+                                  record.status === 'on_the_way' ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40" :
+                                  record.status === 'in-progress' ? "bg-blue-500/20 text-blue-300 border-blue-500/40" :
+                                  record.status === 'cancelled' ? "bg-red-500/20 text-red-300 border-red-500/40" :
+                                  record.status === 'new' ? "bg-purple-500/20 text-purple-300 border-purple-500/40" :
+                                  "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                )}>
+                                  {record.status === 'completed' ? '✅ مكتمل' :
+                                   record.status === 'accepted' ? '👍 تم القبول' :
+                                   record.status === 'on_the_way' ? '🚗 الفني بالطريق' :
+                                   record.status === 'in-progress' ? '🔧 قيد العمل' :
+                                   record.status === 'cancelled' ? '❌ ملغي' :
+                                   record.status === 'new' ? '⚡ طلب جديد' : '⏳ قيد الانتظار'}
+                                </span>
+                              </div>
                             </div>
 
-                            <div className="text-xs text-gray-400 space-y-1">
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-gray-500" />
-                                <span>{rDate.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                            {/* Booking Metadata */}
+                            <div className="text-xs text-gray-300 space-y-1.5 bg-white/[0.03] p-2.5 rounded-lg border border-white/5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 text-gray-300">
+                                  <User className="w-3.5 h-3.5 text-gray-400" />
+                                  <span className="font-semibold text-white">{record.customerName || record.name || 'عميل'}</span>
+                                  <span className="text-gray-400 font-mono text-[11px]" dir="ltr">({record.customerPhone})</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-gray-400 font-mono text-[11px]">
+                                  <Clock className="w-3.5 h-3.5 text-gray-500" />
+                                  <span>{rDate.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
                               </div>
+
                               {record.location && (
-                                <div className="flex items-center gap-1.5">
-                                  <MapPin className="w-3.5 h-3.5 text-gray-500" />
-                                  <span>{record.location}</span>
+                                <div className="flex items-center gap-1.5 text-gray-300">
+                                  <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">{record.location}</span>
                                 </div>
                               )}
+
+                              {record.assignedStaffName && (
+                                <div className="flex items-center gap-1.5 text-emerald-300 font-bold text-[11px]">
+                                  <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>الفني المسؤول: {record.assignedStaffName}</span>
+                                </div>
+                              )}
+
                               {record.notes && (
-                                <div className="text-gray-400 italic bg-white/5 p-2 rounded-lg text-[11px]">
+                                <div className="text-gray-400 italic bg-black/30 p-2 rounded text-[11px] border border-white/5">
                                   "{record.notes}"
                                 </div>
                               )}
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
+                            {/* Action Buttons & Status Selector */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-white/5">
+                              {/* Quick Status Dropdown */}
                               <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-gray-400 font-bold shrink-0">تغيير الحالة:</span>
+                                <select 
+                                  value={record.status} 
+                                  onChange={(e) => handleUpdateStatus(record.id, e.target.value as any)}
+                                  className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-brand-red cursor-pointer"
+                                >
+                                  <option value="new" className="bg-[#121212] text-purple-400">⚡ جديد</option>
+                                  <option value="pending" className="bg-[#121212] text-amber-400">⏳ قيد الانتظار</option>
+                                  <option value="accepted" className="bg-[#121212] text-emerald-400">👍 تم القبول</option>
+                                  <option value="on_the_way" className="bg-[#121212] text-indigo-400">🚗 الفني بالطريق</option>
+                                  <option value="in-progress" className="bg-[#121212] text-blue-400">🔧 قيد العمل</option>
+                                  <option value="completed" className="bg-[#121212] text-green-400">✅ مكتمل</option>
+                                  <option value="cancelled" className="bg-[#121212] text-red-400">❌ ملغي</option>
+                                </select>
+                              </div>
+
+                              {/* Communications & Details */}
+                              <div className="flex items-center justify-end gap-1.5">
                                 <a
                                   href={`https://wa.me/${waPhone}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="p-2 bg-green-500/10 text-green-400 hover:bg-green-500/20 rounded-lg text-xs"
-                                  title="واتساب"
+                                  className="p-2 bg-green-500/15 hover:bg-green-500/25 text-green-300 border border-green-500/30 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer"
+                                  title="مراسلة عبر واتساب"
                                 >
                                   <MessageCircle className="w-3.5 h-3.5" />
                                 </a>
                                 <a
                                   href={`tel:${record.customerPhone}`}
-                                  className="p-2 bg-white/5 text-gray-300 hover:bg-white/10 rounded-lg text-xs"
-                                  title="اتصال"
+                                  className="p-2 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer"
+                                  title="اتصال هاتفي"
                                 >
                                   <PhoneCall className="w-3.5 h-3.5" />
                                 </a>
@@ -3717,29 +3858,61 @@ const AdminDashboard = ({
                                     href={`https://www.google.com/maps?q=${record.coordinates.latitude},${record.coordinates.longitude}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="p-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg text-xs"
+                                    className="p-2 bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer"
                                     title="خريطة GPS"
                                   >
                                     <Navigation className="w-3.5 h-3.5" />
                                   </a>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectBookingDetails(record)}
+                                  className="px-2.5 py-1.5 text-xs text-gray-200 hover:text-white bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span>التفاصيل</span>
+                                </button>
                               </div>
-
-                              <button
-                                onClick={() => handleSelectBookingDetails(record)}
-                                className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-white/5 rounded-lg"
-                              >
-                                عرض التفاصيل
-                              </button>
                             </div>
                           </div>
                         );
                       })}
 
                     {(isTechnician ? accessibleRecords : records).filter(r => getRecordDate(r.serviceDate).toDateString() === selectedCalendarDate.toDateString()).length === 0 && (
-                      <div className="py-12 text-center text-gray-500 space-y-2">
-                        <CalendarCheck className="w-10 h-10 mx-auto text-gray-600" />
-                        <p className="text-xs font-bold">لا توجد مواعيد مسجلة في هذا اليوم</p>
+                      <div className="py-10 px-4 text-center rounded-2xl bg-black/30 border border-white/5 space-y-3">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-gray-500">
+                          <CalendarCheck className="w-6 h-6 text-gray-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-white">لا توجد حجوزات مجدولة في هذا اليوم</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {selectedCalendarDate.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                        </div>
+                        {!isTechnician && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const dateObj = new Date(selectedCalendarDate);
+                              dateObj.setHours(10, 0, 0, 0);
+                              const localIso = new Date(dateObj.getTime() - dateObj.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                              setFormData({
+                                customerPhone: '',
+                                carModel: '',
+                                serviceType: '',
+                                notes: '',
+                                cost: '',
+                                serviceDate: localIso,
+                                status: 'pending'
+                              });
+                              setIsAdding(true);
+                            }}
+                            className="px-4 py-2 bg-brand-red/20 hover:bg-brand-red text-brand-red hover:text-white border border-brand-red/40 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <PlusCircle className="w-3.5 h-3.5" />
+                            <span>حجز موعد صيانة لهذا التاريخ</span>
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -6506,18 +6679,25 @@ const AdminDashboard = ({
               >
                 {/* Sticky Header with Title and Close Button */}
                 <div className="px-5 sm:px-7 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex justify-between items-center shrink-0 z-20">
-                  <h3 className="text-lg sm:text-xl font-display font-black italic text-white">
-                    {editingItem ? 'تعديل' : 'إضافة'} {
-                      (editingItem?.type === 'service' || (!editingItem && (activeTab === 'services' || (activeTab === 'content' && contentTab === 'services')))) ? 'خدمة صيانة' : 
-                      (editingItem?.type === 'offer' || (!editingItem && (activeTab === 'offers' || (activeTab === 'content' && contentTab === 'offers')))) ? 'عرض ترويجي' : 
-                      (editingItem?.type === 'gallery' || (!editingItem && (activeTab === 'gallery' || (activeTab === 'content' && contentTab === 'gallery')))) ? 'صورة لمعرض الأعمال' : 
-                      'حجز موعد'
-                    }
-                  </h3>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-display font-black italic text-white flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-brand-red animate-pulse" />
+                      {editingItem ? 'تعديل' : 'إضافة'} {
+                        (editingItem?.type === 'service' || (!editingItem && (activeTab === 'services' || (activeTab === 'content' && contentTab === 'services')))) ? 'خدمة صيانة' : 
+                        (editingItem?.type === 'offer' || (!editingItem && (activeTab === 'offers' || (activeTab === 'content' && contentTab === 'offers')))) ? 'عرض ترويجي' : 
+                        (editingItem?.type === 'gallery' || (!editingItem && (activeTab === 'gallery' || (activeTab === 'content' && contentTab === 'gallery')))) ? 'صورة لمعرض الأعمال' : 
+                        'حجز موعد جديد'
+                      }
+                    </h3>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {editingItem ? 'تعديل تفاصيل السجل المحدد في النظام' : 'تسجيل موعد صيانة وتعيينه مباشرة في جدول المواعيد والعملاء'}
+                    </p>
+                  </div>
                   <button 
                     type="button"
                     onClick={() => { setIsAdding(false); setEditingItem(null); }} 
                     className="p-1.5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                    title="إغلاق النافذة"
                   >
                     <X className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
@@ -6525,56 +6705,151 @@ const AdminDashboard = ({
 
                 <div className="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1 overscroll-contain">
 
-                {(editingItem?.type === 'booking' || (!editingItem && (activeTab === 'dashboard' || activeTab === 'bookings' || activeTab === 'calendar'))) && (
-                  <form onSubmit={handleAddRecord} className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">رقم الجوال</label>
-                      <input 
-                        required
-                        value={formData.customerPhone}
-                        onChange={e => setFormData({...formData, customerPhone: e.target.value})}
-                        placeholder="05XXXXXXXX أو +9665..."
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
-                      />
+                {(editingItem?.type === 'booking' || (!editingItem && !(
+                  (activeTab === 'services' || (activeTab === 'content' && contentTab === 'services')) ||
+                  (activeTab === 'offers' || (activeTab === 'content' && contentTab === 'offers')) ||
+                  (activeTab === 'gallery' || (activeTab === 'content' && contentTab === 'gallery'))
+                ))) && (
+                  <form onSubmit={handleAddRecord} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                      {/* Customer Phone */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                          <span>رقم جوال العميل <span className="text-brand-red">*</span></span>
+                          <span className="text-[10px] text-gray-500 font-normal">سعودي (05XXXX / +966)</span>
+                        </label>
+                        <div className="relative">
+                          <input 
+                            required
+                            type="tel"
+                            dir="ltr"
+                            value={formData.customerPhone}
+                            onChange={e => setFormData({...formData, customerPhone: e.target.value})}
+                            placeholder="05XXXXXXXX"
+                            className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors text-sm font-mono text-left"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Car Make & Model */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-300">
+                          نوع وموديل السيارة <span className="text-brand-red">*</span>
+                        </label>
+                        <input 
+                          required
+                          value={formData.carModel}
+                          onChange={e => setFormData({...formData, carModel: e.target.value})}
+                          placeholder="مثال: تويوتا كامري 2023 أو فورد تورس"
+                          className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors text-sm"
+                        />
+                      </div>
+
+                      {/* Service Type */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-bold text-gray-300">
+                          نوع الخدمة المطلوبة <span className="text-brand-red">*</span>
+                        </label>
+                        <input 
+                          required
+                          value={formData.serviceType}
+                          onChange={e => setFormData({...formData, serviceType: e.target.value})}
+                          placeholder="اكتب نوع الخدمة أو اختر من الخيارات السريعة أدناه"
+                          className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors text-sm"
+                        />
+                        {/* Quick Service Suggestions */}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {[
+                            'فحص شامل وبرمجة كمبيوتر',
+                            'صيانة دورية وتغيير زيت وسيفون',
+                            'فحص وإصلاح نظام التكييف',
+                            'صيانة فرامل وفحمات',
+                            'فحص بطارية ودينامو',
+                            'إصلاح ميكانيكا متنقلة طارئة'
+                          ].map((chip) => (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, serviceType: chip }))}
+                              className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                formData.serviceType === chip 
+                                  ? 'bg-brand-red text-white border-brand-red font-bold' 
+                                  : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white'
+                              }`}
+                            >
+                              + {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Service Date & Time */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-gray-300">
+                            تاريخ ووقت الموعد
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const now = new Date();
+                              // Format to YYYY-MM-DDTHH:mm
+                              const tzOffset = now.getTimezoneOffset() * 60000;
+                              const localISOTime = (new Date(Date.now() - tzOffset)).toISOString().slice(0, 16);
+                              setFormData(prev => ({ ...prev, serviceDate: localISOTime }));
+                            }}
+                            className="text-[10px] text-brand-red hover:underline cursor-pointer font-bold"
+                          >
+                            تعيين الآن (الوقت الحالي)
+                          </button>
+                        </div>
+                        <input 
+                          type="datetime-local"
+                          value={formData.serviceDate || ''}
+                          onChange={e => setFormData({...formData, serviceDate: e.target.value})}
+                          className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white outline-none transition-colors text-sm font-sans"
+                        />
+                      </div>
+
+                      {/* Notes */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-bold text-gray-300">
+                          ملاحظات وتفاصيل إضافية (اختياري)
+                        </label>
+                        <textarea 
+                          value={formData.notes}
+                          onChange={e => setFormData({...formData, notes: e.target.value})}
+                          placeholder="مثال: العميل متواجد في حي الزهراء، يفضل الفحص بعد صلاة العصر..."
+                          rows={3}
+                          className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors text-sm resize-none"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">السيارة</label>
-                      <input 
-                        required
-                        value={formData.carModel}
-                        onChange={e => setFormData({...formData, carModel: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
-                      />
+
+                    {/* Actions */}
+                    <div className="pt-2 flex flex-col-reverse sm:flex-row gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => { setIsAdding(false); setEditingItem(null); }}
+                        className="py-3 sm:py-3.5 px-6 rounded-xl border border-white/15 text-gray-300 hover:text-white hover:bg-white/5 font-bold text-sm transition-colors cursor-pointer text-center"
+                      >
+                        إلغاء
+                      </button>
+                      <button 
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 py-3 sm:py-3.5 bg-brand-red hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold italic tracking-wide transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-brand-red/20 text-sm"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <span>جاري حفظ الحجز...</span>
+                          </>
+                        ) : (
+                          editingItem ? 'تحديث السجل في النظام' : 'تثبيت وحفظ الحجز الآن'
+                        )}
+                      </button>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">نوع الخدمة</label>
-                      <input 
-                        required
-                        value={formData.serviceType}
-                        onChange={e => setFormData({...formData, serviceType: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">تاريخ ووقت الموعد</label>
-                      <input 
-                        type="datetime-local"
-                        value={formData.serviceDate || ''}
-                        onChange={e => setFormData({...formData, serviceDate: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red text-white"
-                      />
-                    </div>
-                    <div className="md:col-span-2 space-y-2">
-                      <label className="text-xs font-bold text-gray-500 uppercase">ملاحظات</label>
-                      <textarea 
-                        value={formData.notes}
-                        onChange={e => setFormData({...formData, notes: e.target.value})}
-                        className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red h-24"
-                      />
-                    </div>
-                    <button className="md:col-span-2 py-4 bg-brand-red rounded-xl font-bold italic">
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (editingItem ? 'تحديث السجل' : 'حفظ السجل')}
-                    </button>
                   </form>
                 )}
 
