@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
+import { findExistingCustomerInFirestore, purgeDuplicateCustomersInFirestore } from '../lib/customerDeduplication';
 import { exportSingleBookingWord } from '../lib/reportUtils';
 import { useScrollLock } from '../lib/scrollLock';
 
@@ -234,96 +235,20 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
   const [isDeduplicating, setIsDeduplicating] = useState(false);
 
-  // 1b. One-click Firestore cleaner to merge all duplicate customer records permanently
+  // 1b. One-click Firestore cleaner to merge all duplicate customer records permanently (comparing by Phone & Name)
   const handlePurgeDuplicatesInFirestore = async () => {
     setIsDeduplicating(true);
     try {
-      const custSnap = await getDocs(collection(db, 'customers'));
-      const allDocs: { id: string; ref: any; data: any }[] = [];
-      custSnap.forEach(d => allDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() }));
+      const { mergedGroupsCount, deletedDocsCount } = await purgeDuplicateCustomersInFirestore(db);
 
-      const groups = new Map<string, typeof allDocs>();
-
-      allDocs.forEach(d => {
-        const data = d.data;
-        const gUid = data.googleUid || (d.id.length > 20 && !d.id.startsWith('05') ? d.id : null);
-        const email = data.email ? data.email.toLowerCase().trim() : null;
-        const phone = data.phone ? (unifySaudiPhone(data.phone) || data.phone.trim()) : null;
-
-        let groupKey: string | null = null;
-        if (gUid) groupKey = `guid:${gUid}`;
-        else if (email) groupKey = `email:${email}`;
-        else if (phone) groupKey = `phone:${phone}`;
-        else groupKey = `id:${d.id}`;
-
-        if (!groups.has(groupKey)) {
-          groups.set(groupKey, []);
-        }
-        groups.get(groupKey)!.push(d);
-      });
-
-      let cleanedCount = 0;
-      for (const [_, group] of groups.entries()) {
-        if (group.length > 1) {
-          const master = group.slice().sort((a, b) => {
-            const aIsGoogle = (a.data.googleUid || a.id.length > 20) ? 1 : 0;
-            const bIsGoogle = (b.data.googleUid || b.id.length > 20) ? 1 : 0;
-            if (aIsGoogle !== bIsGoogle) return bIsGoogle - aIsGoogle;
-            return (Number(b.data.totalVisits) || 0) - (Number(a.data.totalVisits) || 0);
-          })[0];
-
-          let mergedCars: any[] = [];
-          let mergedVehicles: any[] = [];
-          let totalVisits = 0;
-          let totalSpent = 0;
-          let notes = master.data.notes || '';
-          let name = master.data.name || '';
-          let phone = master.data.phone || '';
-          let email = master.data.email || '';
-
-          group.forEach(d => {
-            if (Array.isArray(d.data.cars)) mergedCars.push(...d.data.cars);
-            if (Array.isArray(d.data.vehicles)) mergedVehicles.push(...d.data.vehicles);
-            totalVisits = Math.max(totalVisits, Number(d.data.totalVisits || 0));
-            totalSpent = Math.max(totalSpent, Number(d.data.totalSpent || 0));
-            if (!name && d.data.name && d.data.name !== 'عميل' && d.data.name !== 'عميل كريم') name = d.data.name;
-            if (!phone && d.data.phone) phone = d.data.phone;
-            if (!email && d.data.email) email = d.data.email;
-            if (d.id !== master.id && d.data.notes && !notes.includes(d.data.notes)) {
-              notes = notes ? `${notes}\n${d.data.notes}` : d.data.notes;
-            }
-          });
-
-          await setDoc(master.ref, {
-            ...master.data,
-            name: name || master.data.name || 'عميل كريم',
-            phone: phone || master.data.phone || '',
-            email: email || master.data.email || '',
-            cars: mergedCars,
-            vehicles: mergedVehicles,
-            totalVisits,
-            totalSpent,
-            notes,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-
-          for (const d of group) {
-            if (d.id !== master.id) {
-              try {
-                await deleteDoc(d.ref);
-                cleanedCount++;
-              } catch (delErr) {
-                console.warn('Error deleting duplicate doc:', delErr);
-              }
-            }
-          }
-        }
+      if (deletedDocsCount > 0) {
+        showToast(`تم فحص ومقارنة العملاء بالاسم ورقم الجوال بنجاح: دمج (${mergedGroupsCount}) عملاء وحذف (${deletedDocsCount}) ملفات مكررة! 🎉`);
+      } else {
+        showToast('جميع ملفات وسجلات العملاء موحدة وسليمة تماماً ولا توجد ملفات مكررة بالاسم أو رقم الجوال 👍');
       }
-
-      showToast(cleanedCount > 0 ? `تم دمج وتنظيف (${cleanedCount}) كروت وسجلات مكررة بنجاح!` : 'جميع كروت وسجلات العملاء موحدة تماماً ولا توجد كروت مكررة 👍');
     } catch (err) {
       console.error('Deduplication error:', err);
-      showToast('حدث خطأ أثناء فحص ودمج الكروت المكررة');
+      showToast('حدث خطأ أثناء فحص ودمج ملفات العملاء');
     } finally {
       setIsDeduplicating(false);
     }
@@ -586,14 +511,42 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         await updateDoc(doc(db, 'customers', editingCustomer.id), payload);
         showToast('تم تحديث ملف العميل بنجاح ✨');
       } else {
-        await addDoc(collection(db, 'customers'), {
-          ...payload,
-          totalVisits: 0,
-          totalSpent: 0,
-          firstVisitDate: new Date().toISOString(),
-          createdAt: serverTimestamp()
+        // Prevent duplicate creation: check BOTH phone and customer name
+        const existingMatch = await findExistingCustomerInFirestore(db, {
+          phone: unifiedPhone,
+          name: formName.trim(),
+          email: formEmail.trim()
         });
-        showToast('تم إنشاء ملف العميل الجديد بنجاح 🎉');
+
+        if (existingMatch) {
+          const existingData = existingMatch.data;
+          const mergedVehicles = Array.isArray(existingData.vehicles) ? [...existingData.vehicles] : [];
+          validVehicles.forEach(newV => {
+            if (!mergedVehicles.some(v => (v.model || '').toLowerCase().trim() === newV.model.toLowerCase().trim())) {
+              mergedVehicles.push(newV);
+            }
+          });
+
+          await updateDoc(existingMatch.ref, {
+            ...payload,
+            name: formName.trim() || existingData.name,
+            vehicles: mergedVehicles,
+            totalVisits: Math.max(Number(existingData.totalVisits) || 0, 1),
+            updatedAt: serverTimestamp()
+          });
+
+          const matchType = existingMatch.matchReason === 'phone' ? 'رقم الجوال' : (existingMatch.matchReason === 'name' ? 'اسم العميل' : 'البيانات');
+          showToast(`تم العثور على ملف سابق متطابق بـ (${matchType}) وتم دمج وتحديث البيانات بنجاح بدون تكرار! ✨`);
+        } else {
+          await addDoc(collection(db, 'customers'), {
+            ...payload,
+            totalVisits: 0,
+            totalSpent: 0,
+            firstVisitDate: new Date().toISOString(),
+            createdAt: serverTimestamp()
+          });
+          showToast('تم إنشاء ملف العميل الجديد بنجاح 🎉');
+        }
       }
 
       setIsAddModalOpen(false);

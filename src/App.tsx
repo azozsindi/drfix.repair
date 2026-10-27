@@ -128,6 +128,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { cn } from './lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from './lib/phoneUtils';
+import { areCustomerNamesMatching, areCustomerPhonesMatching, isGenericCustomerName } from './lib/customerDeduplication';
 import { useScrollLock } from './lib/scrollLock';
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { LanguageProvider, useLanguage, LanguageToggle, type Language } from './context/LanguageContext';
@@ -2373,6 +2374,22 @@ const BookingForm = ({
               if (!seenCandidateIds.has(d.id)) {
                 seenCandidateIds.add(d.id);
                 candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() });
+              }
+            });
+          } catch (e) {}
+        }
+
+        // Query by Name & Phone matching to prevent duplicate files by name
+        if (resolvedCustomerName && !isGenericCustomerName(resolvedCustomerName)) {
+          try {
+            const allCustSnap = await getDocs(collection(db, 'customers'));
+            allCustSnap.forEach(d => {
+              if (!seenCandidateIds.has(d.id)) {
+                const data = d.data();
+                if (areCustomerNamesMatching(data.name, resolvedCustomerName) || areCustomerPhonesMatching(data.phone, cleanPhone)) {
+                  seenCandidateIds.add(d.id);
+                  candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data });
+                }
               }
             });
           } catch (e) {}

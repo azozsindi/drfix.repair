@@ -130,6 +130,7 @@ import { setupForegroundFcmListener, triggerServerFcmNotification } from '../lib
 import { generateTechnicianAssignmentWhatsAppUrl } from '../lib/whatsappUtils';
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
+import { syncOrUpdateCustomerProfile } from '../lib/customerDeduplication';
 import { useScrollLock } from '../lib/scrollLock';
 import { 
   AppSettings, 
@@ -601,6 +602,7 @@ const AdminDashboard = ({
 
   // Form States
   const [formData, setFormData] = useState({
+    customerName: '',
     customerPhone: '',
     carModel: '',
     serviceType: '',
@@ -1065,50 +1067,22 @@ const AdminDashboard = ({
         });
       }
 
-      // Automatically sync/open customer file
-      if (formData.customerPhone) {
+      // Automatically sync/open customer file with robust deduplication (compares BOTH phone and name)
+      if (formData.customerPhone || formData.customerName) {
         try {
-          const cleanPhone = unifiedCustomerPhone;
-          const customersRef = collection(db, 'customers');
-          const custSnap = await getDocs(query(customersRef, where('phone', '==', cleanPhone)));
-          const carInfo = {
-            model: formData.carModel.trim(),
-            notes: formData.serviceType
-          };
-
-          if (!custSnap.empty) {
-            const existingDoc = custSnap.docs[0];
-            const existingData = existingDoc.data();
-            const existingVehicles: any[] = Array.isArray(existingData.vehicles) ? existingData.vehicles : [];
-            const hasCar = existingVehicles.some(v => v.model?.toLowerCase() === carInfo.model.toLowerCase());
-            const updatedVehicles = hasCar ? existingVehicles : [...existingVehicles, carInfo];
-            await updateDoc(doc(db, 'customers', existingDoc.id), {
-              vehicles: updatedVehicles,
-              totalVisits: (Number(existingData.totalVisits) || 1) + 1,
-              lastVisitDate: new Date().toISOString(),
-              updatedAt: serverTimestamp()
-            });
-          } else {
-            await addDoc(customersRef, {
-              name: 'عميل كريم',
-              phone: cleanPhone,
-              city: 'جدة',
-              vehicles: [carInfo],
-              totalVisits: 1,
-              firstVisitDate: new Date().toISOString(),
-              lastVisitDate: new Date().toISOString(),
-              status: 'new',
-              notes: `حجز خدمة: ${formData.serviceType}${formData.notes ? ` - ${formData.notes}` : ''}`,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-          }
+          await syncOrUpdateCustomerProfile(db, {
+            name: formData.customerName,
+            phone: unifiedCustomerPhone,
+            carModel: formData.carModel,
+            serviceType: formData.serviceType,
+            notes: formData.notes
+          });
         } catch (cErr) {
-          console.warn('Customer auto-create error in handleAddRecord:', cErr);
+          console.warn('Customer auto-create / deduplication error in handleAddRecord:', cErr);
         }
       }
 
-      setFormData({ customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '0', status: 'pending' });
+      setFormData({ customerName: '', customerPhone: '', carModel: '', serviceType: '', notes: '', cost: '0', status: 'pending' });
       setIsAdding(false);
       setEditingItem(null);
     } catch (error) {
@@ -6712,6 +6686,21 @@ const AdminDashboard = ({
                 ))) && (
                   <form onSubmit={handleAddRecord} className="space-y-5">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                      {/* Customer Phone */}
+                      {/* Customer Name */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                          <span>اسم العميل</span>
+                          <span className="text-[10px] text-gray-500 font-normal">اختياري (مطابقة وربط الملف)</span>
+                        </label>
+                        <input 
+                          value={formData.customerName || ''}
+                          onChange={e => setFormData({...formData, customerName: e.target.value})}
+                          placeholder="مثال: عبد العزيز السندي"
+                          className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl px-4 py-3 text-white placeholder-gray-500 outline-none transition-colors text-sm"
+                        />
+                      </div>
+
                       {/* Customer Phone */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-gray-300 flex items-center justify-between">
