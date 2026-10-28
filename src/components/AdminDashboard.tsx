@@ -130,7 +130,13 @@ import { setupForegroundFcmListener, triggerServerFcmNotification } from '../lib
 import { generateTechnicianAssignmentWhatsAppUrl } from '../lib/whatsappUtils';
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
-import { syncOrUpdateCustomerProfile } from '../lib/customerDeduplication';
+import { 
+  syncOrUpdateCustomerProfile, 
+  areCustomerPhonesMatching, 
+  areCustomerNamesMatching, 
+  isGenericCustomerName,
+  purgeDuplicateCustomersInFirestore 
+} from '../lib/customerDeduplication';
 import { useScrollLock } from '../lib/scrollLock';
 import { 
   AppSettings, 
@@ -474,6 +480,9 @@ const AdminDashboard = ({
     bookingId: string;
   } | null>(null);
 
+  // Firestore customers for real-time customer matching and deduplication
+  const [dbCustomers, setDbCustomers] = useState<any[]>([]);
+
   const getWhatsAppStatusUrl = (record: MaintenanceRecord, targetStatus: MaintenanceRecord['status']): string => {
     const cleanPhone = (record.customerPhone || '').replace(/\D/g, '');
     const waPhone = cleanPhone.startsWith('966') 
@@ -611,6 +620,61 @@ const AdminDashboard = ({
     serviceDate: '',
     status: 'pending' as MaintenanceRecord['status']
   });
+
+  // Real-time customer detection to link to existing customer file and prevent duplicates
+  const matchedCustomer = useMemo(() => {
+    const p = formData.customerPhone ? unifySaudiPhone(formData.customerPhone) : '';
+    const n = (formData.customerName || '').trim();
+    if (!p && (!n || isGenericCustomerName(n))) return null;
+
+    // 1. Search in dbCustomers
+    for (const c of dbCustomers) {
+      if (p && c.phone && areCustomerPhonesMatching(p, c.phone)) return c;
+      if (n && c.name && areCustomerNamesMatching(n, c.name)) return c;
+    }
+
+    // 2. Search in records
+    for (const r of records) {
+      if (p && r.customerPhone && areCustomerPhonesMatching(p, r.customerPhone)) {
+        return {
+          id: r.id,
+          name: r.customerName || r.name,
+          phone: r.customerPhone,
+          vehicles: r.carModel ? [{ model: r.carModel }] : [],
+          totalVisits: records.filter(x => areCustomerPhonesMatching(x.customerPhone, p)).length
+        };
+      }
+      if (n && (r.customerName || r.name) && areCustomerNamesMatching(n, r.customerName || r.name)) {
+        return {
+          id: r.id,
+          name: r.customerName || r.name,
+          phone: r.customerPhone,
+          vehicles: r.carModel ? [{ model: r.carModel }] : [],
+          totalVisits: records.filter(x => areCustomerNamesMatching(x.customerName || x.name, n)).length
+        };
+      }
+    }
+
+    return null;
+  }, [formData.customerPhone, formData.customerName, dbCustomers, records]);
+
+  const matchedCustomerCars = useMemo(() => {
+    if (!matchedCustomer) return [];
+    const cars = new Set<string>();
+    if (Array.isArray(matchedCustomer.vehicles)) {
+      matchedCustomer.vehicles.forEach((v: any) => {
+        const m = typeof v === 'string' ? v : (v.model || [v.make, v.model].filter(Boolean).join(' '));
+        if (m && m.trim()) cars.add(m.trim());
+      });
+    }
+    if (Array.isArray(matchedCustomer.cars)) {
+      matchedCustomer.cars.forEach((c: any) => {
+        const m = [c.make, c.model, c.year].filter(Boolean).join(' ');
+        if (m && m.trim()) cars.add(m.trim());
+      });
+    }
+    return Array.from(cars);
+  }, [matchedCustomer]);
 
   const [offerForm, setOfferForm] = useState({
     title: '',
@@ -1029,6 +1093,22 @@ const AdminDashboard = ({
         console.warn('Contracts fetch fallback:', error);
       });
 
+      // Customers collection listener for instant deduplication & fast linking
+      const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+        const results: any[] = [];
+        snapshot.forEach((doc) => {
+          results.push({ id: doc.id, ...(doc.data() as any) });
+        });
+        setDbCustomers(results);
+      }, (error) => {
+        console.warn('Customers fetch fallback:', error);
+      });
+
+      // Background auto-purge duplicate customer documents
+      purgeDuplicateCustomersInFirestore(db).catch(err => {
+        console.warn('Background customer auto-deduplication error:', err);
+      });
+
       return () => {
         clearTimeout(stabilizationTimer);
         unsubM();
@@ -1039,6 +1119,7 @@ const AdminDashboard = ({
         unsubStaff();
         unsubPartners();
         unsubContracts();
+        unsubCustomers();
       };
     }
   }, [isAdmin]);
@@ -1050,7 +1131,33 @@ const AdminDashboard = ({
       const unifiedCustomerPhone = unifySaudiPhone(formData.customerPhone) || formData.customerPhone.trim();
       const recordDate = formData.serviceDate ? new Date(formData.serviceDate) : new Date();
 
-      if (editingItem && editingItem.type === 'booking') {
+      // Check if an identical pending booking was already created in the last 15 minutes to prevent double-click duplicates
+      const isDuplicatePending = records.find(r => 
+        (r.status === 'pending' || r.status === 'new') &&
+        r.customerPhone &&
+        areCustomerPhonesMatching(r.customerPhone, unifiedCustomerPhone) &&
+        (
+          !formData.carModel || 
+          (r.carModel || '').toLowerCase().trim() === (formData.carModel || '').toLowerCase().trim()
+        )
+      );
+
+      if (isDuplicatePending && !editingItem) {
+        // Prevent duplicate row in bookings table: update notes and details of existing pending booking
+        const existingNotes = isDuplicatePending.notes || '';
+        const combinedNotes = formData.notes 
+          ? (existingNotes.includes(formData.notes) ? existingNotes : `${existingNotes} | ${formData.notes}`.trim()) 
+          : existingNotes;
+
+        await updateDoc(doc(db, 'maintenance', isDuplicatePending.id), {
+          customerName: formData.customerName || isDuplicatePending.customerName,
+          serviceType: formData.serviceType || isDuplicatePending.serviceType,
+          carModel: formData.carModel || isDuplicatePending.carModel,
+          notes: combinedNotes,
+          serviceDate: formData.serviceDate ? recordDate : (isDuplicatePending.serviceDate || serverTimestamp()),
+          updatedAt: serverTimestamp()
+        });
+      } else if (editingItem && editingItem.type === 'booking') {
         await updateDoc(doc(db, 'maintenance', editingItem.id), {
           ...formData,
           customerPhone: unifiedCustomerPhone,
@@ -1070,13 +1177,18 @@ const AdminDashboard = ({
       // Automatically sync/open customer file with robust deduplication (compares BOTH phone and name)
       if (formData.customerPhone || formData.customerName) {
         try {
-          await syncOrUpdateCustomerProfile(db, {
+          const syncResult = await syncOrUpdateCustomerProfile(db, {
             name: formData.customerName,
             phone: unifiedCustomerPhone,
             carModel: formData.carModel,
             serviceType: formData.serviceType,
             notes: formData.notes
           });
+          if (syncResult.isNew) {
+            console.log('Created new unified customer profile:', syncResult.customerId);
+          } else {
+            console.log('Merged with existing customer profile:', syncResult.customerId, 'Matched by:', syncResult.matchReason);
+          }
         } catch (cErr) {
           console.warn('Customer auto-create / deduplication error in handleAddRecord:', cErr);
         }
@@ -6719,6 +6831,57 @@ const AdminDashboard = ({
                           />
                         </div>
                       </div>
+
+                      {/* Customer Found Banner & Quick Car Selection */}
+                      {matchedCustomer && (
+                        <div className="md:col-span-2 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-white space-y-2 animate-in fade-in duration-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                              <span className="text-xs font-bold text-emerald-300">
+                                تم التعرف على ملف العميل مسبقاً (سيتم دمج الحجز تلقائياً بدون تكرار الملف)
+                              </span>
+                            </div>
+                            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                              {matchedCustomer.totalVisits || 1} زيارات سابقة
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-300">
+                            <div>
+                              الاسم: <b className="text-white">{matchedCustomer.name || 'عميل مسجل'}</b> {matchedCustomer.phone && <>| الجوال: <b className="text-emerald-300 font-mono" dir="ltr">{matchedCustomer.phone}</b></>}
+                            </div>
+                            {matchedCustomer.name && (!formData.customerName || isGenericCustomerName(formData.customerName)) && (
+                              <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, customerName: matchedCustomer.name }))}
+                                className="text-[11px] text-emerald-300 hover:text-emerald-200 underline font-bold cursor-pointer"
+                              >
+                                استخدام الاسم المسجل ({matchedCustomer.name})
+                              </button>
+                            )}
+                          </div>
+                          {matchedCustomerCars.length > 0 && (
+                            <div className="pt-1 flex flex-wrap items-center gap-1.5 border-t border-emerald-500/20">
+                              <span className="text-[11px] text-gray-300 font-medium">اختر من سيارات العميل المسجلة:</span>
+                              {matchedCustomerCars.map((car, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, carModel: car }))}
+                                  className={cn(
+                                    "text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer font-bold",
+                                    formData.carModel === car
+                                      ? "bg-emerald-500 text-black border-emerald-400 font-black"
+                                      : "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border-emerald-500/30"
+                                  )}
+                                >
+                                  🚘 {car}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Car Make & Model */}
                       <div className="space-y-1.5">

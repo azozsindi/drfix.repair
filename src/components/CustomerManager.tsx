@@ -47,7 +47,13 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { phoneMatchesSearch, unifySaudiPhone, formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
-import { findExistingCustomerInFirestore, purgeDuplicateCustomersInFirestore, deduplicateCustomerProfiles } from '../lib/customerDeduplication';
+import { 
+  findExistingCustomerInFirestore, 
+  purgeDuplicateCustomersInFirestore, 
+  deduplicateCustomerProfiles,
+  areCustomerPhonesMatching,
+  areCustomerNamesMatching
+} from '../lib/customerDeduplication';
 import { exportSingleBookingWord } from '../lib/reportUtils';
 import { useScrollLock } from '../lib/scrollLock';
 
@@ -280,15 +286,21 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         const lastDate = sortedDates[0] ? sortedDates[0].toISOString() : new Date().toISOString();
         const firstDate = sortedDates[sortedDates.length - 1] ? sortedDates[sortedDates.length - 1].toISOString() : lastDate;
 
-        // Check if customer doc already exists
-        const existing = customers.find(c => unifySaudiPhone(c.phone) === phoneKey);
-        const docRef = existing ? doc(db, 'customers', existing.id) : doc(collection(db, 'customers'));
+        // Check if customer doc already exists comparing BOTH phone AND non-generic name
+        const existing = customers.find(c => 
+          (c.phone && areCustomerPhonesMatching(c.phone, phoneKey)) ||
+          (entry.name && c.name && areCustomerNamesMatching(entry.name, c.name))
+        );
+        const docRef = existing 
+          ? doc(db, 'customers', existing.id) 
+          : doc(db, 'customers', phoneKey || `cust_${Date.now()}`);
 
         const vehicleObjs: CustomerVehicle[] = Array.from(entry.vehicles).map(vStr => ({
           model: vStr
         }));
 
         batch.set(docRef, {
+          id: existing?.id || (phoneKey || `cust_${Date.now()}`),
           name: existing?.name || entry.name || `عميل (${phoneKey.slice(-4)})`,
           phone: existing?.phone ? (unifySaudiPhone(existing.phone) || existing.phone) : phoneKey,
           vehicles: existing?.vehicles && existing.vehicles.length > 0 ? existing.vehicles : vehicleObjs,
@@ -505,13 +517,16 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           const matchType = existingMatch.matchReason === 'phone' ? 'رقم الجوال' : (existingMatch.matchReason === 'name' ? 'اسم العميل' : 'البيانات');
           showToast(`تم العثور على ملف سابق متطابق بـ (${matchType}) وتم دمج وتحديث البيانات بنجاح بدون تكرار! ✨`);
         } else {
-          await addDoc(collection(db, 'customers'), {
+          const canonicalId = unifiedPhone || `cust_${Date.now()}`;
+          const newDocRef = doc(db, 'customers', canonicalId);
+          await setDoc(newDocRef, {
             ...payload,
+            id: canonicalId,
             totalVisits: 0,
             totalSpent: 0,
             firstVisitDate: new Date().toISOString(),
             createdAt: serverTimestamp()
-          });
+          }, { merge: true });
           showToast('تم إنشاء ملف العميل الجديد بنجاح 🎉');
         }
       }

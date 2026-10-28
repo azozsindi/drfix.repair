@@ -43,6 +43,8 @@ export const normalizeArabicText = (text: string | null | undefined): string => 
     .replace(/ى/g, 'ي')
     // Unify "عبد ال..." with "عبدال..." for compound Arab names
     .replace(/عبد\s+ال/g, 'عبدال')
+    // Remove common prefixes / titles (أبو, أم, المهندس, الشيخ, etc.)
+    .replace(/^(ابو|ام|المهندس|الشيخ|الدكتور|الاستاذ|مهندس|دكتور|استاذ)\s+/gi, '')
     // Unify multiple spaces into single space
     .replace(/\s+/g, ' ')
     .trim();
@@ -89,7 +91,7 @@ export const areCustomerNamesMatching = (nameA: string | null | undefined, nameB
 
   if (normA === normB) return true;
 
-  // If one name contains the other and both have at least 2 distinct words (e.g. full names)
+  // Split words
   const wordsA = normA.split(' ').filter(w => w.length > 1);
   const wordsB = normB.split(' ').filter(w => w.length > 1);
 
@@ -99,6 +101,17 @@ export const areCustomerNamesMatching = (nameA: string | null | undefined, nameB
     const longer = wordsA.length <= wordsB.length ? wordsB : wordsA;
     const allMatch = shorter.every(w => longer.includes(w));
     if (allMatch) return true;
+  }
+
+  // Check matching first name + last name (family name)
+  if (wordsA.length >= 2 && wordsB.length >= 2) {
+    const firstA = wordsA[0];
+    const lastA = wordsA[wordsA.length - 1];
+    const firstB = wordsB[0];
+    const lastB = wordsB[wordsB.length - 1];
+    if (firstA === firstB && lastA === lastB) {
+      return true;
+    }
   }
 
   return false;
@@ -339,9 +352,11 @@ export const syncOrUpdateCustomerProfile = async (
       matchReason: existingMatch.matchReason
     };
   } else {
-    // Brand new customer: Create single file
-    const customersRef = collection(db, 'customers');
-    const newDocRef = await addDoc(customersRef, {
+    // Brand new customer: Create single file using canonical phone document ID
+    const canonicalId = unifiedPhone || `cust_${Date.now()}`;
+    const newDocRef = doc(db, 'customers', canonicalId);
+    await setDoc(newDocRef, {
+      id: canonicalId,
       name: rawName || 'عميل كريم',
       phone: unifiedPhone,
       city: input.city?.trim() || 'جدة',
@@ -355,10 +370,10 @@ export const syncOrUpdateCustomerProfile = async (
       notes: input.serviceType ? `حجز خدمة: ${input.serviceType}${input.notes ? ` - ${input.notes}` : ''}` : (input.notes || ''),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
 
     return {
-      customerId: newDocRef.id,
+      customerId: canonicalId,
       isNew: true
     };
   }

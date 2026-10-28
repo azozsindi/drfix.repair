@@ -2460,17 +2460,7 @@ const BookingForm = ({
           updatedAt: serverTimestamp()
         }, { merge: true });
 
-        // 5. Clean up any redundant duplicate docs from old bookings so customer list has NO duplicates
-        for (const candidate of candidateDocs) {
-          if (candidate.id !== masterDocId) {
-            try {
-              await deleteDoc(candidate.ref);
-              console.log(`Cleaned redundant customer document: ${candidate.id}`);
-            } catch (err) {
-              console.warn('Could not remove duplicate doc:', err);
-            }
-          }
-        }
+        // Maintain existing documents safely without automatic deletion
 
         // Sync localStorage session if active customer matches, or auto-activate session for the booking customer
         try {

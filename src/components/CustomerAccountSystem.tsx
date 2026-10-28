@@ -25,13 +25,26 @@ import { sendTelegramNotification, escapeTelegramHtml, DEFAULT_TELEGRAM_BOT_TOKE
 
 // Helper to normalize Saudi phone numbers for consistent indexing
 export const cleanSaudiPhone = (raw: string): string => {
-  let cleaned = raw.replace(/\D/g, '');
-  if (cleaned.startsWith('9665') && cleaned.length === 12) {
+  if (!raw) return '';
+  const converted = raw
+    .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+    .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
+  let cleaned = converted.replace(/\D/g, '');
+  if (cleaned.startsWith('009665')) {
+    cleaned = '0' + cleaned.substring(5);
+  } else if (cleaned.startsWith('9665') && cleaned.length >= 12) {
     cleaned = '0' + cleaned.substring(3);
   } else if (cleaned.startsWith('5') && cleaned.length === 9) {
     cleaned = '0' + cleaned;
   }
   return cleaned;
+};
+
+// Validates whether a phone number is a valid Saudi mobile (05XXXXXXXX)
+export const isValidSaudiMobile = (raw: string | null | undefined): boolean => {
+  if (!raw) return false;
+  const cleaned = cleanSaudiPhone(raw);
+  return cleaned.startsWith('05') && cleaned.length === 10;
 };
 
 // Car normalization and deduplication helpers
@@ -499,6 +512,8 @@ interface CustomerContextType {
   setIsAuthOpen: (open: boolean) => void;
   isPortalOpen: boolean;
   setIsPortalOpen: (open: boolean) => void;
+  isMandatoryPhoneModalOpen: boolean;
+  setIsMandatoryPhoneModalOpen: (open: boolean) => void;
   authMode: 'login' | 'register';
   setAuthMode: (mode: 'login' | 'register') => void;
   login: (phone: string, pass?: string) => Promise<{ success: boolean; error?: string }>;
@@ -509,6 +524,7 @@ interface CustomerContextType {
   removeCar: (carId: string) => Promise<boolean>;
   updateProfile: (data: Partial<CustomerProfile>) => Promise<boolean>;
   prefillBookingWithCar: (car: CustomerCar) => void;
+  saveMandatoryPhone: (phone: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const CustomerContext = createContext<CustomerContextType | undefined>(undefined);
@@ -540,7 +556,23 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [loading, setLoading] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isPortalOpen, setIsPortalOpen] = useState(false);
+  const [isMandatoryPhoneModalOpen, setIsMandatoryPhoneModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  // Enforce mandatory Saudi mobile phone entry for any Google-authenticated customer
+  useEffect(() => {
+    if (customer && customer.googleUid) {
+      const hasValidPhone = isValidSaudiMobile(customer.phone);
+      if (!hasValidPhone) {
+        setIsMandatoryPhoneModalOpen(true);
+        setIsPortalOpen(false);
+      } else {
+        setIsMandatoryPhoneModalOpen(false);
+      }
+    } else {
+      setIsMandatoryPhoneModalOpen(false);
+    }
+  }, [customer?.id, customer?.phone, customer?.googleUid]);
 
   // Real-time synchronization of customer document if logged in
   useEffect(() => {
@@ -733,156 +765,78 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         cachedPhone = cleanSaudiPhone(localStorage.getItem('drfix_customer_phone') || '');
       } catch {}
 
-      // 1. Thoroughly search existing customer across all identifiers to prevent ANY duplicate profile creation
-      const candidateDocs: { id: string; ref: any; data: CustomerProfile }[] = [];
-      const seenIds = new Set<string>();
+      // 1. Identify returning customer for this specific Google account
+      // Search by user.uid directly or googleUid field or verified email
+      let existingCustomer: CustomerProfile | null = null;
+      let existingDocRef: any = null;
 
-      // a. Direct doc by UID
+      // a. Check direct doc at customers/{user.uid}
       const uidRef = doc(db, 'customers', user.uid);
       try {
         const uidSnap = await getDoc(uidRef);
         if (uidSnap.exists()) {
-          seenIds.add(uidSnap.id);
-          candidateDocs.push({ id: uidSnap.id, ref: uidRef, data: uidSnap.data() as CustomerProfile });
+          existingCustomer = { ...uidSnap.data(), id: uidSnap.id } as CustomerProfile;
+          existingDocRef = uidRef;
         }
       } catch (e) {
         console.warn('UID check warning:', e);
       }
 
-      // b. Query by googleUid
-      try {
-        const qGoogle = query(collection(db, 'customers'), where('googleUid', '==', user.uid));
-        const gSnap = await getDocs(qGoogle);
-        gSnap.forEach(d => {
-          if (!seenIds.has(d.id)) {
-            seenIds.add(d.id);
-            candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
-          }
-        });
-      } catch (e) {}
-
-      // c. Query by email (exact match and lowercase)
-      if (user.email) {
+      // b. Check by googleUid query
+      if (!existingCustomer) {
         try {
-          const qEmail = query(collection(db, 'customers'), where('email', '==', user.email));
-          const eSnap = await getDocs(qEmail);
-          eSnap.forEach(d => {
-            if (!seenIds.has(d.id)) {
-              seenIds.add(d.id);
-              candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
-            }
-          });
-
-          if (cleanEmail && cleanEmail !== user.email) {
-            const qEmailLower = query(collection(db, 'customers'), where('email', '==', cleanEmail));
-            const elSnap = await getDocs(qEmailLower);
-            elSnap.forEach(d => {
-              if (!seenIds.has(d.id)) {
-                seenIds.add(d.id);
-                candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
-              }
-            });
+          const qGoogle = query(collection(db, 'customers'), where('googleUid', '==', user.uid));
+          const gSnap = await getDocs(qGoogle);
+          if (!gSnap.empty) {
+            const found = gSnap.docs[0];
+            existingCustomer = { ...found.data(), id: found.id } as CustomerProfile;
+            existingDocRef = doc(db, 'customers', found.id);
           }
         } catch (e) {}
       }
 
-      // d. Match by phone if known (from user profile or cached phone)
-      const phoneToMatch = rawUserPhone || cachedPhone;
-      if (phoneToMatch && phoneToMatch.length >= 9) {
+      // c. Check by email query
+      if (!existingCustomer && cleanEmail) {
         try {
-          const phoneDocRef = doc(db, 'customers', phoneToMatch);
-          const pSnap = await getDoc(phoneDocRef);
-          if (pSnap.exists() && !seenIds.has(pSnap.id)) {
-            seenIds.add(pSnap.id);
-            candidateDocs.push({ id: pSnap.id, ref: phoneDocRef, data: pSnap.data() as CustomerProfile });
+          const qEmail = query(collection(db, 'customers'), where('email', '==', cleanEmail));
+          const eSnap = await getDocs(qEmail);
+          if (!eSnap.empty) {
+            const found = eSnap.docs[0];
+            existingCustomer = { ...found.data(), id: found.id } as CustomerProfile;
+            existingDocRef = doc(db, 'customers', found.id);
           }
-          const qPhone = query(collection(db, 'customers'), where('phone', '==', phoneToMatch));
-          const qpSnap = await getDocs(qPhone);
-          qpSnap.forEach(d => {
-            if (!seenIds.has(d.id)) {
-              seenIds.add(d.id);
-              candidateDocs.push({ id: d.id, ref: doc(db, 'customers', d.id), data: d.data() as CustomerProfile });
-            }
-          });
         } catch (e) {}
       }
 
       let profile: CustomerProfile;
 
-      if (candidateDocs.length > 0) {
-        // Select master doc (prefer the one with id === user.uid or highest visits)
-        const masterCandidate = candidateDocs.find(c => c.id === user.uid) || candidateDocs[0];
-
-        // Merge cars, notes, and visit counters across all candidate docs
-        const allCars: CustomerCar[] = [];
-        const allRemovedCars: string[] = [];
-        let maxVisits = 0;
-        let maxSpent = 0;
-        let bestName = user.displayName || '';
-        let bestPhone = rawUserPhone || cachedPhone || '';
-        let bestNotes = '';
-
-        candidateDocs.forEach(c => {
-          const d = c.data;
-          if (Array.isArray(d.cars)) allCars.push(...d.cars);
-          if (Array.isArray(d.removedCars)) allRemovedCars.push(...d.removedCars);
-          maxVisits = Math.max(maxVisits, Number(d.totalVisits || 0));
-          maxSpent = Math.max(maxSpent, Number(d.totalSpent || 0));
-          if (d.name && d.name !== 'عميل كريم' && d.name !== 'عميل') bestName = d.name;
-          if (d.phone && !bestPhone) bestPhone = d.phone;
-          if (d.notes && !bestNotes.includes(d.notes)) {
-            bestNotes = bestNotes ? `${bestNotes}\n${d.notes}` : d.notes;
-          }
-        });
-
-        const mergedCleanCars = deduplicateCarsList(allCars, allRemovedCars);
-
+      if (existingCustomer && existingDocRef) {
+        // Returning customer: keep their existing profile completely intact
+        // Update googleUid and lastLoginAt safely without deleting or merging any other records
         profile = {
-          ...masterCandidate.data,
-          id: masterCandidate.id,
-          name: bestName || user.displayName || 'عميل كريم',
-          email: user.email || masterCandidate.data.email || '',
-          phone: bestPhone || masterCandidate.data.phone || '',
-          photoURL: user.photoURL || masterCandidate.data.photoURL,
+          ...existingCustomer,
           googleUid: user.uid,
-          cars: mergedCleanCars,
-          totalVisits: maxVisits,
-          totalSpent: maxSpent,
-          notes: bestNotes || masterCandidate.data.notes || '',
+          email: user.email || existingCustomer.email || '',
+          photoURL: user.photoURL || existingCustomer.photoURL,
+          name: existingCustomer.name && existingCustomer.name !== 'عميل كريم' 
+            ? existingCustomer.name 
+            : (user.displayName || existingCustomer.name || 'عميل كريم')
         };
 
-        // Update the master document
-        await updateDoc(masterCandidate.ref, {
+        await updateDoc(existingDocRef, {
           googleUid: user.uid,
-          email: user.email || masterCandidate.data.email || '',
-          name: profile.name,
-          phone: profile.phone,
-          photoURL: user.photoURL || masterCandidate.data.photoURL || null,
-          cars: mergedCleanCars as any,
-          totalVisits: maxVisits,
-          totalSpent: maxSpent,
+          email: profile.email,
+          photoURL: profile.photoURL || null,
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         }).catch(err => console.warn('Customer update warning:', err));
-
-        // Delete redundant duplicate docs so Firestore has zero duplicates
-        for (const duplicate of candidateDocs) {
-          if (duplicate.id !== masterCandidate.id) {
-            try {
-              await deleteDoc(duplicate.ref);
-              console.log(`Cleaned duplicate customer doc: ${duplicate.id}`);
-            } catch (delErr) {
-              console.warn('Duplicate doc cleanup warning:', delErr);
-            }
-          }
-        }
       } else {
-        // Brand new customer: Create single document at customers/{user.uid}
+        // Brand new Google customer: create dedicated document at customers/{user.uid}
         profile = {
           id: user.uid,
           name: user.displayName || 'عميل كريم',
           email: user.email || '',
-          phone: rawUserPhone || cachedPhone || '',
+          phone: '',
           photoURL: user.photoURL || undefined,
           googleUid: user.uid,
           cars: [],
@@ -898,7 +852,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notifyAdminNewCustomerRegistration({
           name: profile.name,
           email: profile.email,
-          phone: profile.phone,
+          phone: '',
           source: 'google'
         });
       }
@@ -919,8 +873,17 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }).catch(() => {});
 
+      // Check if mobile phone is valid Saudi format
+      const hasValidPhone = isValidSaudiMobile(profile.phone);
+      if (!hasValidPhone) {
+        setIsMandatoryPhoneModalOpen(true);
+        setIsPortalOpen(false);
+      } else {
+        setIsMandatoryPhoneModalOpen(false);
+        setIsPortalOpen(true);
+      }
+
       setIsAuthOpen(false);
-      setIsPortalOpen(true);
       setLoading(false);
       return { success: true };
     } catch (err: any) {
@@ -929,6 +892,80 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { 
         success: false, 
         error: 'حدث خطأ أثناء مزامنة بيانات حساب Google. يرجى المحاولة مجدداً.' 
+      };
+    }
+  };
+
+  // Saves and links mandatory Saudi mobile phone number to the current Google customer profile
+  const saveMandatoryPhone = async (rawPhone: string): Promise<{ success: boolean; error?: string }> => {
+    if (!customer?.id) {
+      return { success: false, error: 'لم يتم العثور على جلسة مستخدم نشطة. يرجى تسجيل الدخول مجدداً.' };
+    }
+
+    const cleaned = cleanSaudiPhone(rawPhone);
+    if (!cleaned || !cleaned.startsWith('05') || cleaned.length !== 10) {
+      return { 
+        success: false, 
+        error: 'يرجى إدخال رقم جوال سعودي صحيح يبدأ بـ 05 ويتكون من 10 أرقام (مثال: 05XXXXXXXX).' 
+      };
+    }
+
+    setLoading(true);
+    try {
+      // 1. Check if this phone number already belongs to another customer profile
+      // CRITICAL REQUIREMENT: "إذا كان رقم الجوال موجودًا في ملف عميل آخر، فلا تدمج الحسابات تلقائيًا ولا تحذف أي بيانات."
+      const qPhone = query(collection(db, 'customers'), where('phone', '==', cleaned));
+      const phoneSnap = await getDocs(qPhone);
+
+      const isConflicting = phoneSnap.docs.some(d => {
+        const data = d.data();
+        return d.id !== customer.id && data.googleUid !== customer.googleUid;
+      });
+
+      let directDocConflict = false;
+      try {
+        const directSnap = await getDoc(doc(db, 'customers', cleaned));
+        if (directSnap.exists() && directSnap.id !== customer.id && directSnap.data()?.googleUid !== customer.googleUid) {
+          directDocConflict = true;
+        }
+      } catch {}
+
+      if (isConflicting || directDocConflict) {
+        setLoading(false);
+        return {
+          success: false,
+          error: 'رقم الجوال هذا مسجل مسبقاً لدى عميل آخر. يرجى إدخال رقم جوالك الخاص أو التواصل مع الدعم الفني لحماية حسابك.'
+        };
+      }
+
+      // 2. No conflict: Safely update current customer's profile in Firestore
+      const customerDocRef = doc(db, 'customers', customer.id);
+      await updateDoc(customerDocRef, {
+        phone: cleaned,
+        updatedAt: serverTimestamp()
+      });
+
+      const updatedCustomer: CustomerProfile = {
+        ...customer,
+        phone: cleaned
+      };
+
+      setCustomer(updatedCustomer);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(updatedCustomer));
+        localStorage.setItem('drfix_customer_phone', cleaned);
+      } catch {}
+
+      setIsMandatoryPhoneModalOpen(false);
+      setIsPortalOpen(true);
+      setLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error saving mandatory phone:', err);
+      setLoading(false);
+      return { 
+        success: false, 
+        error: 'حدث خطأ أثناء حفظ وتوثيق رقم الجوال. يرجى المحاولة مرة أخرى.' 
       };
     }
   };
@@ -1316,6 +1353,8 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsAuthOpen,
       isPortalOpen,
       setIsPortalOpen,
+      isMandatoryPhoneModalOpen,
+      setIsMandatoryPhoneModalOpen,
       authMode,
       setAuthMode,
       login,
@@ -1325,11 +1364,13 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addCar,
       removeCar,
       updateProfile,
-      prefillBookingWithCar
+      prefillBookingWithCar,
+      saveMandatoryPhone
     }}>
       {children}
       <CustomerAuthModal />
       <CustomerPortalModal />
+      <MandatoryPhoneModal />
     </CustomerContext.Provider>
   );
 };
@@ -1496,6 +1537,144 @@ export const CustomerAuthModal: React.FC = () => {
             يتم توحيد حسابك وسياراتك تلقائياً بحساب Google المعتمد لضمان بطاقة عميل واحدة دائمة.
           </p>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// =========================================================================
+// Modal: Mandatory Saudi Mobile Phone Entry (إلزامي لعملاء Google الجدد أو من ليس لديهم هاتف)
+// =========================================================================
+export const MandatoryPhoneModal: React.FC = () => {
+  const { isMandatoryPhoneModalOpen, customer, saveMandatoryPhone, logout, loading } = useCustomer();
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useScrollLock(isMandatoryPhoneModalOpen);
+
+  if (!isMandatoryPhoneModalOpen || !customer) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+
+    const cleaned = cleanSaudiPhone(phoneNumber);
+    if (!cleaned || !cleaned.startsWith('05') || cleaned.length !== 10) {
+      setErrorMsg('يرجى إدخال رقم جوال سعودي صحيح يبدأ بـ 05 ومكون من 10 أرقام (مثال: 0512345678).');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await saveMandatoryPhone(cleaned);
+    setIsSubmitting(false);
+
+    if (!res.success) {
+      setErrorMsg(res.error || 'تعذر حفظ رقم الجوال. يرجى المحاولة مرة أخرى.');
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-md overflow-y-auto overscroll-contain"
+      dir="rtl"
+    >
+      <div className="relative w-full max-w-md bg-neutral-900 border border-white/15 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col my-auto overflow-hidden animate-fadeIn">
+        {/* Decorative ambient lights */}
+        <div className="absolute top-0 right-0 w-48 h-48 bg-brand-red/15 rounded-full blur-3xl -z-10 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+
+        {/* Modal Header */}
+        <div className="px-5 py-4 border-b border-white/10 bg-black/60 backdrop-blur-md flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-red/15 border border-brand-red/30 flex items-center justify-center shrink-0">
+              <Phone className="w-5 h-5 text-brand-red" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-display font-black text-white leading-tight">
+                إدخال رقم الجوال
+              </h3>
+              <p className="text-[11px] text-gray-400">
+                خطوة إلزامية لتفعيل ملفك ومتابعة الحجز
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-1.5">
+            <div className="flex items-center gap-2 text-xs font-bold text-gray-200">
+              <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>مرحباً بك {customer.name || 'عزيزنا العميل'}!</span>
+            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              لحماية حسابك وربط بطاقتك وسياراتك وضماناتك وسجلات الصيانة الخاصة بك برقم اتصالك، يرجى إدخال رقم جوالك السعودي لمتابعة الاستخدام.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
+              رقم الجوال السعودي <span className="text-brand-red">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type="tel"
+                dir="ltr"
+                value={phoneNumber}
+                onChange={(e) => {
+                  setPhoneNumber(e.target.value);
+                  if (errorMsg) setErrorMsg(null);
+                }}
+                placeholder="05XXXXXXXX"
+                autoFocus
+                className="w-full bg-black/60 border border-white/15 focus:border-brand-red rounded-xl py-3 px-3.5 text-white placeholder-gray-500 text-left font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-brand-red transition-all"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none select-none font-sans">
+                🇸🇦 +966
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1 text-right">
+              الصيغة المقبولة: 05XXXXXXXX أو 5XXXXXXXX
+            </p>
+          </div>
+
+          {errorMsg && (
+            <div className="p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-300 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{errorMsg}</span>
+            </div>
+          )}
+
+          <div className="pt-2 space-y-2.5">
+            <button
+              type="submit"
+              disabled={isSubmitting || loading}
+              className="w-full py-3.5 px-4 bg-brand-red hover:bg-red-700 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-brand-red/25 cursor-pointer flex items-center justify-center gap-2 text-sm"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>جاري حفظ وتوثيق رقم الجوال...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>تأكيد وحفظ رقم الجوال</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={logout}
+              className="w-full py-2.5 px-4 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl transition-all border border-white/5 cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>تسجيل الخروج أو استخدام حساب Google آخر</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
