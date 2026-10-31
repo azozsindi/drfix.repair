@@ -78,7 +78,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     <div className="h-full flex flex-col bg-[#0C0E12] text-[#F5F6F8] border-r border-white/[0.08] rtl:border-r-0 rtl:border-l rtl:border-white/[0.08] select-none">
       {/* Brand & Collapse Header */}
       <div className={cn(
-        "h-16 flex items-center justify-between px-4 border-b border-white/[0.08] bg-[#090A0C]/60 backdrop-blur-md shrink-0",
+        "min-h-16 h-auto md:h-16 pt-[max(env(safe-area-inset-top,0px),0.75rem)] pb-2 md:py-0 flex items-center justify-between px-4 border-b border-white/[0.08] bg-[#090A0C]/60 backdrop-blur-md shrink-0",
         isCollapsed && "px-2 justify-center"
       )}>
         <div className={cn("flex items-center gap-3 overflow-hidden", isCollapsed && "justify-center")}>

@@ -46,13 +46,13 @@ export const AdminTopbar: React.FC<AdminTopbarProps> = ({
   const CurrentIcon = currentItem.icon;
 
   return (
-    <header className="h-16 sticky top-0 z-20 bg-[#090A0C]/90 backdrop-blur-md border-b border-white/[0.08] px-3 sm:px-6 flex items-center justify-between gap-3 text-[#F5F6F8] w-full min-w-0 max-w-full overflow-hidden">
+    <header className="sticky top-0 z-20 bg-[#090A0C]/95 backdrop-blur-md border-b border-white/[0.08] px-3.5 sm:px-6 pt-[max(env(safe-area-inset-top,0px),1rem)] pb-3 sm:py-0 min-h-[4.5rem] sm:min-h-16 sm:h-16 flex items-center justify-between gap-3 text-[#F5F6F8] w-full min-w-0 max-w-full overflow-hidden">
       {/* Left / Start: Mobile Menu Button & Breadcrumbs */}
       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 shrink-0">
         <button
           type="button"
           onClick={onOpenMobileSidebar}
-          className="md:hidden w-10 h-10 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] active:bg-[#F52B35]/20 text-white transition-colors cursor-pointer shrink-0 border border-white/[0.08] flex items-center justify-center"
+          className="md:hidden w-11 h-11 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] active:bg-[#F52B35]/25 text-white transition-all cursor-pointer shrink-0 border border-white/[0.12] flex items-center justify-center shadow-sm"
           aria-label={lang === 'ar' ? 'فتح القائمة الجانبية' : 'Open Sidebar'}
         >
           <Menu className="w-5 h-5 text-[#F52B35]" />
