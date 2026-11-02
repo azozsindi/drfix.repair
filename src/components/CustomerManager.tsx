@@ -70,6 +70,7 @@ export interface CustomerProfile {
   name: string;
   phone: string;
   email?: string;
+  googleUid?: string;
   city?: string;
   address?: string;
   vehicles: CustomerVehicle[];
@@ -79,6 +80,13 @@ export interface CustomerProfile {
   firstVisitDate?: any;
   status: 'vip' | 'regular' | 'new' | 'inactive';
   notes?: string;
+  linkVerificationCode?: string;
+  linkVerificationExpiresAt?: number;
+  linkVerificationStatus?: 'pending' | 'verified' | 'rejected' | 'none';
+  pendingLinkGoogleUid?: string;
+  pendingLinkEmail?: string;
+  pendingLinkName?: string;
+  pendingLinkPhoto?: string;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -103,6 +111,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
   const [customerToDelete, setCustomerToDelete] = useState<CustomerProfile | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+  const [approvingCustomerId, setApprovingCustomerId] = useState<string | null>(null);
 
   // Lock background scroll when any modal in CustomerManager is open
   useScrollLock(!!selectedCustomerForDetail || isAddModalOpen || isDeleteBatchModalOpen || !!customerToDelete);
@@ -167,6 +176,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           name: data.name || 'عميل كريم',
           phone: data.phone || '',
           email: data.email || '',
+          googleUid: data.googleUid || '',
           city: data.city || 'جدة',
           address: data.address || '',
           vehicles: parsedVehicles,
@@ -176,6 +186,13 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
           firstVisitDate: data.firstVisitDate || null,
           status: data.status || 'regular',
           notes: data.notes || '',
+          linkVerificationCode: data.linkVerificationCode || '',
+          linkVerificationExpiresAt: data.linkVerificationExpiresAt || null,
+          linkVerificationStatus: data.linkVerificationStatus || 'none',
+          pendingLinkGoogleUid: data.pendingLinkGoogleUid || '',
+          pendingLinkEmail: data.pendingLinkEmail || '',
+          pendingLinkName: data.pendingLinkName || '',
+          pendingLinkPhoto: data.pendingLinkPhoto || '',
           createdAt: data.createdAt,
           updatedAt: data.updatedAt
         });
@@ -324,6 +341,70 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
       showToast('حدث خطأ أثناء المزامنة، يرجى المحاولة ثانية');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Pending Google Account Link Requests for Admin approval
+  const pendingLinkCustomers = useMemo(() => {
+    return customers.filter(c => c.linkVerificationStatus === 'pending');
+  }, [customers]);
+
+  const handleApproveLink = async (customer: CustomerProfile) => {
+    if (!customer.pendingLinkGoogleUid) {
+      showToast('لا توجد بيانات حساب Google معلقة لهذا الطلب');
+      return;
+    }
+    setApprovingCustomerId(customer.id);
+    try {
+      const custRef = doc(db, 'customers', customer.id);
+      await updateDoc(custRef, {
+        googleUid: customer.pendingLinkGoogleUid,
+        email: customer.pendingLinkEmail || customer.email || '',
+        name: (customer.name && customer.name !== 'عميل كريم') ? customer.name : (customer.pendingLinkName || customer.name || 'عميل كريم'),
+        linkVerificationStatus: 'verified',
+        linkVerificationCode: null,
+        pendingLinkGoogleUid: null,
+        pendingLinkEmail: null,
+        pendingLinkName: null,
+        pendingLinkPhoto: null,
+        updatedAt: serverTimestamp()
+      });
+
+      // Cleanup any empty placeholder doc if created under the googleUid
+      if (customer.pendingLinkGoogleUid && customer.pendingLinkGoogleUid !== customer.id) {
+        try {
+          const orphanRef = doc(db, 'customers', customer.pendingLinkGoogleUid);
+          await deleteDoc(orphanRef);
+        } catch (e) {
+          console.warn('Orphan doc cleanup ignore:', e);
+        }
+      }
+
+      showToast(`تم توثيق واعتماد ربط حساب Google للعميل (${customer.name}) بنجاح! سيتم تحديث شاشته فوراً ✨`);
+    } catch (err) {
+      console.error('Approve link error:', err);
+      showToast('حدث خطأ أثناء اعتماد طلب الربط');
+    } finally {
+      setApprovingCustomerId(null);
+    }
+  };
+
+  const handleRejectLink = async (customer: CustomerProfile) => {
+    try {
+      const custRef = doc(db, 'customers', customer.id);
+      await updateDoc(custRef, {
+        linkVerificationStatus: 'rejected',
+        linkVerificationCode: null,
+        pendingLinkGoogleUid: null,
+        pendingLinkEmail: null,
+        pendingLinkName: null,
+        pendingLinkPhoto: null,
+        updatedAt: serverTimestamp()
+      });
+      showToast(`تم رفض طلب ربط الحساب للعميل (${customer.name})`);
+    } catch (err) {
+      console.error('Reject link error:', err);
+      showToast('حدث خطأ أثناء رفض طلب الربط');
     }
   };
 
@@ -892,6 +973,82 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
         )}
       </div>
 
+      {/* Pending Google Account Link Requests Banner */}
+      {pendingLinkCustomers.length > 0 && (
+        <div className="glass-card p-5 border-amber-500/40 bg-gradient-to-r from-amber-500/[0.08] via-amber-500/[0.03] to-transparent relative overflow-hidden rounded-2xl shadow-xl shadow-amber-950/20 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black shrink-0">
+                <ShieldCheck className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>طلبات ربط وتوثيق حسابات Google المعلقة</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-mono font-bold border border-amber-500/30">
+                    {pendingLinkCustomers.length}
+                  </span>
+                </h3>
+                <p className="text-xs text-amber-200/70">
+                  سجل العميل دخوله عبر Google وأدخل رقم هاتف مسجل مسبقاً في المركز. يمكنك مطابقة كود OTP أو اعتماد الربط فوراً بدون تكرار الحساب.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingLinkCustomers.map((cust) => (
+              <div 
+                key={cust.id}
+                className="p-4 rounded-xl bg-black/60 border border-amber-500/30 flex flex-col justify-between gap-3"
+              >
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-white text-sm">{cust.name}</span>
+                    <span className="font-mono text-amber-400 font-bold dir-ltr bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                      {cust.phone}
+                    </span>
+                  </div>
+
+                  {cust.pendingLinkEmail && (
+                    <div className="text-gray-300 flex items-center gap-1.5">
+                      <span className="text-gray-500">حساب Google:</span>
+                      <span className="font-mono text-white text-[11px] truncate">{cust.pendingLinkEmail}</span>
+                    </div>
+                  )}
+
+                  {cust.linkVerificationCode && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-gray-400 text-[11px]">كود التحقق (OTP):</span>
+                      <span className="px-2.5 py-0.5 rounded-md bg-white/10 text-white font-mono font-black text-sm tracking-widest border border-white/20">
+                        {cust.linkVerificationCode}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                  <button
+                    onClick={() => handleApproveLink(cust)}
+                    disabled={approvingCustomerId === cust.id}
+                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{approvingCustomerId === cust.id ? 'جارِ الاعتماد...' : 'اعتماد وتوثيق الربط فوراً'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleRejectLink(cust)}
+                    className="py-2 px-3 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-300 border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    رفض
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Customer List / Cards Grid */}
       {loading ? (
         <div className="py-24 text-center glass-card border-white/5">
@@ -984,6 +1141,31 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
                       {customer.status === 'vip' ? 'VIP مميز' : customer.status === 'new' ? 'جديد' : 'دائم'}
                     </span>
                   </div>
+
+                  {/* Pending Link Request Alert Banner on Card */}
+                  {customer.linkVerificationStatus === 'pending' && (
+                    <div className="mb-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                        <span>طلب ربط معلق (كود: {customer.linkVerificationCode || '---'})</span>
+                      </div>
+                      <button
+                        onClick={() => handleApproveLink(customer)}
+                        disabled={approvingCustomerId === customer.id}
+                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-black font-black rounded-lg text-[11px] cursor-pointer"
+                      >
+                        {approvingCustomerId === customer.id ? '...' : 'اعتماد'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Verified with Google Account Badge */}
+                  {customer.googleUid && customer.linkVerificationStatus !== 'pending' && (
+                    <div className="mb-3 inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>موثق بحساب Google</span>
+                    </div>
+                  )}
 
                   {/* Vehicle Tag */}
                   <div className="mb-4">

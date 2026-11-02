@@ -649,7 +649,16 @@ export const deduplicateCustomerProfiles = <T extends Record<string, any>>(profi
         status: (prev.totalVisits >= 3 || item.totalVisits >= 3 || prev.status === 'vip' || item.status === 'vip') ? 'vip' : prev.status,
         notes: mergedNotes,
         lastVisitDate: prev.lastVisitDate || item.lastVisitDate,
-        firstVisitDate: prev.firstVisitDate || item.firstVisitDate
+        firstVisitDate: prev.firstVisitDate || item.firstVisitDate,
+        googleUid: prev.googleUid || item.googleUid || '',
+        linkVerificationStatus: (item.linkVerificationStatus === 'pending' || prev.linkVerificationStatus === 'pending') 
+          ? 'pending' 
+          : (prev.linkVerificationStatus || item.linkVerificationStatus || 'none'),
+        linkVerificationCode: prev.linkVerificationCode || item.linkVerificationCode,
+        pendingLinkGoogleUid: prev.pendingLinkGoogleUid || item.pendingLinkGoogleUid,
+        pendingLinkEmail: prev.pendingLinkEmail || item.pendingLinkEmail,
+        pendingLinkName: prev.pendingLinkName || item.pendingLinkName,
+        pendingLinkPhoto: prev.pendingLinkPhoto || item.pendingLinkPhoto
       };
     }
   });

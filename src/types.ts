@@ -33,6 +33,14 @@ export interface CustomerProfile {
   lastLoginAt?: any;
   createdAt: any;
   updatedAt?: any;
+  linkVerificationCode?: string | null;
+  linkVerificationExpiresAt?: number | null;
+  linkVerificationStatus?: 'none' | 'pending' | 'verified';
+  pendingLinkGoogleUid?: string | null;
+  pendingLinkEmail?: string | null;
+  pendingLinkName?: string | null;
+  pendingLinkPhoto?: string | null;
+  isPendingPhone?: boolean;
 }
 
 export interface ServiceStepPhoto {
