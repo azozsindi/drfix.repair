@@ -754,6 +754,7 @@ const AdminDashboard = ({
     facebookPixelId: settings.facebookPixelId || '',
     footerDescription: settings.footerDescription || '',
     copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
+    commercialRegister: settings.commercialRegister || '7055517838',
     maintenanceMode: settings.maintenanceMode ?? false,
     maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
     telegramBotToken: settings.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN,
@@ -873,6 +874,7 @@ const AdminDashboard = ({
       facebookPixelId: settings.facebookPixelId || '',
       footerDescription: settings.footerDescription || '',
       copyrightText: settings.copyrightText || `© ${new Date().getFullYear()} جميع الحقوق محفوظة`,
+      commercialRegister: settings.commercialRegister || '7055517838',
       maintenanceMode: settings.maintenanceMode ?? false,
       maintenanceMessage: settings.maintenanceMessage || 'الموقع قيد الصيانة حالياً، سنعود قريباً.',
       telegramBotToken: settings.telegramBotToken || DEFAULT_TELEGRAM_BOT_TOKEN,
@@ -6418,6 +6420,16 @@ const AdminDashboard = ({
                               onChange={e => setSettingsForm({...settingsForm, copyrightText: e.target.value})}
                               className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red"
                               placeholder="جميع الحقوق محفوظة © 2024"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-500 uppercase">رقم السجل التجاري (Commercial Registration)</label>
+                            <input 
+                              type="text"
+                              value={settingsForm.commercialRegister || ''}
+                              onChange={e => setSettingsForm({...settingsForm, commercialRegister: e.target.value})}
+                              className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-brand-red font-mono"
+                              placeholder="7055517838"
                             />
                           </div>
                         </div>

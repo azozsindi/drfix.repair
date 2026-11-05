@@ -917,6 +917,7 @@ export interface AppSettings {
   // Footer
   footerDescription?: string;
   copyrightText?: string;
+  commercialRegister?: string;
   // Maintenance
   maintenanceMode?: boolean;
   maintenanceMessage?: string;
@@ -996,6 +997,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showPrivacyPolicy: true,
   showTermsOfService: true,
   copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX",
+  commercialRegister: "7055517838",
   privacyPolicyText: "",
   termsOfServiceText: ""
 };

@@ -1671,7 +1671,7 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
                         المملكة العربية السعودية - جدة | خدمة متنقلة ومراكز متخصصة
                       </div>
                       <div className="text-xs text-gray-500 font-mono mt-0.5" dir="ltr">
-                        CR: 4030123456 | VAT: 310023456700003
+                        CR: 7055517838 | VAT: 310023456700003
                       </div>
                     </div>
                   </div>

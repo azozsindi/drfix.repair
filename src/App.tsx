@@ -576,6 +576,7 @@ interface AppSettings {
   // Footer
   footerDescription?: string;
   copyrightText?: string;
+  commercialRegister?: string;
   // Maintenance
   maintenanceMode?: boolean;
   maintenanceMessage?: string;
@@ -629,6 +630,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showPrivacyPolicy: true,
   showTermsOfService: true,
   copyrightText: "© 2026 جميع الحقوق محفوظة لدى DRFIX",
+  commercialRegister: "7055517838",
   privacyPolicyText: "",
   termsOfServiceText: ""
 };
@@ -3810,7 +3812,14 @@ const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppS
       </div>
     </div>
     <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-gray-500 text-xs sm:text-sm font-mono">
-      <div className="text-center md:text-start">{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</div>
+      <div className="text-center md:text-start flex flex-col sm:flex-row items-center gap-2">
+        <span>{settings.copyrightText || `© ${new Date().getFullYear()} DR. FIX AUTO SERVICES. ${t.footer.rights}`}</span>
+        <span className="hidden sm:inline text-gray-700">•</span>
+        <span className="text-gray-400 font-sans inline-flex items-center gap-1">
+          <span>{lang === 'ar' ? 'سجل تجاري:' : 'CR:'}</span>
+          <strong className="font-mono text-gray-300 tracking-wider font-bold">{settings.commercialRegister || '7055517838'}</strong>
+        </span>
+      </div>
       
       {/* Privacy Policy & Terms of Service Links */}
       {((settings.showPrivacyPolicy !== false) || (settings.showTermsOfService !== false)) && (
