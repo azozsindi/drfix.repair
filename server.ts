@@ -3,20 +3,11 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import telegramHandler from './api/telegram';
-import notifyBookingHandler from './api/notify-booking';
-import notifyReviewHandler from './api/notify-review';
-import notifyVisitHandler from './api/notify-visit';
-import setupWebhookHandler from './api/setup-webhook';
 import statusRedirectHandler from './api/status-redirect';
 import accountingHandler from './api/accounting';
-import notifyCustomerRegistrationHandler from './api/notify-customer-registration';
-import uploadVideoHandler from './api/upload-video';
-import uploadImageHandler from './api/upload-image';
-import fcmNotifyHandler from './api/fcm-notify';
-import customerLinkHandler from './api/customer-link';
-import staffAuthHandler from './api/staff-auth';
-import bookingTrackHandler from './api/booking-track';
-import portalOperationsHandler from './api/portal-operations';
+import notifyHandler from './api/notify';
+import uploadHandler from './api/upload';
+import portalHandler from './api/portal';
 
 async function startServer() {
   const app = express();
@@ -36,42 +27,24 @@ async function startServer() {
     });
   });
 
-  // Telegram Inbound Webhook
-  app.all('/api/telegram', async (req, res) => {
+  // Telegram Inbound Webhook & Setup Webhook
+  app.all('/api/telegram*', async (req, res) => {
+    await telegramHandler(req, res);
+  });
+  app.all('/api/setup-webhook', async (req, res) => {
     await telegramHandler(req, res);
   });
 
-  // Setup / Register Webhook with Telegram
-  app.all('/api/setup-webhook', async (req, res) => {
-    await setupWebhookHandler(req, res);
-  });
-  app.all('/api/telegram/setup-webhook', async (req, res) => {
-    await setupWebhookHandler(req, res);
-  });
-
-  // Server-side New Booking Notification Trigger
-  app.all('/api/notify-booking', async (req, res) => {
-    await notifyBookingHandler(req, res);
-  });
-
-  // Firebase Cloud Messaging (FCM) Instant Notification Dispatcher
-  app.all('/api/fcm-notify', async (req, res) => {
-    await fcmNotifyHandler(req, res);
-  });
-
-  // Server-side Review Notification Trigger
-  app.all('/api/notify-review', async (req, res) => {
-    await notifyReviewHandler(req, res);
-  });
-
-  // Server-side Emergency / Visit Request Notification Trigger
-  app.all('/api/notify-visit', async (req, res) => {
-    await notifyVisitHandler(req, res);
-  });
-
-  // Server-side Customer Registration Notification Trigger
-  app.all('/api/notify-customer-registration', async (req, res) => {
-    await notifyCustomerRegistrationHandler(req, res);
+  // Unified Notification Engine (Booking, Review, Visit, Customer Registration, FCM)
+  app.all([
+    '/api/notify-booking',
+    '/api/notify-review',
+    '/api/notify-visit',
+    '/api/notify-customer-registration',
+    '/api/fcm-notify',
+    '/api/notify*'
+  ], async (req, res) => {
+    await notifyHandler(req, res);
   });
 
   // Direct Status Update & WhatsApp Redirect Route
@@ -84,37 +57,25 @@ async function startServer() {
     await accountingHandler(req, res);
   });
 
-  // Secure Staff Authentication & Management Handler
-  app.all('/api/staff*', async (req, res) => {
-    await staffAuthHandler(req, res);
+  // Unified Portal Engine (Staff Auth, Booking Tracking, Workshop Operations, Customer Linking)
+  app.all([
+    '/api/staff*',
+    '/api/booking/track',
+    '/api/customer/my-bookings',
+    '/api/portal*',
+    '/api/customer-link*',
+    '/api/portal'
+  ], async (req, res) => {
+    await portalHandler(req, res);
   });
 
-  // Public Booking Status Tracking (Sanitized & Rate-Limited)
-  app.all('/api/booking/track', async (req, res) => {
-    await bookingTrackHandler(req, res);
-  });
-
-  // Secure Portal Operations (Customer bookings, Technician assigned tasks, Receptionist intake)
-  app.all('/api/portal*', async (req, res) => {
-    await portalOperationsHandler(req, res);
-  });
-  app.all('/api/customer/my-bookings', async (req, res) => {
-    await portalOperationsHandler(req, res);
-  });
-
-  // Secure Customer Account Unification & Linking Handler
-  app.all('/api/customer-link*', async (req, res) => {
-    await customerLinkHandler(req, res);
-  });
-
-  // Inspection Video Upload Endpoint
-  app.all('/api/upload-video', async (req, res) => {
-    await uploadVideoHandler(req, res);
-  });
-
-  // Image Upload Endpoint (Hero banner, logos, gallery)
-  app.all('/api/upload-image', async (req, res) => {
-    await uploadImageHandler(req, res);
+  // Unified Media Upload (Images & Videos)
+  app.all([
+    '/api/upload-video',
+    '/api/upload-image',
+    '/api/upload*'
+  ], async (req, res) => {
+    await uploadHandler(req, res);
   });
 
   // Explicitly block any direct static access to accounting_private if ever referenced
@@ -162,7 +123,6 @@ async function startServer() {
     const ext = path.extname(filename).toLowerCase();
     const contentType = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    // 5 minutes max-age with revalidation so brand image changes take effect quickly without stale cache
     res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
     res.sendFile(path.join(process.cwd(), 'public', filename));
   });

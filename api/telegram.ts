@@ -452,25 +452,77 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  // GET: Health / Status / Setup Trigger
-  if (req.method === 'GET') {
-    const isSetup = req.query && (req.query.setup === '1' || req.query.setup === 'true' || req.query.action === 'setup');
-    if (isSetup) {
-      try {
-        const botToken = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();
-        const webhookUrl = 'https://www.drfix.repair/api/telegram';
-        const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: webhookUrl, drop_pending_updates: false })
-        });
-        const telegramSetResult = await setRes.json();
-        return res.status(200).json({ ok: true, webhookUrl, telegramSetResult });
-      } catch (err: any) {
-        return res.status(500).json({ ok: false, error: err?.message || String(err) });
-      }
-    }
+  // Check if setup webhook requested (either GET or POST with setup in path or query)
+  const fullUrl = req.originalUrl || req.url || '';
+  const isSetupRoute = fullUrl.includes('setup') || req.query?.setup === '1' || req.query?.setup === 'true' || req.query?.action === 'setup';
 
+  if (isSetupRoute) {
+    try {
+      const botToken = (process.env.TELEGRAM_BOT_TOKEN || DEFAULT_BOT_TOKEN).trim();
+      if (!botToken) {
+        return res.status(500).json({ ok: false, error: 'TELEGRAM_BOT_TOKEN is missing in environment variables' });
+      }
+
+      const host = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || 'www.drfix.repair';
+      const protocol = (req.headers && (req.headers['x-forwarded-proto'])) || 'https';
+      
+      let baseDomain = 'https://www.drfix.repair';
+      const queryDomain = (req.query && req.query.domain) || '';
+      if (queryDomain && typeof queryDomain === 'string' && queryDomain.startsWith('http')) {
+        baseDomain = queryDomain;
+      } else if (process.env.APP_URL && process.env.APP_URL.startsWith('http') && !process.env.APP_URL.includes('run.app')) {
+        baseDomain = process.env.APP_URL;
+      } else if (host && (host.includes('drfix.repair') || host.includes('vercel.app'))) {
+        baseDomain = `${protocol}://${host}`;
+      }
+
+      baseDomain = baseDomain.replace(/\/$/, '');
+      const webhookUrl = `${baseDomain}/api/telegram`;
+
+      const rawSecret = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+      const isValidSecret = /^[A-Za-z0-9_-]{1,256}$/.test(rawSecret);
+
+      const payload: Record<string, any> = {
+        url: webhookUrl,
+        drop_pending_updates: false,
+        max_connections: 40
+      };
+
+      if (isValidSecret) {
+        payload.secret_token = rawSecret;
+      }
+
+      const setRes = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const telegramSetResult = await setRes.json();
+
+      const infoRes = await fetch(`https://api.telegram.org/bot${botToken}/getWebhookInfo`);
+      const currentWebhookInfo = await infoRes.json();
+
+      const isUrlAlreadyActive = currentWebhookInfo?.result?.url === webhookUrl;
+      const isSuccess = (telegramSetResult && telegramSetResult.ok === true) || isUrlAlreadyActive;
+
+      return res.status(isSuccess ? 200 : 400).json({
+        ok: isSuccess,
+        message: isSuccess ? 'Telegram Webhook is registered and active' : 'Failed to register Telegram Webhook with Telegram API',
+        targetWebhookUrl: webhookUrl,
+        isUrlAlreadyActive,
+        hasSecretTokenConfigured: isValidSecret,
+        telegramSetResult,
+        currentWebhookInfo,
+        configuredAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('Error in telegram setup-webhook handler:', error);
+      return res.status(500).json({ ok: false, error: error?.message || String(error) });
+    }
+  }
+
+  // GET: Health / Status
+  if (req.method === 'GET') {
     return res.status(200).json({
       ok: true,
       service: 'DR.FIX Telegram Inbound Webhook',

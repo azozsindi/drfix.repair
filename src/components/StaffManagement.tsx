@@ -161,7 +161,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
           permissions,
           isActive,
           notes: notes.trim(),
-          currentAdminRole: currentStaff?.role || 'admin'
+          currentAdminRole: currentStaffUser?.role || 'admin'
         })
       });
 

@@ -9,3 +9,4 @@ coverage/
 _backup_*
 storage/
 public/uploads/accounting_private/
+.aistudio/

@@ -1,5 +1,20 @@
 {
   "rewrites": [
+    { "source": "/api/staff/:path*", "destination": "/api/portal?action=staff&:path*" },
+    { "source": "/api/staff", "destination": "/api/portal?action=staff" },
+    { "source": "/api/booking/track", "destination": "/api/portal?action=booking-track" },
+    { "source": "/api/customer/my-bookings", "destination": "/api/portal?action=my-bookings" },
+    { "source": "/api/portal/staff/:path*", "destination": "/api/portal?action=portal&:path*" },
+    { "source": "/api/customer-link/:path*", "destination": "/api/portal?action=customer-link&:path*" },
+    { "source": "/api/notify-booking", "destination": "/api/notify?channel=booking" },
+    { "source": "/api/notify-review", "destination": "/api/notify?channel=review" },
+    { "source": "/api/notify-visit", "destination": "/api/notify?channel=visit" },
+    { "source": "/api/notify-customer-registration", "destination": "/api/notify?channel=customer-registration" },
+    { "source": "/api/fcm-notify", "destination": "/api/notify?channel=fcm" },
+    { "source": "/api/upload-image", "destination": "/api/upload?type=image" },
+    { "source": "/api/upload-video", "destination": "/api/upload?type=video" },
+    { "source": "/api/setup-webhook", "destination": "/api/telegram?action=setup" },
+    { "source": "/api/telegram/setup-webhook", "destination": "/api/telegram?action=setup" },
     {
       "source": "/((?!api/|sitemap\\.xml|robots\\.txt|manifest\\.json|sw\\.js|assets/).*)",
       "destination": "/index.html"

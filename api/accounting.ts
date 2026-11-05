@@ -273,6 +273,7 @@ export default async function accountingHandler(req: Request, res: Response) {
       }
 
       const userDoc = snap.docs[0];
+      const userData = userDoc.data() as any;
       // Check password using scrypt with transparent legacy auto-upgrade
       const { valid, needsUpgrade } = verifyPasswordScrypt(cleanPass, userData.password);
 
