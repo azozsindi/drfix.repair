@@ -1,205 +1,217 @@
-import { Timestamp } from 'firebase/firestore';
+export type AccountingPaymentMethod = 'cash' | 'card' | 'bank_transfer';
 
-export type PaymentPermission = 
-  | 'view_payments'
-  | 'create_payment'
-  | 'edit_payment'
-  | 'approve_payment'
-  | 'reject_payment'
-  | 'cancel_payment'
-  | 'delete_payment'
-  | 'view_financial_reports'
-  | 'export_financial_reports'
-  | 'manage_payment_permissions';
+export type PurchaseCategory = 
+  | 'spare_parts'          // قطع غيار
+  | 'oils_fluids'          // زيوت وسوائل
+  | 'tools_equipment'      // أدوات ومعدات
+  | 'operating_supplies'   // مستلزمات تشغيل
+  | 'other';               // أخرى
 
-export interface PermissionDefinition {
-  id: PaymentPermission;
-  name: string;
-  description: string;
-  category: 'operations' | 'approvals' | 'reports' | 'admin';
-}
+export type ExpenseCategory = 
+  | 'salaries'             // رواتب
+  | 'rent'                 // إيجار
+  | 'fuel_transportation'  // وقود ونقل
+  | 'maintenance'          // صيانة سيارات ومعدات
+  | 'telecom'              // اتصالات وإنترنت
+  | 'marketing'            // تسويق
+  | 'government_fees'      // رسوم حكومية وتراخيص
+  | 'software_subscriptions' // برامج واشتراكات
+  | 'admin_expenses'       // مصروفات إدارية
+  | 'other';               // أخرى
 
-export const ALL_PAYMENT_PERMISSIONS: PermissionDefinition[] = [
-  {
-    id: 'view_payments',
-    name: 'مشاهدة المدفوعات',
-    description: 'استعراض قائمة المدفوعات اليدوية وتفاصيل السندات',
-    category: 'operations'
-  },
-  {
-    id: 'create_payment',
-    name: 'إضافة دفعة يدوية',
-    description: 'تسجيل دفعة أو سند قبض يدوي جديد في النظام المحاسبي',
-    category: 'operations'
-  },
-  {
-    id: 'edit_payment',
-    name: 'تعديل المدفوعات',
-    description: 'تعديل بيانات الدفعات قبل الاعتماد (أو مع توثيق السبب بعد الاعتماد للمخولين)',
-    category: 'operations'
-  },
-  {
-    id: 'approve_payment',
-    name: 'اعتماد المدفوعات',
-    description: 'اعتماد وترحيل الدفعات رسمياً في الحسابات المالية',
-    category: 'approvals'
-  },
-  {
-    id: 'reject_payment',
-    name: 'رفض المدفوعات',
-    description: 'رفض الدفعة المعلقة مع تسجيل السبب في السجل الرقابي',
-    category: 'approvals'
-  },
-  {
-    id: 'cancel_payment',
-    name: 'إلغاء المدفوعات',
-    description: 'إلغاء سند قبض معتمد أو معلق مع تسجيل سبب الإلغاء الإلزامي',
-    category: 'approvals'
-  },
-  {
-    id: 'delete_payment',
-    name: 'حذف المدفوعات',
-    description: 'حذف سجل الدفعة نهائياً من النظام (صلاحية خاصة جداً)',
-    category: 'operations'
-  },
-  {
-    id: 'view_financial_reports',
-    name: 'مشاهدة التقارير المالية',
-    description: 'استعراض الإيرادات والتحليلات والملخصات المحاسبية',
-    category: 'reports'
-  },
-  {
-    id: 'export_financial_reports',
-    name: 'تصدير التقارير وسندات القبض',
-    description: 'تصدير تقارير المدفوعات وسندات القبض كملفات Word و PDF و Excel',
-    category: 'reports'
-  },
-  {
-    id: 'manage_payment_permissions',
-    name: 'إدارة صلاحيات وأدوار المدفوعات',
-    description: 'إنشاء وتعديل الأدوار المخصصة وتعيين الصلاحيات للمستخدمين',
-    category: 'admin'
-  }
-];
-
-export interface PaymentRole {
-  id: string; // e.g. 'owner', 'accountant', 'manager', 'staff', 'technician', or custom 'role-xxx'
-  code: string;
-  name: string;
-  description: string;
-  isSystem?: boolean;
-  permissions: PaymentPermission[];
-  createdAt?: string | Timestamp;
-  updatedAt?: string | Timestamp;
-}
-
-export interface AccountingUser {
+export interface AccountingServiceItem {
   id: string;
-  username: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  roleId: string;
-  customPermissions?: PaymentPermission[]; // overrides if needed
-  isActive: boolean;
-  lastLogin?: string | Timestamp;
-  createdAt: string | Timestamp;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'pos' | 'cheque';
-export type PaymentCategory = 'service_fee' | 'part_sale' | 'advance_deposit' | 'maintenance_settlement' | 'other';
-export type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type InvoiceStatus = 'issued' | 'partially_paid' | 'paid' | 'cancelled';
 
-export interface PaymentEditRecord {
-  modifiedAt: string;
-  modifiedBy: {
-    id: string;
-    name: string;
-    role: string;
+export interface AccountingServiceInvoice {
+  id: string; // e.g. "srv_20261103_001"
+  invoiceNumber: string; // e.g. "DRF-INV-1001"
+  financialAccountId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  maintenanceId?: string; // Optional booking link
+  carInfo?: {
+    make?: string;
+    model?: string;
+    year?: string;
+    plateNumber?: string;
   };
-  reason: string;
-  oldAmount: number;
-  newAmount: number;
-  oldPayerName?: string;
-  newPayerName?: string;
-  notes?: string;
-}
-
-export interface ManualPayment {
-  id: string;
-  paymentNumber: string; // e.g. "DRF-PAY-1001"
-  amount: number;
-  payerName: string;
-  payerPhone: string;
-  paymentMethod: PaymentMethod;
-  referenceNumber?: string;
-  category: PaymentCategory;
-  bookingId?: string;
-  notes?: string;
-  status: PaymentStatus;
-  createdAt: any;
-  createdBy: {
-    id: string;
-    name: string;
-    role: string;
-    email?: string;
-  };
-  approvedAt?: any;
-  approvedBy?: {
-    id: string;
-    name: string;
-    role: string;
-  };
-  rejectedAt?: any;
-  rejectedBy?: {
-    id: string;
-    name: string;
-    role: string;
-  };
-  rejectionReason?: string;
-  cancelledAt?: any;
-  cancelledBy?: {
-    id: string;
-    name: string;
-    role: string;
-  };
+  items: AccountingServiceItem[];
+  subtotal: number;
+  discountAmount: number;
+  discountReason?: string; // Mandatory if discountAmount > 0
+  amountAfterDiscount: number;
+  vatRate: number; // e.g. 0.15 (15%)
+  vatAmount: number;
+  grandTotal: number;
+  paidAmount: number;
+  remainingBalance: number;
+  status: InvoiceStatus;
   cancellationReason?: string;
-  editHistory?: PaymentEditRecord[];
+  createdByStaffId: string;
+  createdByStaffName: string;
+  createdAt: string; // ISO 8601
+  updatedAt: string;
 }
 
-export type AuditActionType =
-  | 'CREATE_PAYMENT'
-  | 'EDIT_PAYMENT'
-  | 'APPROVE_PAYMENT'
-  | 'REJECT_PAYMENT'
-  | 'CANCEL_PAYMENT'
-  | 'DELETE_PAYMENT'
-  | 'CREATE_ROLE'
-  | 'UPDATE_ROLE'
-  | 'DELETE_ROLE'
-  | 'CREATE_USER'
-  | 'UPDATE_USER'
-  | 'DELETE_USER'
-  | 'EXPORT_REPORT';
+export type VoucherType = 'receipt' | 'refund';
+export type VoucherStatus = 'active' | 'cancelled';
 
-export interface PaymentAuditLog {
-  id: string;
-  action: AuditActionType;
+export interface AccountingVoucher {
+  id: string; // e.g. "vch_20261103_001"
+  voucherNumber: string; // e.g. "DRF-RCT-1001"
+  voucherType: VoucherType;
+  serviceInvoiceId?: string;
+  financialAccountId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  paymentMethod: AccountingPaymentMethod;
+  bankReference?: string;
+  notes?: string;
+  status: VoucherStatus;
+  cancellationReason?: string;
+  recordedByStaffId: string;
+  recordedByStaffName: string;
+  createdAt: string; // ISO 8601
+}
+
+export interface AccountingPurchase {
+  id: string; // e.g. "pur_20261103_001"
+  purchaseNumber: string; // e.g. "DRF-PUR-1001"
+  category: PurchaseCategory;
+  itemName: string;
+  itemDescription?: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  isTaxable: boolean;
+  vatRate: number; // e.g. 0.15 or 0
+  vatAmount: number;
+  finalTotal: number;
+  supplierName: string;
+  supplierInvoiceNumber: string;
+  paymentMethod: AccountingPaymentMethod;
+  receiptAttachmentUrl?: string;
+  maintenanceId?: string; // Optional link to specific car/job
+  notes?: string;
+  paymentStatus: 'paid' | 'unpaid';
+  status: 'active' | 'cancelled';
+  cancellationReason?: string;
+  recordedByStaffId: string;
+  recordedByStaffName: string;
+  purchaseDate: string;
+  createdAt: string;
+}
+
+export interface AccountingExpense {
+  id: string; // e.g. "exp_20261103_001"
+  expenseNumber: string; // e.g. "DRF-EXP-1001"
+  category: ExpenseCategory;
   title: string;
+  amountBeforeVat: number;
+  isTaxable: boolean;
+  vatRate: number;
+  vatAmount: number;
+  totalAmount: number;
+  paymentMethod: AccountingPaymentMethod;
+  payeeOrVendor: string;
+  receiptAttachmentUrl?: string;
+  notes?: string;
+  expenseDate: string;
+  paymentStatus: 'paid' | 'unpaid';
+  status: 'active' | 'cancelled';
+  cancellationReason?: string;
+  approvedByStaffId: string;
+  approvedByStaffName: string;
+  createdAt: string;
+}
+
+export interface CustomerFinancialAccount {
+  id: string; // e.g. "cfa_<customerId>"
+  customerId: string;
+  customerName: string;
+  primaryPhone: string;
+  phoneHistory: string[];
+  currentBalance: number; // Positive = owes money, zero = settled, negative = credit
+  totalBilled: number;
+  totalPaid: number;
+  linkedBookingIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountingAuditLog {
+  id: string;
+  action: 
+    | 'CREATE_INVOICE'
+    | 'CANCEL_INVOICE'
+    | 'RECORD_PAYMENT'
+    | 'RECORD_REFUND'
+    | 'CANCEL_VOUCHER'
+    | 'CREATE_PURCHASE'
+    | 'CANCEL_PURCHASE'
+    | 'CREATE_EXPENSE'
+    | 'CANCEL_EXPENSE'
+    | 'SET_PERMISSION'
+    | 'LOGIN'
+    | 'LOGOUT';
+  targetType: 'service' | 'voucher' | 'purchase' | 'expense' | 'permission' | 'auth';
   targetId: string;
-  targetType: 'payment' | 'role' | 'user' | 'report';
   performedBy: {
     id: string;
     name: string;
-    role: string;
-    email?: string;
+    username: string;
   };
-  timestamp: any;
-  details: {
-    reason?: string;
-    oldValue?: any;
-    newValue?: any;
-    meta?: Record<string, any>;
+  reason?: string;
+  oldValue?: any;
+  newValue?: any;
+  timestamp: string;
+}
+
+export interface FinancialSummaryReport {
+  period: {
+    from: string;
+    to: string;
+    label: string;
   };
-  ipAddress?: string;
+  services: {
+    totalSubtotal: number;
+    totalDiscounts: number;
+    totalVat: number;
+    totalInvoiced: number; // Grand total of active invoices
+    invoiceCount: number;
+  };
+  collections: {
+    totalCollected: number; // Gross receipts - gross refunds
+    cashAmount: number;
+    cardAmount: number;
+    bankTransferAmount: number;
+    refundsAmount: number;
+    vouchersCount: number;
+  };
+  receivables: {
+    totalOutstanding: number; // Remaining balance on unpaid active invoices
+  };
+  purchases: {
+    totalPurchases: number;
+    byCategory: Record<PurchaseCategory, number>;
+    purchasesCount: number;
+  };
+  expenses: {
+    totalExpenses: number;
+    byCategory: Record<ExpenseCategory, number>;
+    expensesCount: number;
+  };
+  cashFlow: {
+    netCashMovement: number; // totalCollected - totalPurchases - totalExpenses
+  };
 }

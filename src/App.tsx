@@ -136,6 +136,7 @@ import { LanguageProvider, useLanguage, LanguageToggle, type Language } from './
 
 // Code-Splitting: Lazy Loaded Admin Dashboard, Routes, and Modals
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
+const AccountingPortal = React.lazy(() => import('./pages/AccountingPortal'));
 const ServiceTimelineModal = React.lazy(() => import('./components/ServiceTimelineModal').then(m => ({ default: m.ServiceTimelineModal })));
 const PartnersPage = React.lazy(() => import('./components/PartnersPage').then(m => ({ default: m.PartnersPage })));
 const LegalModal = React.lazy(() => import('./components/LegalModal').then(m => ({ default: m.LegalModal })));
@@ -201,6 +202,7 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
+  signInWithEmailAndPassword,
   User as FirebaseUser
 } from 'firebase/auth';
 import { auth, db } from './firebase';
@@ -377,63 +379,36 @@ const LoginPage = ({ onLogin, isAdmin }: { onLogin: (staff?: StaffUser) => void;
     const cleanUser = normalizeCredentialsInput(username);
     const cleanPass = normalizeCredentialsInput(password);
 
-    // 1. Check Master Super Admin Credentials (case-insensitive for username, flexible for mobile keyboards)
-    const isMasterUser = cleanUser.toUpperCase() === ADMIN_CREDENTIALS.username.toUpperCase();
-    const isMasterPass = cleanPass === ADMIN_CREDENTIALS.password || cleanPass.toUpperCase() === ADMIN_CREDENTIALS.password.toUpperCase();
-
-    if (isMasterUser && isMasterPass) {
-      const masterUser: StaffUser = {
-        id: 'master-super-admin',
-        username: 'DRFIX',
-        password: '••••••••',
-        fullName: 'المدير العام (Master Admin)',
-        role: 'super_admin',
-        roleTitleAr: 'المدير العام',
-        permissions: DEFAULT_SUPER_ADMIN_PERMISSIONS,
-        isActive: true
-      };
-      onLogin(masterUser);
-      setIsSubmitting(false);
-      navigate(getRedirectTarget(), { replace: true });
-      return;
-    }
-
-    // 2. Check Staff Collection in Firestore
+    // Secure Server-side Staff Authentication
     try {
-      const staffQuery = query(
-        collection(db, 'staff'),
-        where('username', '==', cleanUser.toLowerCase())
-      );
-      const snap = await getDocs(staffQuery);
+      const response = await fetch('/api/staff/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUser, password: cleanPass })
+      });
 
-      if (!snap.empty) {
-        const userDoc = snap.docs[0];
-        const staffData = { id: userDoc.id, ...userDoc.data() } as StaffUser;
+      const data = await response.json();
 
-        const staffPass = normalizeCredentialsInput(staffData.password || '');
-        if (staffPass === cleanPass) {
-          if (staffData.isActive === false) {
-            setError(lang === 'ar' ? 'عذراً، هذا الحساب معطل حالياً من قِبل الإدارة.' : 'This account has been deactivated by admin.');
-            setIsSubmitting(false);
-            return;
+      if (response.ok && data.success && data.user) {
+        // Authenticate Firebase Auth in the browser if staffPortalAuth credentials are provided
+        if (data.staffPortalAuth?.email && data.staffPortalAuth?.pass) {
+          try {
+            await signInWithEmailAndPassword(auth, data.staffPortalAuth.email, data.staffPortalAuth.pass);
+          } catch (fbAuthErr) {
+            console.warn('[Staff Firebase Auth Notice]:', fbAuthErr);
           }
-
-          // Update last login timestamp in background
-          updateDoc(doc(db, 'staff', userDoc.id), {
-            lastLogin: serverTimestamp()
-          }).catch(console.error);
-
-          onLogin(staffData);
-          setIsSubmitting(false);
-          navigate(getRedirectTarget(), { replace: true });
-          return;
         }
+
+        onLogin(data.user);
+        setIsSubmitting(false);
+        navigate(getRedirectTarget(), { replace: true });
+        return;
       }
 
-      setError(t.login.error || 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      setError(data.message || t.login.error || 'اسم المستخدم أو كلمة المرور غير صحيحة');
     } catch (err) {
-      console.error('Login error:', err);
-      setError('حدث خطأ أثناء تسجيل الدخول. يرجى التأكد من اتصال الإنترنت.');
+      console.error('Staff Login API error:', err);
+      setError('حدث خطأ أثناء الاتصال بالخادم لتسجيل الدخول. يرجى المحاولة لاحقاً.');
     } finally {
       setIsSubmitting(false);
     }
@@ -4411,13 +4386,20 @@ function MainContent() {
       return;
     }
 
-    // Load staff list only when tracking modal is actually requested
-    const unsubStaff = onSnapshot(collection(db, 'staff'), (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as StaffUser));
-      setStaffListForTrack(list);
-    }, (err) => console.warn('Staff fetch for track:', err));
+    // Load sanitized staff list through secure API without exposing passwords or hashes
+    let isMounted = true;
+    fetch('/api/staff/list')
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted && data.success && Array.isArray(data.staff)) {
+          setStaffListForTrack(data.staff);
+        }
+      })
+      .catch(err => console.warn('Staff fetch for track:', err));
 
-    return () => unsubStaff();
+    return () => {
+      isMounted = false;
+    };
   }, [location.search]);
 
   useEffect(() => {
@@ -4438,58 +4420,42 @@ function MainContent() {
     setIsTrackLoading(true);
     setTrackErrorMsg(null);
 
-    // Query Firestore for this booking by bookingId or document ID
-    const maintenanceCol = collection(db, 'maintenance');
-    const qByBookingId = query(maintenanceCol, where('bookingId', '==', cleanCode), limit(1));
+    // Fetch sanitized booking status through secure server endpoint
+    let isCancelled = false;
 
-    const unsub = onSnapshot(qByBookingId, async (snapshot) => {
-      if (!snapshot.empty) {
-        const docSnap = snapshot.docs[0];
-        setTrackBookingRecord({ id: docSnap.id, ...(docSnap.data() as any) } as MaintenanceRecord);
-        setIsTrackLoading(false);
-        setTrackErrorMsg(null);
-      } else {
-        // Fallback: Check if cleanCode is the direct firestore document ID or uppercase variant
-        try {
-          const docDirectRef = doc(db, 'maintenance', cleanCode);
-          const docDirectSnap = await getDoc(docDirectRef);
-          if (docDirectSnap.exists()) {
-            setTrackBookingRecord({ id: docDirectSnap.id, ...(docDirectSnap.data() as any) } as MaintenanceRecord);
-            setIsTrackLoading(false);
-            setTrackErrorMsg(null);
-          } else {
-            // Also check lowercase or uppercase bookingId match if any
-            const qFallback = query(maintenanceCol, where('bookingId', '==', cleanCode.toUpperCase()), limit(1));
-            const snapFallback = await getDocs(qFallback);
-            if (!snapFallback.empty) {
-              const dSnap = snapFallback.docs[0];
-              setTrackBookingRecord({ id: dSnap.id, ...(dSnap.data() as any) } as MaintenanceRecord);
-              setIsTrackLoading(false);
-              setTrackErrorMsg(null);
-            } else {
-              setIsTrackLoading(false);
-              setTrackErrorMsg(`عذراً، لم يتم العثور على طلب صيانة برقم السند (#${cleanCode}). يرجى التأكد من صحة الرابط.`);
-            }
-          }
-        } catch (err) {
-          console.error('Error fetching track doc directly:', err);
+    const fetchBookingStatus = async () => {
+      try {
+        const response = await fetch(`/api/booking/track?code=${encodeURIComponent(cleanCode)}`);
+        const data = await response.json();
+
+        if (isCancelled) return;
+
+        if (response.ok && data.success && data.booking) {
+          setTrackBookingRecord(data.booking as MaintenanceRecord);
+          setTrackErrorMsg(null);
+        } else {
+          setTrackErrorMsg(data.message || `عذراً، لم يتم العثور على طلب صيانة برقم السند (#${cleanCode}). يرجى التأكد من صحة الرابط.`);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          console.error('Track booking API error:', err);
+          setTrackErrorMsg('حدث خطأ أثناء تحميل بيانات الطلب، يرجى المحاولة مرة أخرى.');
+        }
+      } finally {
+        if (!isCancelled) {
           setIsTrackLoading(false);
-          setTrackErrorMsg(`عذراً، لم يتم العثور على الطلب (#${cleanCode}).`);
         }
       }
-    }, (err) => {
-      console.error('Track booking query error:', err);
-      setIsTrackLoading(false);
-      setTrackErrorMsg('حدث خطأ أثناء تحميل بيانات الطلب، يرجى المحاولة مرة أخرى.');
-    });
+    };
 
-    trackUnsubscribeRef.current = unsub;
+    fetchBookingStatus();
+
+    // Auto-refresh every 25 seconds while modal is open
+    const interval = setInterval(fetchBookingStatus, 25000);
 
     return () => {
-      if (trackUnsubscribeRef.current) {
-        trackUnsubscribeRef.current();
-        trackUnsubscribeRef.current = null;
-      }
+      isCancelled = true;
+      clearInterval(interval);
     };
   }, [location.search]);
 
@@ -4615,7 +4581,21 @@ function MainContent() {
                              location.pathname === '/ADMINDRFIX' ||
                              location.pathname.startsWith('/ADMINDRFIX/') ||
                              location.pathname.toLowerCase() === '/admindrfix' ||
-                             location.pathname.toLowerCase().startsWith('/admindrfix/');
+                             location.pathname.toLowerCase().startsWith('/admindrfix/') ||
+                             location.pathname.toLowerCase() === '/accounts' ||
+                             location.pathname.toLowerCase().startsWith('/accounts/');
+
+  // Dedicated Accounting Management Portal (/ACCOUNTS)
+  const isAccountsRoute = location.pathname.toLowerCase() === '/accounts' ||
+                          location.pathname.toLowerCase().startsWith('/accounts/');
+
+  if (isAccountsRoute) {
+    return (
+      <React.Suspense fallback={<ComponentLoadingFallback />}>
+        <AccountingPortal />
+      </React.Suspense>
+    );
+  }
 
   const isMaintenanceActive = Boolean(settings.maintenanceMode && !isAdminLoggedIn);
 

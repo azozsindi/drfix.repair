@@ -13,6 +13,10 @@ import notifyCustomerRegistrationHandler from './api/notify-customer-registratio
 import uploadVideoHandler from './api/upload-video';
 import uploadImageHandler from './api/upload-image';
 import fcmNotifyHandler from './api/fcm-notify';
+import customerLinkHandler from './api/customer-link';
+import staffAuthHandler from './api/staff-auth';
+import bookingTrackHandler from './api/booking-track';
+import portalOperationsHandler from './api/portal-operations';
 
 async function startServer() {
   const app = express();
@@ -80,6 +84,29 @@ async function startServer() {
     await accountingHandler(req, res);
   });
 
+  // Secure Staff Authentication & Management Handler
+  app.all('/api/staff*', async (req, res) => {
+    await staffAuthHandler(req, res);
+  });
+
+  // Public Booking Status Tracking (Sanitized & Rate-Limited)
+  app.all('/api/booking/track', async (req, res) => {
+    await bookingTrackHandler(req, res);
+  });
+
+  // Secure Portal Operations (Customer bookings, Technician assigned tasks, Receptionist intake)
+  app.all('/api/portal*', async (req, res) => {
+    await portalOperationsHandler(req, res);
+  });
+  app.all('/api/customer/my-bookings', async (req, res) => {
+    await portalOperationsHandler(req, res);
+  });
+
+  // Secure Customer Account Unification & Linking Handler
+  app.all('/api/customer-link*', async (req, res) => {
+    await customerLinkHandler(req, res);
+  });
+
   // Inspection Video Upload Endpoint
   app.all('/api/upload-video', async (req, res) => {
     await uploadVideoHandler(req, res);
@@ -88,6 +115,11 @@ async function startServer() {
   // Image Upload Endpoint (Hero banner, logos, gallery)
   app.all('/api/upload-image', async (req, res) => {
     await uploadImageHandler(req, res);
+  });
+
+  // Explicitly block any direct static access to accounting_private if ever referenced
+  app.all('/uploads/accounting_private*', (_req, res) => {
+    return res.status(403).json({ error: 'Forbidden', message: 'الوصول المباشر لمرفقات المحاسبة محظور نهائياً.' });
   });
 
   // Serve uploaded media with revalidation caching (prevents stale browser cache after replacement)

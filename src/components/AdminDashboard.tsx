@@ -1042,22 +1042,25 @@ const AdminDashboard = ({
         setGallery(results);
       }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
 
-      // Staff Users
-      const qStaff = query(collection(db, 'staff'), orderBy('createdAt', 'desc'), limit(50));
-      const unsubStaff = onSnapshot(qStaff, (snapshot) => {
-        const results: StaffUser[] = [];
-        snapshot.forEach((doc) => {
-          results.push({ id: doc.id, ...(doc.data() as any) } as StaffUser);
-        });
-        setStaffList(results);
-        try { localStorage.setItem('drfix_cached_staff', JSON.stringify(results)); } catch {}
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'staff');
+      // Staff Users (Loaded via secure sanitized API without exposing passwords or hashes)
+      const fetchStaffMembers = async () => {
         try {
-          const cached = localStorage.getItem('drfix_cached_staff');
-          if (cached) setStaffList(JSON.parse(cached));
-        } catch {}
-      });
+          const res = await fetch('/api/staff/list');
+          const data = await res.json();
+          if (data.success && Array.isArray(data.staff)) {
+            setStaffList(data.staff);
+            try { localStorage.setItem('drfix_cached_staff', JSON.stringify(data.staff)); } catch {}
+          }
+        } catch {
+          try {
+            const cached = localStorage.getItem('drfix_cached_staff');
+            if (cached) setStaffList(JSON.parse(cached));
+          } catch {}
+        }
+      };
+      fetchStaffMembers();
+      const staffInterval = setInterval(fetchStaffMembers, 30000);
+      const unsubStaff = () => clearInterval(staffInterval);
 
       // Partners
       const qPartners = query(collection(db, 'partners'), orderBy('order', 'asc'));
@@ -1093,16 +1096,21 @@ const AdminDashboard = ({
         console.warn('Contracts fetch fallback:', error);
       });
 
-      // Customers collection listener for instant deduplication & fast linking
-      const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-        const results: any[] = [];
-        snapshot.forEach((doc) => {
-          results.push({ id: doc.id, ...(doc.data() as any) });
-        });
-        setDbCustomers(results);
-      }, (error) => {
-        console.warn('Customers fetch fallback:', error);
-      });
+      // Customers loaded securely through sanitized API /api/portal/staff/customers
+      const fetchStaffCustomers = async () => {
+        try {
+          const res = await fetch('/api/portal/staff/customers');
+          const data = await res.json();
+          if (data.success && Array.isArray(data.customers)) {
+            setDbCustomers(data.customers);
+          }
+        } catch (err) {
+          console.warn('Customers fetch fallback:', err);
+        }
+      };
+      fetchStaffCustomers();
+      const customersInterval = setInterval(fetchStaffCustomers, 45000);
+      const unsubCustomers = () => clearInterval(customersInterval);
 
       // Background auto-purge duplicate customer documents
       purgeDuplicateCustomersInFirestore(db).catch(err => {
@@ -3205,15 +3213,15 @@ const AdminDashboard = ({
                                           <MessageSquare className="w-4 h-4" />
                                         </a>
                                       )}
-                                      {/* زر فيو لمتابعة الفني ومراحل العمل */}
+                                      {/* زر إظهار لمتابعة الفني ومراحل العمل */}
                                       <button 
                                         type="button"
                                         onClick={() => handleOpenTimeline(record, 'timeline')}
                                         className="h-8 px-2.5 bg-brand-red/15 hover:bg-brand-red/30 text-amber-300 border border-brand-red/35 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-                                        title="فيو: متابعة مراحل العمل وتوثيق الفني أين وصل"
+                                        title="إظهار: متابعة مراحل العمل وتوثيق الفني أين وصل"
                                       >
                                         <Eye className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                                        <span>فيو</span>
+                                        <span>إظهار</span>
                                         {(record.serviceSteps?.length || 0) > 0 && (
                                           <span className="px-1.5 py-0.5 bg-brand-red text-white rounded text-[10px] font-bold leading-none">
                                             {record.serviceSteps!.length}
@@ -3263,17 +3271,17 @@ const AdminDashboard = ({
 
                           return (
                             <div key={record.id} className={cn("p-3.5 sm:p-4 space-y-3 transition-colors", isSelected ? "bg-brand-red/10 border-r-4 border-brand-red" : "bg-black/20")}>
-                              {/* زر فيو لمتابعة العمل وحالة الفني أين وصل */}
+                              {/* زر إظهار لمتابعة العمل وحالة الفني أين وصل */}
                               <div className="pb-2.5 border-b border-white/10">
                                 <button
                                   type="button"
                                   onClick={() => handleOpenTimeline(record, 'timeline')}
                                   className="w-full min-h-[42px] py-2 px-3 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 active:scale-98 text-white rounded-xl font-bold flex items-center justify-between gap-2 shadow-md shadow-brand-red/25 border border-red-400/40 transition-all cursor-pointer overflow-hidden select-none"
-                                  title="فيو: متابعة مراحل العمل وتوثيق الفني أين وصل"
+                                  title="إظهار: متابعة مراحل العمل وتوثيق الفني أين وصل"
                                 >
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
                                     <Eye className="w-4 h-4 text-amber-300 shrink-0 animate-pulse" />
-                                    <span className="font-black text-white text-xs sm:text-sm whitespace-nowrap">فيو</span>
+                                    <span className="font-black text-white text-xs sm:text-sm whitespace-nowrap">إظهار</span>
                                     <span className="text-[11px] sm:text-xs text-white/90 font-medium truncate">متابعة الفني والعمل</span>
                                   </div>
                                   <div className="flex items-center gap-1 text-[11px] bg-black/40 px-2 py-1 rounded-lg border border-white/10 text-amber-300 font-bold shrink-0 whitespace-nowrap">
@@ -4516,7 +4524,11 @@ const AdminDashboard = ({
               animate={{ opacity: 1 }}
               className="space-y-6"
             >
-              <CustomerManager records={records} />
+              <CustomerManager 
+                records={records} 
+                currentStaffUser={currentStaffUser} 
+                isSuperAdmin={isSuperAdmin} 
+              />
             </motion.div>
           )}
 
@@ -7328,7 +7340,7 @@ const AdminDashboard = ({
                     className="w-full py-3.5 bg-gradient-to-r from-brand-red via-red-600 to-brand-red hover:brightness-110 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-red/25 cursor-pointer transition-all border border-red-500/40"
                   >
                     <Eye className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
-                    <span className="font-black">فيو:</span>
+                    <span className="font-black">إظهار:</span>
                     <span>متابعة مراحل العمل وتوثيق الفني أين وصل ({selectedBookingDetails.serviceSteps?.length || 0} مرحلة) 📸</span>
                   </button>
                 </div>

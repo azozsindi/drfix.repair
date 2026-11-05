@@ -34,8 +34,14 @@ export interface CustomerProfile {
   createdAt: any;
   updatedAt?: any;
   linkVerificationCode?: string | null;
+  linkVerificationCodeHash?: string | null;
   linkVerificationExpiresAt?: number | null;
   linkVerificationStatus?: 'none' | 'pending' | 'verified';
+  failedOtpAttempts?: number;
+  blockedUntil?: number | null;
+  lastOtpRequestAt?: number | null;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
   pendingLinkGoogleUid?: string | null;
   pendingLinkEmail?: string | null;
   pendingLinkName?: string | null;
@@ -343,6 +349,7 @@ export interface StaffPermissions {
   canManageContracts?: boolean;
   canDeleteBookings?: boolean;
   workshop_vehicle_intake?: boolean; // استلام سيارة (ورشة)
+  accounting_admin?: boolean; // مدير الحسابات المعتمد
 }
 
 // ==========================================================

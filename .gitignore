@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+_backup_*
+storage/
+public/uploads/accounting_private/

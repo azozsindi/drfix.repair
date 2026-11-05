@@ -22,5 +22,6 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["node_modules", "dist", "_backup_pre_accounting", "_backup_security_phase3", "_backup_phase4"]
 }

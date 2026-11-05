@@ -5,6 +5,23 @@ service cloud.firestore {
     // ==========================================================
     // Helper Functions for Data Validation & Security
     // ==========================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Identifies the trusted server-side accounting engine worker
+    function isAccountingBackend() {
+      return request.auth != null && request.auth.token.email == 'accounting-engine@drfix.repair';
+    }
+
+    // Identifies authenticated staff portal users or backend workers
+    function isStaffOrBackend() {
+      return request.auth != null && (
+        request.auth.token.email == 'accounting-engine@drfix.repair'
+        || request.auth.token.email == 'staff-portal@drfix.repair'
+      );
+    }
+
     function isValidPhone(phone) {
       return phone is string && phone.size() >= 9 && phone.size() <= 30;
     }
@@ -29,37 +46,42 @@ service cloud.firestore {
         && data.rating is number && data.rating >= 1 && data.rating <= 5;
     }
 
+    function isCustomerSecurityProtected() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['googleUid', 'linkVerificationStatus', 'approvedBy', 'approvedAt', 'linkVerificationCodeHash', 'blockedUntil']);
+    }
+
     // ==========================================================
     // Public Services, Offers, Gallery & Partners
     // ==========================================================
     match /services/{serviceId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     match /offers/{offerId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     match /gallery/{itemId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     match /partners/{partnerId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     match /contracts/{contractId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -67,27 +89,45 @@ service cloud.firestore {
     // ==========================================================
     match /testimonials/{testimonialId} {
       allow read: if true;
-      allow create: if isValidReview(request.resource.data) || true;
+      allow create: if isValidReview(request.resource.data);
       allow update, delete: if true;
     }
 
     // ==========================================================
     // Maintenance & Bookings
+    // Protected against arbitrary deletion and invalid payloads
+    // Public reads removed: accessible via /api/booking/track, staff API, or verified owner
     // ==========================================================
     match /maintenance/{recordId} {
-      allow read: if true;
-      allow create: if isValidBooking(request.resource.data) || true;
-      allow update: if true;
-      allow delete: if true;
+      allow read: if isAccountingBackend()
+        || (isSignedIn() && (
+          (resource.data.googleUid is string && resource.data.googleUid == request.auth.uid)
+          || (resource.data.customerGoogleUid is string && resource.data.customerGoogleUid == request.auth.uid)
+          || (resource.data.customerId is string && resource.data.customerId == request.auth.uid)
+          || (resource.data.assignedStaffId is string && resource.data.assignedStaffId == request.auth.uid)
+        ));
+      allow create: if isValidBooking(request.resource.data);
+      allow update: if isAccountingBackend();
+      allow delete: if false;
     }
 
     // ==========================================================
-    // Customers Collection
+    // Customers Collection (Secured against unauthorized linking & tampering)
+    // No blanket staff-portal access; strictly authenticated owner or backend API
     // ==========================================================
     match /customers/{customerId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow read: if isAccountingBackend()
+        || (isSignedIn() && resource.data.googleUid is string && resource.data.googleUid == request.auth.uid);
+
+      allow create: if isAccountingBackend()
+        || (isSignedIn() && isValidCustomer(request.resource.data) && request.resource.data.googleUid == request.auth.uid
+            && !('linkVerificationCodeHash' in request.resource.data)
+            && (!('linkVerificationStatus' in request.resource.data) || request.resource.data.linkVerificationStatus != 'verified'));
+
+      allow update: if isAccountingBackend()
+        || (isSignedIn() && resource.data.googleUid == request.auth.uid && isCustomerSecurityProtected());
+
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -96,7 +136,7 @@ service cloud.firestore {
     match /settings/{docId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -105,22 +145,21 @@ service cloud.firestore {
     match /stats/{docId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     match /analytics/{dateId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
     // Staff & Employees Accounts
+    // Direct browser read completely blocked; served via /api/staff/list
     // ==========================================================
     match /staff/{staffId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
+      allow read, write: if isAccountingBackend();
     }
 
     // ==========================================================
@@ -129,7 +168,7 @@ service cloud.firestore {
     match /inventory/{itemId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -138,34 +177,7 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
-    }
-
-    // ==========================================================
-    // Accounting & Manual Payments
-    // ==========================================================
-    match /manual_payments/{paymentId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
-    }
-
-    match /payment_roles/{roleId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
-    }
-
-    match /payment_users/{userId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if true;
-    }
-
-    match /payment_audit_logs/{logId} {
-      allow read: if true;
-      allow create: if true;
-      allow update, delete: if false; // Immutable audit trail
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -174,7 +186,7 @@ service cloud.firestore {
     match /inspection_videos/{chunkId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -183,7 +195,7 @@ service cloud.firestore {
     match /fcm_tokens/{tokenId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // ==========================================================
@@ -192,10 +204,9 @@ service cloud.firestore {
     match /vehicle_handovers/{handoverId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if true;
+      allow delete: if false;
     }
 
-    // Immutable Handover Audit Trail (Append-only, strictly no edits or deletes)
     match /handover_audit_logs/{logId} {
       allow read: if true;
       allow create: if true;
@@ -203,11 +214,47 @@ service cloud.firestore {
     }
 
     // ==========================================================
-    // Global Default Fallback
+    // Accounting & Financial Management (STRICT ZERO-TRUST ISOLATION)
+    // Direct client/browser reads & writes are 100% BLOCKED.
+    // Customers, technicians, and visitors receive PERMISSION_DENIED.
+    // Access is granted SOLELY to the authenticated backend engine worker.
+    // ==========================================================
+    match /customer_financial_accounts/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /accounting_services/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /accounting_vouchers/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /accounting_purchases/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /accounting_expenses/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /accounting_audit_logs/{docId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /manual_payments/{paymentId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /payment_roles/{roleId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /payment_users/{userId} {
+      allow read, write: if isAccountingBackend();
+    }
+    match /payment_audit_logs/{logId} {
+      allow read, write: if isAccountingBackend();
+    }
+
+    // ==========================================================
+    // Global Default Fallback (Default-Deny)
     // ==========================================================
     match /{document=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if false;
     }
   }
 }

@@ -1,0 +1,971 @@
+# DR.FIX — ACCOUNTING MANAGEMENT PORTAL
+# PHASE 1: COMPLETE READ-ONLY PROJECT AUDIT & IMPLEMENTATION BLUEPRINT
+
+You are acting as a Senior Software Architect, Senior React Developer, Firebase Security Engineer, Backend Engineer, UI/UX Designer, and Financial Systems Analyst.
+
+Your task is to inspect my existing DR.FIX project and prepare a complete technical blueprint for a new internal Accounting Management Portal.
+
+The accounting portal will be accessible through:
+
+https://www.drfix.repair/ACCOUNTS
+
+This portal must eventually become a fully integrated part of my existing DR.FIX application.
+
+IMPORTANT: THIS IS PHASE 1 ONLY — INSPECTION AND ANALYSIS.
+
+You must not implement, modify, create, delete, or deploy anything.
+
+Your job is to understand the existing application, identify reusable functionality, investigate security, and prepare a safe implementation plan.
+
+Wait for my explicit approval before making any changes.
+
+==================================================
+1. STRICT READ-ONLY EXECUTION POLICY
+==================================================
+
+During this phase, you are ONLY authorized to inspect and analyze.
+
+STRICTLY PROHIBITED:
+
+- Do not modify existing source code.
+- Do not create new source files.
+- Do not create folders.
+- Do not delete or rename files.
+- Do not modify Firestore documents or collections.
+- Do not modify Firestore security rules.
+- Do not modify Firebase Storage rules.
+- Do not modify Firebase Authentication configuration.
+- Do not modify API endpoints.
+- Do not install or uninstall packages.
+- Do not upgrade dependencies.
+- Do not run migrations.
+- Do not create accounting collections.
+- Do not create test financial records in production.
+- Do not change environment variables.
+- Do not change GitHub settings.
+- Do not change Vercel configuration.
+- Do not deploy.
+- Do not create a new Firebase project.
+- Do not replace the current application architecture.
+- Do not change customer login, bookings, notifications, or technician workflows.
+
+You may read and inspect existing files and configurations.
+
+If a file, database structure, or configuration is inaccessible, clearly state that it could not be inspected.
+
+Never claim that something was verified if you only inferred it.
+
+After completing your report, STOP and wait for my approval.
+
+==================================================
+2. EXISTING PROJECT INFORMATION
+==================================================
+
+Project name: DR.FIX
+
+Public website:
+https://www.drfix.repair
+
+Required new route:
+https://www.drfix.repair/ACCOUNTS
+
+Existing Firebase project:
+hr-system-2026
+
+Current known technology:
+
+- React 19
+- TypeScript
+- Node.js
+- Express
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Storage
+- Firebase Cloud Messaging
+- GitHub
+- Vercel
+- Existing backend/API infrastructure
+
+The existing application already includes:
+
+- Customer accounts.
+- Customer Google sign-in.
+- Customer booking system.
+- Maintenance requests.
+- Admin dashboard.
+- Staff accounts and permissions.
+- Technician workflows.
+- Booking status management.
+- Notifications.
+- Existing financial and payment-related functionality.
+
+IMPORTANT:
+
+This is an existing production project.
+
+Preserve its architecture and all existing functionality.
+
+Do not create another application or Firebase project.
+
+==================================================
+3. REQUIRED ACCOUNTING PORTAL
+==================================================
+
+The new portal must eventually be available at:
+
+/ACCOUNTS
+
+Full URL:
+
+https://www.drfix.repair/ACCOUNTS
+
+It must be a dedicated internal accounting portal integrated into the existing React application.
+
+It must not be a separate application.
+
+It must use the existing Firebase project and backend infrastructure.
+
+Inspect the current routing system and identify the safest way to add this route without breaking existing routes.
+
+The portal must contain four main sections:
+
+1. SERVICES
+2. PURCHASES
+3. EXPENSES
+4. REPORTS
+
+The accounting portal must have its own clear navigation and professional dashboard.
+
+Do not redesign the entire existing DR.FIX website or admin dashboard.
+
+==================================================
+4. ACCESS CONTROL AND ACCOUNTING PERMISSIONS
+==================================================
+
+The approved accounting permission is:
+
+accounting_admin
+
+This permission must be integrated into the existing staff and authorization architecture.
+
+The system must use server-side permission verification.
+
+Never trust:
+
+- Client-side role flags.
+- Browser-supplied permissions.
+- isSuperAdmin values supplied by the frontend.
+- x-admin-role headers.
+- Any request parameter that claims the user is an administrator.
+
+Inspect how the existing project connects:
+
+- Firebase Auth UID.
+- Staff document IDs.
+- Staff roles.
+- Administrative permissions.
+- Existing custom claims, if any.
+
+The expected access policy:
+
+ACCOUNTING EMPLOYEES:
+Can access the accounting sections according to their assigned permissions.
+
+AUTHORIZED ACCOUNTING ADMINISTRATORS:
+Can manage accounting functionality according to accounting_admin.
+
+TECHNICIANS:
+Must not access financial amounts, payments, purchases, expenses, or reports.
+
+CUSTOMERS:
+Must never access the accounting portal or its financial records.
+
+UNAUTHORIZED USERS:
+Must receive a proper access-denied page.
+
+Knowing the /ACCOUNTS URL must never grant access.
+
+Inspect the existing role system before recommending how to add this permission.
+
+Do not assume that every existing administrator should automatically receive accounting access.
+
+==================================================
+5. LANGUAGE REQUIREMENTS — ARABIC AND ENGLISH
+==================================================
+
+The accounting portal must fully support Arabic and English.
+
+Arabic must be the default language.
+
+Provide a visible language switcher:
+
+العربية | English
+
+Arabic requirements:
+
+- Full RTL layout.
+- Arabic navigation.
+- Arabic forms and labels.
+- Arabic validation messages.
+- Arabic reports.
+- Arabic tables.
+- Correct alignment and typography.
+
+English requirements:
+
+- Full LTR layout.
+- English navigation.
+- English forms and labels.
+- English validation messages.
+- English reports.
+- English tables.
+
+Language switching must update the entire interface.
+
+Do not translate only the navigation while leaving forms or reports in another language.
+
+The selected language should remain consistent when navigating between pages or refreshing the browser.
+
+Inspect the existing project's localization and translation architecture.
+
+Reuse the existing localization system if appropriate.
+
+Do not introduce a duplicate translation system without explaining why it is necessary.
+
+==================================================
+6. MOBILE-FIRST RESPONSIVE DESIGN
+==================================================
+
+The accounting portal must be designed for mobile phones first.
+
+It must also work professionally on:
+
+- Desktop computers.
+- Laptops.
+- Tablets.
+- Android phones.
+- iPhones.
+
+MOBILE REQUIREMENTS:
+
+- Responsive mobile dashboard.
+- Touch-friendly buttons.
+- Easy navigation between all four sections.
+- Mobile-friendly forms.
+- Easy customer search.
+- Readable financial figures.
+- Responsive charts.
+- Responsive tables.
+- No horizontal page overflow.
+- Comfortable spacing.
+- Proper Arabic RTL on mobile.
+- Proper English LTR on mobile.
+- Portrait and landscape support.
+
+Tables should adapt to small screens using responsive cards or controlled horizontal scrolling when appropriate.
+
+DESKTOP REQUIREMENTS:
+
+- Professional dashboard.
+- Sidebar navigation where appropriate.
+- Clear financial tables.
+- Efficient data entry.
+- Detailed reports and charts.
+
+DESIGN IDENTITY:
+
+Follow the existing DR.FIX brand:
+
+- Red.
+- Black.
+- White.
+- Premium professional appearance.
+- Clean typography.
+- Clear visual hierarchy.
+- Consistent icons and components.
+
+Avoid unnecessary animations, excessive visual effects, and clutter.
+
+During this audit, inspect existing responsive components and design conventions.
+
+Do not implement any visual changes yet.
+
+==================================================
+7. SERVICES — CUSTOMER FINANCIAL ACCOUNTS
+==================================================
+
+This section is the core of the accounting system.
+
+An authorized accounting employee must be able to search for an existing DR.FIX customer and open their private financial account.
+
+The employee should be able to:
+
+- Search by customer name.
+- Search by mobile number.
+- Open the existing customer profile.
+- View the customer's financial transactions.
+- Add a service.
+- Set a custom service price.
+- Enter a service description.
+- Set quantity.
+- Apply a discount.
+- Modify the service price.
+- Record the reason for each discount or price modification.
+- Link the service to an existing maintenance booking when a reliable relationship exists.
+- Link the service to a vehicle when appropriate.
+- Record one or more payments.
+- View the remaining balance.
+
+Do not create duplicate customer profiles.
+
+Inspect the actual existing customer structure.
+
+Do not assume that all maintenance bookings contain customerId or Google UID.
+
+Investigate the actual customer-to-booking relationships.
+
+SERVICE RECORD FIELDS — PROPOSED:
+
+- Unique transaction ID.
+- Customer reference.
+- Service name.
+- Service description.
+- Quantity.
+- Original unit price.
+- Discount amount.
+- Price modification details.
+- Reason for discount or modification.
+- Amount before VAT.
+- VAT rate.
+- VAT amount.
+- Total including VAT.
+- Amount collected.
+- Remaining balance.
+- Payment status.
+- Related booking ID, if available.
+- Related vehicle ID, if available.
+- Created by.
+- Created date.
+- Updated by.
+- Updated date.
+
+PAYMENT STATUS:
+
+- Unpaid.
+- Partially paid.
+- Fully paid.
+- Cancelled or reversed with a documented reason.
+
+PAYMENT METHODS:
+
+- Cash.
+- Card / Network.
+- Bank transfer.
+
+PAYMENT RULES:
+
+The original service price must remain separate from payments received.
+
+Partial payments must not overwrite the original service amount.
+
+The system must calculate the remaining balance accurately.
+
+Every payment must have a unique transaction reference.
+
+Duplicate payments must be prevented.
+
+Payment updates must be atomic and safe against concurrent requests.
+
+==================================================
+8. DISCOUNTS AND PRICE MODIFICATIONS
+==================================================
+
+The approved policy is:
+
+allow_reason
+
+Authorized accounting employees are allowed to modify service prices and apply discounts.
+
+However, every modification must include a reason.
+
+The system should record:
+
+- Previous price.
+- New price.
+- Previous discount.
+- New discount.
+- Reason.
+- Employee who performed the action.
+- Date and time.
+
+The original financial history must remain auditable.
+
+Do not silently overwrite historical values.
+
+Investigate the best implementation approach using the existing project architecture.
+
+==================================================
+9. VAT — SEPARATE TAX CALCULATION
+==================================================
+
+The approved VAT setting is:
+
+vat_separate
+
+The accounting system must conceptually calculate:
+
+1. Amount before VAT.
+2. Configurable VAT rate.
+3. VAT amount.
+4. Total amount including VAT.
+
+Example:
+
+Service amount before VAT: 1,000 SAR.
+
+VAT amount: calculated using the configured rate.
+
+Final total: service amount + VAT.
+
+IMPORTANT:
+
+- Do not hardcode a VAT rate.
+- Make the VAT rate configurable in the eventual design.
+- Preserve historical VAT calculations.
+- Changing the future VAT rate must not modify old transactions.
+- Do not assume every transaction is taxable.
+- Do not assume that every purchase has the same tax treatment.
+- Explain how taxable and non-taxable transactions should be represented.
+
+Do not implement tax filing.
+
+Do not introduce ZATCA or e-invoicing integrations unless existing functionality is discovered and reported.
+
+Identify the safest data model for VAT calculations.
+
+==================================================
+10. PURCHASES — COMPANY PURCHASE MANAGEMENT
+==================================================
+
+The purchases section is for recording company purchases.
+
+Approved categories:
+
+- Spare parts.
+- Oils and fluids.
+- Tools and equipment.
+- Operating supplies.
+- Other purchases.
+
+Potential fields:
+
+- Purchase ID.
+- Item name.
+- Category.
+- Quantity.
+- Unit price.
+- Total amount.
+- Supplier.
+- Purchase date.
+- Payment method.
+- Invoice or receipt attachment.
+- Notes.
+- Employee who recorded the purchase.
+- Optional relationship to a customer.
+- Optional relationship to a vehicle.
+- Optional relationship to a maintenance booking.
+
+Purchases must be financially recorded separately from customer service charges.
+
+IMPORTANT STOCK POLICY:
+
+The approved setting is:
+
+financial_only
+
+This phase does NOT include inventory management.
+
+Do not implement:
+
+- Stock quantities.
+- Automatic stock deduction.
+- Warehouse management.
+- Inventory valuation.
+- Automatic product availability updates.
+
+Purchases are financial records only.
+
+Inspect whether any existing purchasing or inventory-related functionality exists and report it.
+
+==================================================
+11. EXPENSES — COMPANY EXPENSE MANAGEMENT
+==================================================
+
+Approved expense categories:
+
+- Salaries and wages.
+- Rent.
+- Fuel and transportation.
+- Vehicle and equipment maintenance.
+- Telecommunications and internet.
+- Marketing and advertising.
+- Government fees and licenses.
+- Software and subscriptions.
+- Administrative expenses.
+- Other expenses.
+
+Potential expense fields:
+
+- Expense ID.
+- Expense title.
+- Category.
+- Amount.
+- Date.
+- Payment method.
+- Payee or beneficiary.
+- Receipt attachment.
+- Notes.
+- Employee who recorded the expense.
+- Created timestamp.
+
+The eventual system should distinguish between:
+
+- Paid expenses.
+- Unpaid expenses, if supported by the accounting design.
+
+Inspect existing payroll, employee payment, or expense functionality before proposing new structures.
+
+Do not create duplicate functionality.
+
+==================================================
+12. REPORTS — FINANCIAL DASHBOARD
+==================================================
+
+The reports section must eventually display accurate financial summaries.
+
+SERVICE REVENUE:
+
+- Total recorded service value.
+- Discounts.
+- Taxable amounts.
+- VAT amounts.
+- Total amounts including VAT.
+
+COLLECTIONS:
+
+- Total cash collected.
+- Total card/network collected.
+- Total bank transfers collected.
+- Total payments received.
+- Outstanding customer balances.
+
+PURCHASES:
+
+- Total purchases.
+- Purchases by category.
+- Purchases by supplier.
+
+EXPENSES:
+
+- Total expenses.
+- Expenses by category.
+
+CASH FLOW:
+
+- Total incoming payments.
+- Total outgoing payments.
+- Net cash movement.
+
+REPORT FILTERS:
+
+- Daily.
+- Weekly.
+- Monthly.
+- Yearly.
+- Custom date range.
+- Employee.
+- Category.
+- Payment method.
+
+IMPORTANT ACCOUNTING DISTINCTIONS:
+
+Do not treat service charges as money collected.
+
+Do not count unpaid invoices as cash received.
+
+Do not count a customer payment twice.
+
+Do not count a purchase as an expense again if it is already represented as a financial outflow.
+
+Do not incorrectly label the difference between service revenue and expenses as formal net profit without a complete accounting treatment.
+
+Explain the calculation logic for each report.
+
+==================================================
+13. CRITICAL CUSTOMER AND TECHNICIAN PRIVACY
+==================================================
+
+THIS IS A NON-NEGOTIABLE SECURITY REQUIREMENT.
+
+Customers must never see:
+
+- Service prices.
+- Discounts.
+- VAT amounts.
+- Invoice totals.
+- Payment records.
+- Outstanding balances.
+- Purchases.
+- Expenses.
+- Accounting reports.
+- Internal accounting notes.
+- Private financial attachments.
+
+Technicians must not see:
+
+- Service prices.
+- Customer balances.
+- Payment records.
+- Purchases.
+- Expenses.
+- Financial reports.
+
+Customer booking and account pages must remain free of financial information.
+
+Customer-facing emails, push notifications, and status updates must not expose financial amounts.
+
+IMPORTANT FIRESTORE RULE:
+
+Firestore security rules do not provide field-level filtering of documents.
+
+Do not put private accounting fields inside customer-readable maintenance documents.
+
+Investigate the safest architecture for:
+
+- Private financial collections.
+- Server-side authorization.
+- Customer access isolation.
+- Technician access isolation.
+- Secure financial APIs.
+- Private financial attachments.
+
+Identify any existing customer-readable collections or APIs that could expose confidential financial data.
+
+Do not modify any rules during this phase.
+
+==================================================
+14. FIREBASE SECURITY AND BACKEND AUDIT
+==================================================
+
+Perform a detailed security audit.
+
+Inspect:
+
+- Firebase Authentication.
+- Firebase Admin SDK.
+- ID token verification.
+- Backend API authentication.
+- Staff permission checks.
+- Role validation.
+- Firestore rules.
+- Storage rules.
+- Customer document permissions.
+- Maintenance document permissions.
+- Payment APIs.
+- Existing customer-linking APIs.
+- Financial-related APIs.
+
+Investigate whether any API:
+
+- Accepts requests without authentication.
+- Trusts client-supplied administrator flags.
+- Trusts x-admin-role or similar headers.
+- Allows unauthorized Firestore access.
+- Exposes customer data.
+- Exposes financial data.
+
+Check for:
+
+- Public customer reads.
+- Overly permissive rules.
+- Missing server-side authorization.
+- Insecure file uploads.
+- Public financial attachments.
+- Race conditions.
+- Duplicate transaction risks.
+- Missing audit logs.
+
+If secrets are found in frontend source code:
+
+- Identify the file path.
+- Explain the type of exposed secret.
+- Recommend a safe remediation.
+- Never print the actual secret value.
+
+Do not reproduce passwords, API keys, bot tokens, or private environment values.
+
+If serious vulnerabilities are discovered, mark them by severity:
+
+- Critical.
+- High.
+- Medium.
+- Low.
+
+Do not fix them during this audit.
+
+==================================================
+15. FINANCIAL DATA INTEGRITY AND AUDIT TRAIL
+==================================================
+
+The system must eventually support:
+
+- Unique financial transaction IDs.
+- Atomic payment recording.
+- Idempotency.
+- Accurate balances.
+- Concurrent transaction protection.
+- Reversible or voided transactions.
+- Recorded cancellation reasons.
+- Financial audit history.
+- Employee identification.
+- Timestamps.
+- Previous and new values after modifications.
+
+Financial transactions must not be silently deleted.
+
+Explain how to preserve historical records and prevent unauthorized modification.
+
+Investigate whether existing audit-log collections can be reused.
+
+==================================================
+16. PROPOSED FIRESTORE DATA ARCHITECTURE
+==================================================
+
+Investigate the current collections before proposing new ones.
+
+Possible conceptual collections include:
+
+- customer_financial_accounts
+- accounting_transactions
+- accounting_purchases
+- accounting_expenses
+- accounting_audit_logs
+- accounting_settings
+
+These are only proposed names.
+
+DO NOT CREATE THEM.
+
+For each proposed collection, explain:
+
+- Its purpose.
+- Its required fields.
+- Its relationships.
+- Its access restrictions.
+- Whether an existing collection can already perform the same function.
+- Whether creating it would cause duplication.
+
+Explain how customer financial accounts will link to existing customer records.
+
+Explain how accounting transactions will link to existing bookings without breaking historical records.
+
+Explain how VAT configuration and historical rates will be preserved.
+
+Recommend the minimum safe architecture.
+
+==================================================
+17. ROUTING AND ACCOUNTING PORTAL INTEGRATION
+==================================================
+
+Required route:
+
+/ACCOUNTS
+
+Full URL:
+
+https://www.drfix.repair/ACCOUNTS
+
+The portal must:
+
+- Use the existing React routing architecture.
+- Be part of the current DR.FIX application.
+- Use existing authentication infrastructure.
+- Use existing Firebase project hr-system-2026.
+- Use existing backend infrastructure.
+- Be protected by verified accounting permissions.
+- Display an access-denied page for unauthorized users.
+- Preserve existing website routes.
+- Avoid interfering with customer-facing pages.
+
+Inspect the current routing files and recommend the safest way to implement this route.
+
+Identify whether the current Vercel deployment and routing configuration already support the required path.
+
+Do not modify routing or deployment configuration during this phase.
+
+==================================================
+18. UI/UX IMPLEMENTATION BLUEPRINT
+==================================================
+
+Recommend the structure of the accounting portal.
+
+Expected main navigation:
+
+- Overview.
+- Services.
+- Purchases.
+- Expenses.
+- Reports.
+- Settings, only if appropriate and securely permission-controlled.
+
+The dashboard should provide:
+
+- Clear financial summary cards.
+- Recent transactions.
+- Outstanding balances.
+- Recent purchases.
+- Recent expenses.
+- Useful charts.
+- Search and filtering.
+
+Arabic and English labels must be supported.
+
+Mobile layouts must be prioritized.
+
+Inspect existing reusable components before recommending new ones.
+
+Do not create or implement the UI during this phase.
+
+==================================================
+19. EXISTING PROJECT FILES TO INSPECT
+==================================================
+
+Inspect these files if they exist:
+
+- src/components/AdminDashboard.tsx
+- src/components/CustomerAccountSystem.tsx
+- src/components/CustomerManager.tsx
+- server.ts
+- api/customer-link.ts
+- Firebase configuration files.
+- Firestore rules.
+- Storage rules.
+- Routing files.
+- Staff permission components.
+- Existing payment components.
+- Existing notification components.
+- Existing localization files.
+- Existing responsive layout components.
+- Vercel configuration files.
+
+Investigate relevant collections, especially:
+
+- customers
+- maintenance
+- staff
+- fcm_tokens
+- manual_payments
+- payment_roles
+- payment_users
+- payment_audit_logs
+- vehicle_handovers
+- handover_audit_logs
+- inspection_videos
+- stats
+
+Also discover any additional collections used by the project.
+
+These are inspection targets, not guaranteed complete inventory.
+
+Do not assume a file or collection exists without verifying it.
+
+==================================================
+20. REQUIRED FINAL AUDIT REPORT
+==================================================
+
+After completing the read-only inspection, provide a detailed report in ARABIC.
+
+The report must contain the following sections:
+
+A. ملخص بنية المشروع الحالية.
+
+B. الملفات والمكونات التي تم فحصها فعليًا.
+
+C. نظام تسجيل الدخول والصلاحيات الحالي.
+
+D. تحليل إمكانية إضافة accounting_admin.
+
+E. تحليل نظام العملاء وربطه بطلبات الصيانة.
+
+F. المجموعات الحالية في Firestore واستخدام كل مجموعة ذات صلة.
+
+G. الوظائف المالية الموجودة التي يمكن إعادة استخدامها.
+
+H. الثغرات الأمنية المكتشفة وتصنيف خطورتها.
+
+I. كيفية منع العميل والفني من رؤية البيانات المالية.
+
+J. التصميم المقترح لقاعدة بيانات الحسابات.
+
+K. طريقة حساب الخدمات والخصومات والضريبة والدفعات.
+
+L. طريقة تسجيل المشتريات والمصروفات.
+
+M. تصميم التقارير المالية وآلية الحساب.
+
+N. تصميم بوابة /ACCOUNTS واللغتين العربية والإنجليزية.
+
+O. توافق التصميم مع الجوال والكمبيوتر.
+
+P. الملفات الحالية التي ستحتاج إلى تعديل مستقبلًا، مع سبب كل تعديل.
+
+Q. الملفات الجديدة التي قد نحتاج إلى إنشائها مستقبلًا، مع سبب كل ملف.
+
+R. المخاطر المحتملة على الحجوزات وتسجيل الدخول ولوحة الفنيين والإشعارات.
+
+S. خطة التنفيذ المقترحة بالترتيب، مع الاختبارات المطلوبة.
+
+T. الأسئلة أو القرارات التي تحتاج إلى موافقتي قبل التنفيذ.
+
+For every important finding, distinguish between:
+
+- Verified from actual source code.
+- Verified from actual configuration.
+- Inferred from code structure.
+- Not accessible / not verified.
+
+Include exact file paths and function names whenever possible.
+
+Do not invent Firestore fields or assume database structures that you could not inspect.
+
+==================================================
+21. FINAL STOP CONDITION
+==================================================
+
+After providing the complete Arabic audit report:
+
+STOP.
+
+Do not implement anything.
+
+Do not create files.
+
+Do not modify code.
+
+Do not change Firebase settings.
+
+Do not change security rules.
+
+Do not deploy.
+
+Wait for my explicit approval.
+
+The purpose of this phase is to ensure that the new DR.FIX accounting portal is secure, mobile-friendly, bilingual, financially accurate, and fully integrated without damaging the existing production application.
+
+MY PRIORITY:
+
+Protect the existing DR.FIX system, customer accounts, bookings, technician workflows, and customer data.
+
+Prepare the complete technical blueprint first.
+
+Implementation will only begin after I review and approve your report.

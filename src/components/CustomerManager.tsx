@@ -13,7 +13,7 @@ import {
   getDocs 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { MaintenanceRecord } from '../types';
+import { MaintenanceRecord, StaffUser } from '../types';
 import { 
   User, 
   Users, 
@@ -81,21 +81,33 @@ export interface CustomerProfile {
   status: 'vip' | 'regular' | 'new' | 'inactive';
   notes?: string;
   linkVerificationCode?: string;
+  linkVerificationCodeHash?: string;
   linkVerificationExpiresAt?: number;
   linkVerificationStatus?: 'pending' | 'verified' | 'rejected' | 'none';
   pendingLinkGoogleUid?: string;
   pendingLinkEmail?: string;
   pendingLinkName?: string;
   pendingLinkPhoto?: string;
+  failedOtpAttempts?: number;
+  blockedUntil?: number;
+  lastOtpRequestAt?: number;
+  approvedBy?: string;
+  approvedAt?: number;
   createdAt?: any;
   updatedAt?: any;
 }
 
 interface CustomerManagerProps {
   records?: MaintenanceRecord[];
+  currentStaffUser?: StaffUser | null;
+  isSuperAdmin?: boolean;
 }
 
-export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }) => {
+export const CustomerManager: React.FC<CustomerManagerProps> = ({ 
+  records = [], 
+  currentStaffUser, 
+  isSuperAdmin = true 
+}) => {
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -350,40 +362,42 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
   }, [customers]);
 
   const handleApproveLink = async (customer: CustomerProfile) => {
+    if (!isSuperAdmin) {
+      showToast('⚠️ عذراً، اعتماد ربط الحسابات محصور بالسوبر أدمن فقط (Super Admin)');
+      return;
+    }
     if (!customer.pendingLinkGoogleUid) {
       showToast('لا توجد بيانات حساب Google معلقة لهذا الطلب');
       return;
     }
+    if (customer.linkVerificationExpiresAt && Date.now() > customer.linkVerificationExpiresAt) {
+      showToast('⚠️ انتهت صلاحية هذا الطلب (أكثر من 15 دقيقة)، يجب على العميل طلب الربط مجدداً');
+      return;
+    }
+
     setApprovingCustomerId(customer.id);
     try {
-      const custRef = doc(db, 'customers', customer.id);
-      await updateDoc(custRef, {
-        googleUid: customer.pendingLinkGoogleUid,
-        email: customer.pendingLinkEmail || customer.email || '',
-        name: (customer.name && customer.name !== 'عميل كريم') ? customer.name : (customer.pendingLinkName || customer.name || 'عميل كريم'),
-        linkVerificationStatus: 'verified',
-        linkVerificationCode: null,
-        pendingLinkGoogleUid: null,
-        pendingLinkEmail: null,
-        pendingLinkName: null,
-        pendingLinkPhoto: null,
-        updatedAt: serverTimestamp()
+      const response = await fetch('/api/customer-link/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customer.id,
+          adminEmail: currentStaffUser?.email || 'admin@drfix.sa',
+          adminName: currentStaffUser?.fullName || currentStaffUser?.name || 'Super Admin',
+          isSuperAdmin: true
+        })
       });
 
-      // Cleanup any empty placeholder doc if created under the googleUid
-      if (customer.pendingLinkGoogleUid && customer.pendingLinkGoogleUid !== customer.id) {
-        try {
-          const orphanRef = doc(db, 'customers', customer.pendingLinkGoogleUid);
-          await deleteDoc(orphanRef);
-        } catch (e) {
-          console.warn('Orphan doc cleanup ignore:', e);
-        }
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        showToast(resData.message || 'حدث خطأ أثناء اعتماد طلب الربط');
+        return;
       }
 
       showToast(`تم توثيق واعتماد ربط حساب Google للعميل (${customer.name}) بنجاح! سيتم تحديث شاشته فوراً ✨`);
     } catch (err) {
       console.error('Approve link error:', err);
-      showToast('حدث خطأ أثناء اعتماد طلب الربط');
+      showToast('حدث خطأ أثناء الاتصال بالخادم لاعتماد الربط');
     } finally {
       setApprovingCustomerId(null);
     }
@@ -391,17 +405,23 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
 
   const handleRejectLink = async (customer: CustomerProfile) => {
     try {
-      const custRef = doc(db, 'customers', customer.id);
-      await updateDoc(custRef, {
-        linkVerificationStatus: 'rejected',
-        linkVerificationCode: null,
-        pendingLinkGoogleUid: null,
-        pendingLinkEmail: null,
-        pendingLinkName: null,
-        pendingLinkPhoto: null,
-        updatedAt: serverTimestamp()
+      const response = await fetch('/api/customer-link/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customer.id,
+          adminEmail: currentStaffUser?.email || 'admin@drfix.sa',
+          isSuperAdmin: isSuperAdmin
+        })
       });
-      showToast(`تم رفض طلب ربط الحساب للعميل (${customer.name})`);
+
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        showToast(resData.message || 'حدث خطأ أثناء رفض طلب الربط');
+        return;
+      }
+
+      showToast(`تم رفض وإلغاء طلب ربط الحساب للعميل (${customer.name})`);
     } catch (err) {
       console.error('Reject link error:', err);
       showToast('حدث خطأ أثناء رفض طلب الربط');
@@ -995,57 +1015,90 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({ records = [] }
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {pendingLinkCustomers.map((cust) => (
-              <div 
-                key={cust.id}
-                className="p-4 rounded-xl bg-black/60 border border-amber-500/30 flex flex-col justify-between gap-3"
-              >
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-white text-sm">{cust.name}</span>
-                    <span className="font-mono text-amber-400 font-bold dir-ltr bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                      {cust.phone}
-                    </span>
-                  </div>
+            {pendingLinkCustomers.map((cust) => {
+              const isExpired = Boolean(cust.linkVerificationExpiresAt && Date.now() > cust.linkVerificationExpiresAt);
+              const isBlocked = Boolean(cust.blockedUntil && Date.now() < cust.blockedUntil);
 
-                  {cust.pendingLinkEmail && (
-                    <div className="text-gray-300 flex items-center gap-1.5">
-                      <span className="text-gray-500">حساب Google:</span>
-                      <span className="font-mono text-white text-[11px] truncate">{cust.pendingLinkEmail}</span>
-                    </div>
+              return (
+                <div 
+                  key={cust.id}
+                  className={cn(
+                    "p-4 rounded-xl bg-black/60 border flex flex-col justify-between gap-3 transition-all",
+                    isExpired ? "border-red-500/30 opacity-80" : "border-amber-500/30"
                   )}
-
-                  {cust.linkVerificationCode && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-gray-400 text-[11px]">كود التحقق (OTP):</span>
-                      <span className="px-2.5 py-0.5 rounded-md bg-white/10 text-white font-mono font-black text-sm tracking-widest border border-white/20">
-                        {cust.linkVerificationCode}
+                >
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-white text-sm">{cust.name}</span>
+                      <span className="font-mono text-amber-400 font-bold dir-ltr bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                        {cust.phone}
                       </span>
                     </div>
-                  )}
-                </div>
 
-                <div className="flex items-center gap-2 pt-2 border-t border-white/5">
-                  <button
-                    onClick={() => handleApproveLink(cust)}
-                    disabled={approvingCustomerId === cust.id}
-                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-900/20 active:scale-95 transition-all disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>{approvingCustomerId === cust.id ? 'جارِ الاعتماد...' : 'اعتماد وتوثيق الربط فوراً'}</span>
-                  </button>
+                    {cust.pendingLinkEmail && (
+                      <div className="text-gray-300 flex items-center gap-1.5">
+                        <span className="text-gray-500">حساب Google:</span>
+                        <span className="font-mono text-white text-[11px] truncate">{cust.pendingLinkEmail}</span>
+                      </div>
+                    )}
 
-                  <button
-                    onClick={() => handleRejectLink(cust)}
-                    className="py-2 px-3 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-300 border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                  >
-                    رفض
-                  </button>
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <span className="text-gray-400 text-[11px]">حالة الأمان:</span>
+                      {isBlocked ? (
+                        <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-bold text-[11px] border border-red-500/30">
+                          🚫 محظور مؤقتاً (تجاوز 3 محاولات)
+                        </span>
+                      ) : isExpired ? (
+                        <span className="px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-bold text-[11px] border border-red-500/30">
+                          ⌛ منتهي الصلاحية (&gt; 15 دقيقة)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold text-[11px] border border-emerald-500/30">
+                          🔒 مشفّر (SHA-256) وبانتظار الاعتماد
+                        </span>
+                      )}
+                      {cust.failedOtpAttempts && cust.failedOtpAttempts > 0 ? (
+                        <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                          محاولات خاطئة: {cust.failedOtpAttempts}/3
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <button
+                      onClick={() => handleApproveLink(cust)}
+                      disabled={approvingCustomerId === cust.id || isExpired || !isSuperAdmin}
+                      className={cn(
+                        "flex-1 py-2 px-3 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-lg",
+                        !isSuperAdmin || isExpired
+                          ? "bg-gray-800 text-gray-400 cursor-not-allowed border border-white/10"
+                          : "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20 active:scale-95 cursor-pointer"
+                      )}
+                      title={!isSuperAdmin ? 'صلاحية الاعتماد للسوبر أدمن فقط' : isExpired ? 'انتهت صلاحية هذا الطلب' : 'اعتماد وتوثيق الربط'}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        {approvingCustomerId === cust.id
+                          ? 'جارِ الاعتماد...'
+                          : !isSuperAdmin
+                          ? 'الاعتماد للسوبر أدمن 🔒'
+                          : isExpired
+                          ? 'طلب منتهي الصلاحية ⌛'
+                          : 'اعتماد وتوثيق الربط فوراً ✨'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRejectLink(cust)}
+                      className="py-2 px-3 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-300 border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    >
+                      إلغاء / رفض
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              );
+            })}
         </div>
       )}
 

@@ -407,32 +407,20 @@ export const syncCustomerCarsWithBookings = async (
       }
     });
 
-    // 2. Fetch past and current bookings from 'maintenance' collection
+    // 2. Fetch past and current bookings via secure authenticated API without exposing full maintenance collection
     const fetchedBookings: any[] = [];
-    if (phoneVariants.length > 0) {
-      try {
-        const qPhone = query(
-          collection(db, 'maintenance'),
-          where('customerPhone', 'in', phoneVariants.slice(0, 10))
-        );
-        const snapPhone = await getDocs(qPhone);
-        snapPhone.forEach(d => fetchedBookings.push({ id: d.id, ...d.data() }));
-      } catch (err) {
-        console.warn('Phone bookings query error:', err);
+    try {
+      const qParams = new URLSearchParams();
+      if (currentCustomer.googleUid) qParams.set('googleUid', currentCustomer.googleUid);
+      if (currentCustomer.phone) qParams.set('phone', currentCustomer.phone);
+      
+      const res = await fetch(`/api/customer/my-bookings?${qParams.toString()}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.bookings)) {
+        fetchedBookings.push(...data.bookings);
       }
-    }
-
-    if (currentCustomer.id) {
-      try {
-        const qId = query(
-          collection(db, 'maintenance'),
-          where('customerId', '==', currentCustomer.id)
-        );
-        const snapId = await getDocs(qId);
-        snapId.forEach(d => fetchedBookings.push({ id: d.id, ...d.data() }));
-      } catch (err) {
-        console.warn('Customer ID bookings query error:', err);
-      }
+    } catch (err) {
+      console.warn('Customer bookings API fetch error:', err);
     }
 
     // 3. Extract and merge unique cars from bookings
@@ -527,14 +515,12 @@ interface CustomerContextType {
   saveMandatoryPhone: (phone: string) => Promise<{ 
     success: boolean; 
     requiresVerification?: boolean; 
-    verificationCode?: string; 
     existingCustomerName?: string; 
     error?: string; 
   }>;
   verifyPhoneOtp: (code: string) => Promise<{ success: boolean; error?: string }>;
   pendingVerification: {
     phone: string;
-    code: string;
     customerId: string;
     customerName: string;
     expiresAt: number;
@@ -575,7 +561,6 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [pendingVerification, setPendingVerification] = useState<{
     phone: string;
-    code: string;
     customerId: string;
     customerName: string;
     expiresAt: number;
@@ -951,7 +936,6 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const saveMandatoryPhone = async (rawPhone: string): Promise<{ 
     success: boolean; 
     requiresVerification?: boolean; 
-    verificationCode?: string; 
     existingCustomerName?: string; 
     error?: string; 
   }> => {
@@ -969,25 +953,30 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setLoading(true);
     try {
-      // 1. Search for existing customer document in Firestore
-      let existingMatch: { id: string; ref: any; data: CustomerProfile } | null = null;
+      // Call secure backend endpoint to request account link & OTP validation
+      const res = await fetch('/api/customer-link/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: cleaned,
+          googleUid: customer.googleUid || customer.id,
+          email: customer.email || '',
+          name: customer.name || '',
+          photoURL: customer.photoURL || null
+        })
+      });
 
-      // Direct doc ID check
-      const directRef = doc(db, 'customers', cleaned);
-      const directSnap = await getDoc(directRef);
-      if (directSnap.exists()) {
-        existingMatch = { id: directSnap.id, ref: directRef, data: directSnap.data() as CustomerProfile };
-      } else {
-        const qPhone = query(collection(db, 'customers'), where('phone', '==', cleaned));
-        const phoneSnap = await getDocs(qPhone);
-        if (!phoneSnap.empty) {
-          const docFound = phoneSnap.docs[0];
-          existingMatch = { id: docFound.id, ref: doc(db, 'customers', docFound.id), data: docFound.data() as CustomerProfile };
-        }
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setLoading(false);
+        return { 
+          success: false, 
+          error: data.error || 'حدث خطأ أثناء فحص وتوثيق رقم الجوال. يرجى المحاولة مرة أخرى.' 
+        };
       }
 
-      // Case A: No existing record found for this phone number -> Completely new customer
-      if (!existingMatch) {
+      // Case A: Completely new customer
+      if (data.exists === false) {
         const targetDocRef = doc(db, 'customers', customer.googleUid || customer.id || cleaned);
         const newProfile: CustomerProfile = {
           ...customer,
@@ -1016,7 +1005,6 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           localStorage.setItem('drfix_customer_phone', cleaned);
         } catch {}
 
-        // Auto-sync any past bookings made with this phone into customer cars
         syncCustomerCarsWithBookings(newProfile).then(synced => {
           if (synced && synced.cars && synced.cars.length !== newProfile.cars.length) {
             setCustomer(synced);
@@ -1029,76 +1017,47 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { success: true };
       }
 
-      // Case B: Existing record found
-      const existingData = existingMatch.data;
-
-      // Check if already linked to another Google UID
-      if (existingData.googleUid && existingData.googleUid !== customer.googleUid) {
-        setLoading(false);
-        return {
-          success: false,
-          error: 'رقم الجوال هذا موثق ومرتبط مسبقاً بحساب Google آخر. لحماية الحسابات لا يمكن ربط نفس الرقم بحسابين مختلفين. يرجى تسجيل الدخول بحسابك الأصلي أو التواصل مع الإدارة.'
-        };
-      }
-
-      // If already linked to the current user's Google UID
-      if (existingData.googleUid === customer.googleUid) {
-        setCustomer({ ...existingData, id: existingMatch.id, phone: cleaned });
+      // Case B: Already linked to current Google user
+      if (data.alreadyLinked) {
+        const custSnap = await getDoc(doc(db, 'customers', data.customerId));
+        if (custSnap.exists()) {
+          const cData = custSnap.data() as CustomerProfile;
+          setCustomer({ ...cData, id: custSnap.id, phone: cleaned });
+          try {
+            localStorage.setItem('drfix_customer_session', JSON.stringify({ ...cData, id: custSnap.id, phone: cleaned }));
+            localStorage.setItem('drfix_customer_phone', cleaned);
+          } catch {}
+        }
         setIsMandatoryPhoneModalOpen(false);
         setIsPortalOpen(true);
         setLoading(false);
         return { success: true };
       }
 
-      // Case C: Existing record has NO Google UID (created by admin or booking) -> Initiate verification!
-      const verificationOtp = Math.floor(1000 + Math.random() * 9000).toString();
-      const expiresAt = Date.now() + 15 * 60 * 1000;
-
-      await updateDoc(existingMatch.ref, {
-        linkVerificationCode: verificationOtp,
-        linkVerificationExpiresAt: expiresAt,
-        linkVerificationStatus: 'pending',
-        pendingLinkGoogleUid: customer.googleUid || customer.id,
-        pendingLinkEmail: customer.email || '',
-        pendingLinkName: customer.name || '',
-        pendingLinkPhoto: customer.photoURL || null,
-        updatedAt: serverTimestamp()
-      });
-
-      // Send Instant Telegram Notification to Admin
-      sendTelegramNotification(
-        `🔔 <b>طلب ربط حساب Google برقم عميل مسجل</b> 🚗⚡\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `👤 <b>الاسم المسجل:</b> ${escapeTelegramHtml(existingData.name || 'عميل كريم')}\n` +
-        `📱 <b>الجوال:</b> <code>${cleaned}</code>\n` +
-        `📧 <b>حساب Google المطلوب ربطه:</b> ${escapeTelegramHtml(customer.email || 'غير متوفر')}\n` +
-        `🔑 <b>رمز التحقق (OTP):</b> <code>${verificationOtp}</code>\n` +
-        `⏱️ <b>الصلاحية:</b> 15 دقيقة\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `يمكنك اعتماد الربط فوراً من لوحة تحكم العملاء بنقرة واحدة ✅`
-      ).catch(err => console.warn('Telegram link notification warning:', err));
-
-      setPendingVerification({
-        phone: cleaned,
-        code: verificationOtp,
-        customerId: existingMatch.id,
-        customerName: existingData.name || 'عميل كريم',
-        expiresAt
-      });
+      // Case C: Requires Verification (OTP sent secretly to Admin Telegram, client waits for WhatsApp / Admin Approval)
+      if (data.requiresVerification) {
+        setPendingVerification({
+          phone: data.phone,
+          customerId: data.customerId,
+          customerName: data.customerName || 'عميل كريم',
+          expiresAt: data.expiresAt
+        });
+        setLoading(false);
+        return {
+          success: false,
+          requiresVerification: true,
+          existingCustomerName: data.customerName
+        };
+      }
 
       setLoading(false);
-      return {
-        success: false,
-        requiresVerification: true,
-        verificationCode: verificationOtp,
-        existingCustomerName: existingData.name
-      };
+      return { success: true };
     } catch (err: any) {
       console.error('Error saving mandatory phone:', err);
       setLoading(false);
       return { 
         success: false, 
-        error: 'حدث خطأ أثناء فحص وتوثيق رقم الجوال. يرجى المحاولة مرة أخرى.' 
+        error: 'حدث خطأ أثناء الاتصال بالخادم لفحص وتوثيق رقم الجوال.' 
       };
     }
   };
@@ -1113,100 +1072,63 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, error: 'يرجى إدخال رمز التحقق المكون من 4 أرقام.' };
     }
 
-    if (Date.now() > pendingVerification.expiresAt) {
-      return { success: false, error: 'انتهت صلاحية رمز التحقق (15 دقيقة). يرجى إعادة إدخال رقم الجوال لطلب رمز جديد.' };
-    }
-
     setLoading(true);
     try {
-      const targetDocRef = doc(db, 'customers', pendingVerification.customerId);
-      const snap = await getDoc(targetDocRef);
-      if (!snap.exists()) {
-        setLoading(false);
-        return { success: false, error: 'تعذر العثور على ملف العميل في النظام.' };
-      }
-
-      const existingData = snap.data() as CustomerProfile;
-
-      // Verification match check (OTP or Admin Pre-Approval)
-      const isCodeMatch = cleanInput === pendingVerification.code || cleanInput === existingData.linkVerificationCode;
-      const isAdminApproved = existingData.linkVerificationStatus === 'verified' && existingData.googleUid === customer.googleUid;
-
-      if (!isCodeMatch && !isAdminApproved) {
-        setLoading(false);
-        return { success: false, error: 'رمز التحقق غير صحيح. يرجى التأكد من الرمز وإعادة المحاولة.' };
-      }
-
-      // Merge and update existing document with Google account credentials
-      const mergedName = existingData.name && existingData.name !== 'عميل كريم'
-        ? existingData.name
-        : (customer.name || existingData.name || 'عميل كريم');
-
-      await updateDoc(targetDocRef, {
-        googleUid: customer.googleUid,
-        email: customer.email || existingData.email || '',
-        photoURL: customer.photoURL || existingData.photoURL || null,
-        name: mergedName,
-        phone: pendingVerification.phone,
-        linkVerificationStatus: 'verified',
-        linkVerificationCode: null,
-        linkVerificationExpiresAt: null,
-        pendingLinkGoogleUid: null,
-        pendingLinkEmail: null,
-        pendingLinkName: null,
-        pendingLinkPhoto: null,
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+      const res = await fetch('/api/customer-link/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: pendingVerification.customerId,
+          phone: pendingVerification.phone,
+          inputCode: cleanInput,
+          googleUid: customer.googleUid,
+          email: customer.email,
+          name: customer.name,
+          photoURL: customer.photoURL
+        })
       });
 
-      // Safely delete empty placeholder document if one was created under customer.googleUid
-      if (customer.googleUid && customer.googleUid !== targetDocRef.id) {
-        try {
-          const dummyRef = doc(db, 'customers', customer.googleUid);
-          const dummySnap = await getDoc(dummyRef);
-          if (dummySnap.exists()) {
-            const dData = dummySnap.data();
-            const hasNoCars = !Array.isArray(dData.cars) || dData.cars.length === 0;
-            const hasNoVisits = !dData.totalVisits || dData.totalVisits === 0;
-            if (hasNoCars && hasNoVisits) {
-              await deleteDoc(dummyRef);
-            }
-          }
-        } catch (delErr) {
-          console.warn('Dummy cleanup warning:', delErr);
-        }
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setLoading(false);
+        return { success: false, error: data.error || 'رمز التحقق غير صحيح أو الطلب ملغي.' };
       }
 
-      const cleanCars = deduplicateCarsList(
-        Array.isArray(existingData.cars) ? existingData.cars : [],
-        existingData.removedCars || []
-      );
+      // Successful verification! Fetch updated customer record
+      const targetDocRef = doc(db, 'customers', pendingVerification.customerId);
+      const snap = await getDoc(targetDocRef);
+      if (snap.exists()) {
+        const existingData = snap.data() as CustomerProfile;
+        const cleanCars = deduplicateCarsList(
+          Array.isArray(existingData.cars) ? existingData.cars : [],
+          existingData.removedCars || []
+        );
 
-      const verifiedCustomer: CustomerProfile = {
-        ...existingData,
-        id: targetDocRef.id,
-        name: mergedName,
-        phone: pendingVerification.phone,
-        googleUid: customer.googleUid,
-        email: customer.email || existingData.email || '',
-        photoURL: customer.photoURL || existingData.photoURL,
-        linkVerificationStatus: 'verified',
-        cars: cleanCars
-      };
+        const verifiedCustomer: CustomerProfile = {
+          ...existingData,
+          id: targetDocRef.id,
+          phone: pendingVerification.phone,
+          googleUid: customer.googleUid,
+          email: customer.email || existingData.email || '',
+          photoURL: customer.photoURL || existingData.photoURL,
+          linkVerificationStatus: 'verified',
+          cars: cleanCars
+        };
 
-      setCustomer(verifiedCustomer);
-      try {
-        localStorage.setItem('drfix_customer_session', JSON.stringify(verifiedCustomer));
-        localStorage.setItem('drfix_customer_phone', pendingVerification.phone);
-        localStorage.removeItem('drfix_customer_logged_out');
-      } catch {}
+        setCustomer(verifiedCustomer);
+        try {
+          localStorage.setItem('drfix_customer_session', JSON.stringify(verifiedCustomer));
+          localStorage.setItem('drfix_customer_phone', pendingVerification.phone);
+          localStorage.removeItem('drfix_customer_logged_out');
+        } catch {}
 
-      // Auto-sync cars with past bookings
-      syncCustomerCarsWithBookings(verifiedCustomer).then(synced => {
-        if (synced && synced.cars && synced.cars.length !== verifiedCustomer.cars.length) {
-          setCustomer(synced);
-        }
-      }).catch(() => {});
+        // Auto-sync cars with past bookings
+        syncCustomerCarsWithBookings(verifiedCustomer).then(synced => {
+          if (synced && synced.cars && synced.cars.length !== verifiedCustomer.cars.length) {
+            setCustomer(synced);
+          }
+        }).catch(() => {});
+      }
 
       setPendingVerification(null);
       setIsMandatoryPhoneModalOpen(false);
@@ -1214,9 +1136,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLoading(false);
       return { success: true };
     } catch (err: any) {
-      console.error('Error verifying phone OTP:', err);
+      console.error('Verify OTP error:', err);
       setLoading(false);
-      return { success: false, error: 'حدث خطأ أثناء إتمام التحقق. يرجى المحاولة لاحقاً.' };
+      return { success: false, error: err.message || 'حدث خطأ أثناء التحقق من الرمز' };
     }
   };
 
@@ -1858,9 +1780,10 @@ export const MandatoryPhoneModal: React.FC = () => {
   const getWhatsAppVerifyLink = () => {
     if (!pendingVerification) return '#';
     const msg = encodeURIComponent(
-      `السلام عليكم، أنا العميل ${pendingVerification.customerName || 'كريم'} أود توثيق وربط حسابي في DR.FIX.\n` +
-      `📱 رقم الجوال: ${pendingVerification.phone}\n` +
-      `🔑 رمز التحقق (OTP): ${pendingVerification.code}`
+      `السلام عليكم مركز DR.FIX 👋\n` +
+      `أنا العميل: ${pendingVerification.customerName || 'عميل كريم'}\n` +
+      `📱 رقم جوالي: ${pendingVerification.phone}\n` +
+      `أرغب في اعتماد وتوثيق ربط حساب Google الخاص بي بملفي وسياراتي المسجلة لديكم.`
     );
     return `https://wa.me/966546870807?text=${msg}`;
   };
@@ -1901,51 +1824,92 @@ export const MandatoryPhoneModal: React.FC = () => {
         {/* Verification View (Step 2: Existing Profile Verification) */}
         {pendingVerification ? (
           <form onSubmit={handleVerifyOtp} className="p-5 sm:p-6 space-y-4">
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-2">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  تم العثور على ملفك المسجل مسبقاً!
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  تم العثور على ملفك وسياراتك وضماناتك السابقة!
                 </span>
                 <span className="font-mono text-xs text-white bg-black/50 px-2 py-0.5 rounded border border-white/10">
                   {pendingVerification.phone}
                 </span>
               </div>
               <p className="text-[11px] text-gray-300 leading-relaxed">
-                مرحباً بك أستاذ <b>{pendingVerification.customerName}</b>. للحفاظ على أمان بياناتك وضماناتك وسياراتك السابقة، يرجى تأكيد ملكية الرقم:
+                مرحباً بك أستاذ <b>{pendingVerification.customerName}</b>. لحماية حسابك وضمان عدم وصول أي شخص لبياناتك، يتطلب ربط حساب Google تأكيد ملكيتك للرقم:
               </p>
             </div>
 
-            {/* OTP Code Box */}
-            <div className="bg-black/60 border border-white/15 rounded-2xl p-4 text-center space-y-2">
-              <span className="text-[11px] text-gray-400 block">رمز التحقق الخاص بك (OTP):</span>
-              <div className="inline-block px-5 py-2 bg-brand-red/20 border border-brand-red/40 rounded-xl">
-                <span className="font-mono text-2xl font-black text-white tracking-widest">
-                  {pendingVerification.code}
+            {/* Option 1: WhatsApp Direct Approval (Recommended) */}
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                  <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  الخيار الأول (الموصى به): مراسلة الواتساب للاعتماد الفوري
+                </span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  فوري
                 </span>
               </div>
-              <p className="text-[10px] text-gray-400">
-                ينتهي الرمز خلال 15 دقيقة • يُحدّث تلقائياً فور اعتماد الإدارة
+              <p className="text-[11px] text-gray-400 leading-relaxed">
+                راسل إدارة المركز عبر الواتساب من رقم جوالك المسجل هذا. بمجرد إرسال الرسالة، يعتمد المدير الربط وتفتح بوابتك وسياراتك تلقائياً:
               </p>
+              <a
+                href={getWhatsAppVerifyLink()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-900/30 active:scale-98"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>مراسلة المركز عبر الواتساب للاعتماد الفوري 💬</span>
+              </a>
             </div>
 
-            {/* Direct Input */}
-            <div>
-              <label className="block text-xs font-bold text-gray-300 mb-1.5 text-right">
-                أدخل رمز التحقق (4 أرقام):
-              </label>
-              <input
-                type="text"
-                maxLength={4}
-                value={otpInput}
-                onChange={(e) => {
-                  setOtpInput(e.target.value.replace(/\D/g, ''));
-                  if (errorMsg) setErrorMsg(null);
-                }}
-                placeholder="XXXX"
-                autoFocus
-                className="w-full bg-black/60 border border-white/15 focus:border-emerald-400 rounded-xl py-3 px-3.5 text-white placeholder-gray-500 text-center font-mono text-xl tracking-widest focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all"
-              />
+            {/* Option 2: Enter Code if provided by Support */}
+            <div className="bg-black/40 border border-white/10 rounded-2xl p-4 space-y-3">
+              <div className="text-xs font-bold text-gray-300 flex items-center justify-between">
+                <span>الخيار الثاني: إدخال رمز التحقق (OTP)</span>
+                <span className="text-[10px] text-gray-500 font-normal">إن زودك به فريق الدعم</span>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  maxLength={4}
+                  value={otpInput}
+                  onChange={(e) => {
+                    setOtpInput(e.target.value.replace(/\D/g, ''));
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  placeholder="أدخل الرمز المكون من 4 أرقام"
+                  className="w-full bg-black/60 border border-white/15 focus:border-emerald-400 rounded-xl py-2.5 px-3.5 text-white placeholder-gray-500 text-center font-mono text-lg tracking-widest focus:outline-none focus:ring-1 focus:ring-emerald-400 transition-all"
+                />
+                <p className="text-[10px] text-gray-500 mt-1 text-center">
+                  الحد الأقصى: 3 محاولات خاطئة قبل تجميد الطلب مؤقتاً
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || loading || !otpInput.trim()}
+                className="w-full py-2.5 px-4 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-white font-bold rounded-xl transition-all text-xs cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جاري التحقق...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>تأكيد الرمز وربط الحساب</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Live Waiting Beacon */}
+            <div className="p-3 bg-black/30 border border-white/5 rounded-xl flex items-center justify-center gap-2 text-[11px] text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>بانتظار اعتماد الإدارة المباشر (سيفتح حسابك تلقائياً فور الاعتماد)</span>
             </div>
 
             {errorMsg && (
@@ -1955,52 +1919,21 @@ export const MandatoryPhoneModal: React.FC = () => {
               </div>
             )}
 
-            <div className="pt-2 space-y-2.5">
+            <div className="flex items-center gap-2 pt-1">
               <button
-                type="submit"
-                disabled={isSubmitting || loading}
-                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-900/30 cursor-pointer flex items-center justify-center gap-2 text-sm active:scale-98"
+                type="button"
+                onClick={cancelPhoneVerification}
+                className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl transition-all border border-white/5 cursor-pointer text-center"
               >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>جاري تأكيد الرمز والربط...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>تأكيد الرمز وربط حسابي فوراً</span>
-                  </>
-                )}
+                الرجوع وإدخال رقم آخر
               </button>
-
-              {/* WhatsApp One-Click Option */}
-              <a
-                href={getWhatsAppVerifyLink()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer"
+              <button
+                type="button"
+                onClick={logout}
+                className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl transition-all border border-white/5 cursor-pointer text-center"
               >
-                <MessageCircle className="w-4 h-4 text-emerald-400" />
-                <span>إرسال الرمز عبر واتساب للمركز للاعتماد الفوري 💬</span>
-              </a>
-
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={cancelPhoneVerification}
-                  className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl transition-all border border-white/5 cursor-pointer text-center"
-                >
-                  الرجوع وإدخال رقم آخر
-                </button>
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="flex-1 py-2.5 px-3 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white text-xs font-semibold rounded-xl transition-all border border-white/5 cursor-pointer text-center"
-                >
-                  تسجيل الخروج
-                </button>
-              </div>
+                تسجيل الخروج
+              </button>
             </div>
           </form>
         ) : (
@@ -2206,38 +2139,30 @@ export const CustomerPortalModal: React.FC = () => {
       }
     };
 
-    if (phoneVariants.length > 0) {
-      const qPhone = query(
-        collection(db, 'maintenance'),
-        where('customerPhone', 'in', phoneVariants.slice(0, 10))
-      );
-      unsubscribers.push(onSnapshot(qPhone, (snap) => {
-        snap.forEach(d => {
-          resultMap.set(d.id, { id: d.id, ...d.data() } as MaintenanceRecord);
-        });
-        updateAndSort();
-      }, (err) => {
-        console.warn('Customer phone bookings query warning:', err);
+    const fetchMyBookings = async () => {
+      try {
+        const qParams = new URLSearchParams();
+        if (customer.googleUid) qParams.set('googleUid', customer.googleUid);
+        if (customer.phone) qParams.set('phone', customer.phone);
+
+        const res = await fetch(`/api/customer/my-bookings?${qParams.toString()}`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.bookings)) {
+          data.bookings.forEach((b: any) => resultMap.set(b.id, b));
+          updateAndSort();
+        }
+      } catch (err) {
+        console.warn('Customer bookings fetch error:', err);
+      } finally {
         setLoadingBookings(false);
-      }));
-    }
+      }
+    };
 
-    if (customer.id) {
-      const qId = query(
-        collection(db, 'maintenance'),
-        where('customerId', '==', customer.id)
-      );
-      unsubscribers.push(onSnapshot(qId, (snap) => {
-        snap.forEach(d => {
-          resultMap.set(d.id, { id: d.id, ...d.data() } as MaintenanceRecord);
-        });
-        updateAndSort();
-      }, (err) => {
-        console.warn('Customer ID bookings query warning:', err);
-      }));
-    }
+    fetchMyBookings();
+    const pollInterval = setInterval(fetchMyBookings, 30000);
+    unsubscribers.push(() => clearInterval(pollInterval));
 
-    if (phoneVariants.length === 0 && !customer.id) {
+    if (false) {
       setLoadingBookings(false);
     }
 

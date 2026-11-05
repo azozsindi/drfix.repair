@@ -147,33 +147,33 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
     setLoading(true);
     try {
       const roleTitle = ROLE_PRESETS[role]?.titleAr || 'صلاحيات مخصصة';
-      const staffPayload = {
-        fullName: fullName.trim(),
-        username: cleanUsername,
-        password: password.trim(),
-        phone: phone.trim(),
-        role,
-        roleTitleAr: roleTitle,
-        permissions,
-        isActive,
-        notes: notes.trim(),
-        updatedAt: serverTimestamp()
-      };
+      const response = await fetch('/api/staff/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: editingStaff?.id,
+          fullName: fullName.trim(),
+          username: cleanUsername,
+          password: password.trim(),
+          phone: phone.trim(),
+          role,
+          roleTitleAr: roleTitle,
+          permissions,
+          isActive,
+          notes: notes.trim(),
+          currentAdminRole: currentStaff?.role || 'admin'
+        })
+      });
 
-      if (editingStaff) {
-        await updateDoc(doc(db, 'staff', editingStaff.id), staffPayload);
-      } else {
-        await addDoc(collection(db, 'staff'), {
-          ...staffPayload,
-          createdAt: serverTimestamp(),
-          lastLogin: null
-        });
+      const resData = await response.json();
+      if (!response.ok || !resData.success) {
+        throw new Error(resData.message || 'فشل في حفظ بيانات الموظف');
       }
 
       setIsModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving staff:', err);
-      alert('حدث خطأ أثناء حفظ بيانات الموظف. يرجى المحاولة مرة أخرى.');
+      alert(err.message || 'حدث خطأ أثناء حفظ بيانات الموظف. يرجى المحاولة مرة أخرى.');
     } finally {
       setLoading(false);
     }
@@ -181,9 +181,10 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
 
   const handleToggleActive = async (staff: StaffUser) => {
     try {
-      await updateDoc(doc(db, 'staff', staff.id), {
-        isActive: !staff.isActive,
-        updatedAt: serverTimestamp()
+      await fetch('/api/staff/toggle-active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: staff.id, isActive: staff.isActive })
       });
     } catch (err) {
       console.error('Error toggling staff status:', err);
@@ -193,7 +194,15 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
   const handleDeleteStaff = async (staff: StaffUser) => {
     if (window.confirm(`هل أنت متأكد من رغبتك في حذف حساب الموظف "${staff.fullName}" (${staff.username}) نهائياً؟`)) {
       try {
-        await deleteDoc(doc(db, 'staff', staff.id));
+        const res = await fetch('/api/staff/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ staffId: staff.id, currentAdminRole: currentStaffUser?.role || 'admin' })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          alert(data.message || 'فشل في حذف حساب الموظف');
+        }
       } catch (err) {
         console.error('Error deleting staff:', err);
       }
@@ -212,9 +221,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
       `تم إنشاء/تحديث حسابك في لوحة التحكم بالصلاحيات المحددة.\n\n` +
       `🌐 *رابط تسجيل الدخول:* ${loginLink}\n` +
       `👤 *اسم المستخدم:* \`${staff.username}\`\n` +
-      `🔑 *كلمة المرور:* \`${staff.password}\`\n` +
+      `🔑 *كلمة المرور:* يتم تسليمها مباشرة من إدارة المركز بحرص وسرية.\n` +
       `💼 *المسمى الوظيفي:* ${staff.roleTitleAr || 'موظف'}\n\n` +
-      `_يرجى الحفاظ على سرية بيانات حسابك._`;
+      `_يرجى الحفاظ على سرية بيانات حسابك وعدم مشاركتها._`;
 
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(staff.id);
@@ -240,7 +249,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
       `تم إنشاء/تحديث حسابك في لوحة تحكم DR.FIX.\n\n` +
       `🌐 *رابط تسجيل الدخول:* ${loginLink}\n` +
       `👤 *اسم المستخدم:* ${staff.username}\n` +
-      `🔑 *كلمة المرور:* ${staff.password}\n` +
+      `🔑 *كلمة المرور:* يتم تسليمها بشكل خاص ومباشر من الإدارة.\n` +
       `💼 *الدور:* ${staff.roleTitleAr || 'موظف'}\n\n` +
       `خلك جاهز لخدمة عملائنا 🚗⚡`;
 
@@ -297,6 +306,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
     { key: 'canManageSettings', title: 'الإعدادات العامة والهوية', desc: 'تغيير نصوص الموقع، الألوان، أرقام التواصل وروابط السوشيال', icon: '⚙️' },
     { key: 'workshop_vehicle_intake', title: 'استلام سيارة (ورشة)', desc: 'صلاحية استلام وتوثيق السيارات المحولة للورشة، التوقيع الإلكتروني، رفع صور الإصلاح، وإكمال فحص الأعطال', icon: '🚙' },
     { key: 'canManageStaff', title: 'إدارة الموظفين والصلاحيات', desc: 'إنشاء وتعديل حسابات الموظفين وكلمات المرور وتحديد الأدوار', icon: '🛡️' },
+    { key: 'accounting_admin', title: 'مدير الحسابات المعتمد (/ACCOUNTS)', desc: 'صلاحية حصرية لدخول بوابة الحسابات، إصدار الفواتير وسندات القبض، تسجيل المشتريات والمصروفات، وعرض التقارير المالية. لا تُورث تلقائياً ومحجوبة عن الفنيين.', icon: '💰' },
   ];
 
   return (
@@ -468,8 +478,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({
 
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">كلمة المرور:</span>
-                    <span className="font-mono font-bold text-brand-red bg-brand-red/10 px-2 py-0.5 rounded border border-brand-red/20">
-                      {staff.password}
+                    <span className="font-mono font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded border border-white/10 select-none">
+                      ••••••••
                     </span>
                   </div>
                 </div>
