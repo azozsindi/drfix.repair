@@ -34,11 +34,14 @@ import {
   Upload,
   Loader2
 } from 'lucide-react';
-import { Contract, ContractType, ContractStatus, ContractVehicle, ContractVehicleStatus, DEFAULT_SAMPLE_CONTRACTS } from '../types';
+import { Contract, ContractType, ContractStatus, ContractVehicle, ContractVehicleStatus, DEFAULT_SAMPLE_CONTRACTS, AppSettings } from '../types';
 import { cn } from '../lib/utils';
 import { formatSaudiPhoneForWhatsApp } from '../lib/phoneUtils';
 import { useScrollLock } from '../lib/scrollLock';
 import { compressImage } from '../lib/imageUtils';
+import { OfficialDocumentLetterhead } from './OfficialDocumentLetterhead';
+import { DocumentBuilderModal } from './DocumentBuilderModal';
+import { OfficialDocumentRecord } from '../types';
 
 interface AdminContractsManagerProps {
   contracts: Contract[];
@@ -48,7 +51,9 @@ interface AdminContractsManagerProps {
   onAddVehicleToContract: (contractId: string, vehicle: Omit<ContractVehicle, 'id' | 'createdAt'>) => Promise<void>;
   onUpdateVehicleInContract: (contractId: string, vehicleId: string, updates: Partial<ContractVehicle>) => Promise<void>;
   onDeleteVehicleFromContract: (contractId: string, vehicleId: string) => Promise<void>;
+  settings?: AppSettings;
   lang?: 'ar' | 'en';
+  isMasterAdmin?: boolean;
 }
 
 const WORKSHOP_SPECIALIZATIONS = [
@@ -93,7 +98,9 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
   onAddVehicleToContract,
   onUpdateVehicleInContract,
   onDeleteVehicleFromContract,
-  lang = 'ar'
+  settings,
+  lang = 'ar',
+  isMasterAdmin = false
 }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'workshop_outbound' | 'company_inbound'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'suspended' | 'draft'>('all');
@@ -105,12 +112,48 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
   const [deleteConfirmContract, setDeleteConfirmContract] = useState<Contract | null>(null);
   const [vehiclesModalContract, setVehiclesModalContract] = useState<Contract | null>(null);
   const [printContract, setPrintContract] = useState<Contract | null>(null);
+  const [isLetterheadOpen, setIsLetterheadOpen] = useState(false);
+
+  // Official Document Builder Modal state
+  const [isDocBuilderOpen, setIsDocBuilderOpen] = useState(false);
+  const [editingOfficialDoc, setEditingOfficialDoc] = useState<OfficialDocumentRecord | null>(null);
+  const [savedOfficialDocs, setSavedOfficialDocs] = useState<OfficialDocumentRecord[]>(() => {
+    try {
+      const stored = localStorage.getItem('drfix_official_documents');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleSaveOfficialDoc = (doc: OfficialDocumentRecord) => {
+    try {
+      setSavedOfficialDocs((prev) => {
+        const index = prev.findIndex((d) => d.id === doc.id);
+        const updated = index >= 0
+          ? prev.map((d, i) => (i === index ? doc : d))
+          : [doc, ...prev];
+        localStorage.setItem('drfix_official_documents', JSON.stringify(updated));
+        return updated;
+      });
+    } catch (e) {
+      console.warn('Failed to save official doc:', e);
+    }
+  };
 
   // Quick action to add a vehicle from the contract card
   const [quickAddVehicleContractId, setQuickAddVehicleContractId] = useState<string | null>(null);
 
   // Lock background scroll when any modal in AdminContractsManager is open
-  useScrollLock(isFormModalOpen || !!deleteConfirmContract || !!vehiclesModalContract || !!printContract || !!quickAddVehicleContractId);
+  useScrollLock(
+    isFormModalOpen ||
+    !!deleteConfirmContract ||
+    !!vehiclesModalContract ||
+    !!printContract ||
+    isLetterheadOpen ||
+    !!quickAddVehicleContractId ||
+    isDocBuilderOpen
+  );
 
   // Form inputs state
   const [formType, setFormType] = useState<ContractType>('workshop_outbound');
@@ -384,12 +427,45 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            {/* Primary: Full Editable Document Builder - EXCLUSIVELY FOR OWNER / MASTER ADMIN */}
+            {isMasterAdmin && (
+              <button
+                onClick={() => {
+                  setEditingOfficialDoc(null);
+                  setIsDocBuilderOpen(true);
+                }}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-red-600 via-red-700 to-black hover:from-red-500 hover:to-neutral-900 border border-red-500/50 text-white rounded-2xl font-bold text-xs sm:text-sm shadow-xl shadow-red-900/40 transition-all cursor-pointer group"
+                title="محرر المستندات والخطابات الرسمي - مخصص حصرياً للمالك (Owner / Master Admin)"
+              >
+                <Edit className="w-4 h-4 text-amber-300 group-hover:scale-110 transition-transform" />
+                <span>محرر المستندات الرسمي (Document Builder)</span>
+                {savedOfficialDocs.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-mono font-bold">
+                    {savedOfficialDocs.length}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Quick Letterhead Presets */}
+            <button
+              onClick={() => {
+                setPrintContract(null);
+                setIsLetterheadOpen(true);
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-3 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-2xl font-bold text-xs sm:text-sm transition-all cursor-pointer group"
+              title="معاينة وطباعة الورقة الرسمية الفاخرة A4"
+            >
+              <Sparkles className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
+              <span>نماذج الورقة الرسمية (Letterhead)</span>
+            </button>
+
             <button
               onClick={() => handleOpenAddModal('workshop_outbound')}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-brand-red hover:bg-red-700 text-white rounded-2xl font-bold text-xs sm:text-sm shadow-lg shadow-brand-red/20 transition-all cursor-pointer group"
             >
               <Wrench className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-              <span>+ عقد ورشة (إسناد سيارات)</span>
+              <span>+ عقد ورشة (إسناد)</span>
             </button>
 
             <button
@@ -397,7 +473,7 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-2xl font-bold text-xs sm:text-sm transition-all cursor-pointer group"
             >
               <Building2 className="w-4 h-4 text-brand-red group-hover:scale-110 transition-transform" />
-              <span>+ عقد شركة (استلام أسطول)</span>
+              <span>+ عقد شركة (أسطول)</span>
             </button>
           </div>
         </div>
@@ -1611,196 +1687,35 @@ export const AdminContractsManager: React.FC<AdminContractsManagerProps> = ({
       </AnimatePresence>
 
       {/* ========================================================================= */}
-      {/* 3. OFFICIAL PRINTABLE CONTRACT AGREEMENT MODAL */}
+      {/* 3. DYNAMIC EDITABLE OFFICIAL DOCUMENT BUILDER MODAL */}
       {/* ========================================================================= */}
-      <AnimatePresence>
-        {printContract && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-6 bg-black/90 backdrop-blur-md overflow-y-auto overscroll-contain">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white text-gray-900 rounded-2xl sm:rounded-3xl p-4 sm:p-10 shadow-2xl w-full max-w-3xl my-auto text-right print-area max-h-[94dvh] overflow-y-auto overscroll-contain"
-              id="official-contract-print"
-            >
-              {/* Top Controls (Hidden during print) */}
-              <div className="flex items-center justify-between pb-6 mb-6 border-b border-gray-200 print:hidden">
-                <div className="flex items-center gap-2">
-                  <Printer className="w-5 h-5 text-brand-red" />
-                  <span className="font-bold text-sm text-gray-800">معاينة وطباعة الاتفاقية الرسمية</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs shadow-md transition-colors cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>طباعة العقد (Print)</span>
-                  </button>
-                  <button
-                    onClick={() => setPrintContract(null)}
-                    className="p-2 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+      <DocumentBuilderModal
+        isOpen={isDocBuilderOpen}
+        onClose={() => {
+          setIsDocBuilderOpen(false);
+          setEditingOfficialDoc(null);
+        }}
+        initialDocument={editingOfficialDoc}
+        settings={settings}
+        lang={lang}
+        isMasterAdmin={isMasterAdmin}
+        onSaveDocument={handleSaveOfficialDoc}
+      />
 
-              {/* Printable Document Content */}
-              <div className="space-y-6 text-sm text-gray-800 leading-relaxed font-sans">
-                {/* Official Letterhead */}
-                <div className="flex items-center justify-between border-b-2 border-red-600 pb-5 gap-4">
-                  {/* First Party (DR.FIX) Logo and Information */}
-                  <div className="flex items-center gap-3.5 text-right">
-                    <div className="w-14 h-14 rounded-2xl bg-black/90 p-2 flex items-center justify-center border border-gray-200 shadow-sm shrink-0">
-                      <img
-                        src="/logo-custom.png"
-                        alt="DR.FIX Logo"
-                        className="max-h-full max-w-full object-contain"
-                        onError={(e) => {
-                          // Fallback to text icon if logo image not found
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <h1 className="text-xl font-black font-display tracking-tight text-gray-950">
-                        مركز <span className="text-red-600">DR.FIX</span> لصيانة السيارات
-                      </h1>
-                      <div className="text-xs text-gray-600 mt-0.5">
-                        المملكة العربية السعودية - جدة | خدمة متنقلة ومراكز متخصصة
-                      </div>
-                      <div className="text-xs text-gray-500 font-mono mt-0.5" dir="ltr">
-                        CR: 7055517838 | VAT: 310023456700003
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Contract Details and Second Party (Client/Partner) Logo */}
-                  <div className="flex items-center gap-3.5 text-left" dir="ltr">
-                    <div className="text-right font-mono text-xs text-gray-700">
-                      <div className="font-bold text-red-600 text-sm">OFFICIAL CONTRACT</div>
-                      <div>No: {printContract.contractNumber}</div>
-                      <div>Date: {printContract.startDate}</div>
-                    </div>
-                    {printContract.partyLogoUrl ? (
-                      <div className="w-14 h-14 rounded-2xl bg-white p-1.5 flex items-center justify-center border border-gray-300 shadow-sm shrink-0 overflow-hidden">
-                        <img
-                          src={printContract.partyLogoUrl}
-                          alt={printContract.partyName}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-dashed border-gray-300 p-2 flex flex-col items-center justify-center text-gray-400 text-center shrink-0">
-                        <Building2 className="w-5 h-5 text-gray-400" />
-                        <span className="text-[8px] font-sans font-medium text-gray-500 mt-0.5">الطرف الثاني</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Contract Title */}
-                <div className="text-center py-2 bg-gray-50 border border-gray-200 rounded-xl">
-                  <h2 className="text-lg font-black text-gray-900">
-                    {printContract.title}
-                  </h2>
-                  <div className="text-xs text-gray-600 font-bold mt-1">
-                    {printContract.type === 'workshop_outbound' 
-                      ? 'اتفاقية إسناد وتصدير أعمال صيانة لورشة متخصصة' 
-                      : 'اتفاقية صيانة وإصلاح أسطول مركبات تجاري'}
-                  </div>
-                </div>
-
-                {/* Parties Introduction */}
-                <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs">
-                  <div className="font-bold text-gray-900 mb-1">أطراف الاتفاقية:</div>
-                  
-                  <div className="flex items-start gap-2">
-                    <span className="font-bold text-red-600 min-w-[90px]">الطرف الأول:</span>
-                    <div>
-                      <span className="font-bold">مركز DR.FIX لصيانة السيارات</span>، ويمثله الإدارة العامة، هاتف المركز: 0500000000، مدينة جدة.
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <span className="font-bold text-red-600 min-w-[90px]">الطرف الثاني:</span>
-                    <div>
-                      <span className="font-bold">{printContract.partyName}</span>
-                      {printContract.crNumber && <span>، سجل تجاري رقم ({printContract.crNumber})</span>}
-                      {printContract.taxNumber && <span>، الرقم الضريبي ({printContract.taxNumber})</span>}
-                      <span>، ويمثلها المسؤول: {printContract.contactPerson}</span>
-                      <span>، هاتف: {printContract.contactPhone}</span>
-                      <span>، العنوان: {printContract.city || 'جدة'} {printContract.address ? `- ${printContract.address}` : ''}.</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Scope & Terms */}
-                <div className="space-y-2 text-xs">
-                  <h3 className="font-bold text-gray-900 border-b pb-1 text-sm">البند الأول: موضوع ونطاق الاتفاقية</h3>
-                  <p className="text-gray-700">
-                    {printContract.specializationOrScope || (printContract.type === 'workshop_outbound' 
-                      ? 'إسناد أعمال السمكرة والدهان والميكانيكا المتخصصة للطرف الثاني مع الالتزام بأعلى معايير الجودة.' 
-                      : 'تولي الطرف الأول صيانة أسطول مركبات الطرف الثاني بموجب جداول الصيانة الدورية المعتمدة.')}
-                  </p>
-                </div>
-
-                {/* Financial Clauses */}
-                <div className="space-y-2 text-xs">
-                  <h3 className="font-bold text-gray-900 border-b pb-1 text-sm">البند الثاني: المقابل المالي وشروط السداد</h3>
-                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-xl border border-gray-200">
-                    <div>
-                      <span className="text-gray-500 block">نسبة الخصم / العمولة:</span>
-                      <span className="font-bold text-gray-900">{printContract.commissionOrDiscount || 'حسب الاتفاق'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 block">شروط وفترة السداد:</span>
-                      <span className="font-bold text-gray-900">
-                        {printContract.paymentTermsDetails || (
-                          printContract.paymentTerms === 'monthly_billing' ? 'تسوية فواتير شهرية' : 'سداد آجل 30 يوم'
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Terms and Conditions */}
-                <div className="space-y-2 text-xs">
-                  <h3 className="font-bold text-gray-900 border-b pb-1 text-sm">البند الثالث: التزامات وشروط الاتفاقية</h3>
-                  <div className="whitespace-pre-line text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-xl border border-gray-200">
-                    {printContract.termsConditions || DEFAULT_WORKSHOP_TERMS}
-                  </div>
-                </div>
-
-                {/* Duration */}
-                <div className="space-y-2 text-xs">
-                  <h3 className="font-bold text-gray-900 border-b pb-1 text-sm">البند الرابع: سريان العقد وتجديده</h3>
-                  <p className="text-gray-700">
-                    يسري هذا العقد اعتباراً من تاريخ <span className="font-bold font-mono">{printContract.startDate}</span> وحتى 
-                    تاريخ <span className="font-bold font-mono">{printContract.endDate}</span>، ويتجدد تلقائياً ما لم يُخطر أحد الطرفين الآخر كتابياً برغبته في عدم التجديد قبل 30 يوماً من انتهائه.
-                  </p>
-                </div>
-
-                {/* Signatures and Stamps */}
-                <div className="pt-8 border-t-2 border-gray-300 grid grid-cols-2 gap-8 text-center text-xs">
-                  <div className="space-y-12">
-                    <div className="font-bold text-gray-900">توقيع وختم الطرف الأول (مركز DR.FIX):</div>
-                    <div className="border-b border-gray-400 w-44 mx-auto" />
-                    <div className="text-gray-500 text-[10px]">الختم الرسمي المعتمد</div>
-                  </div>
-
-                  <div className="space-y-12">
-                    <div className="font-bold text-gray-900">توقيع وختم الطرف الثاني ({printContract.partyName}):</div>
-                    <div className="border-b border-gray-400 w-44 mx-auto" />
-                    <div className="text-gray-500 text-[10px]">المفوض بالتوقيع والختم الرسمي</div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ========================================================================= */}
+      {/* 4. OFFICIAL LUXURY CORPORATE DOCUMENT LETTERHEAD MODAL & SUITE */}
+      {/* ========================================================================= */}
+      <OfficialDocumentLetterhead
+        isOpen={!!printContract || isLetterheadOpen}
+        onClose={() => {
+          setPrintContract(null);
+          setIsLetterheadOpen(false);
+        }}
+        initialDocType={printContract ? 'contract' : 'letter'}
+        contractData={printContract}
+        settings={settings}
+        lang={lang}
+      />
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>

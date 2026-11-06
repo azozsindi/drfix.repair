@@ -174,7 +174,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
         if (updated) setSelectedRecord(updated);
       }
     }, (error) => {
-      console.error('Error fetching vehicle handovers:', error);
+      const errStr = error instanceof Error ? error.message : String(error);
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('quota metric')) {
+        try { unsubHandovers(); } catch {}
+      } else {
+        console.error('Error fetching vehicle handovers:', error);
+      }
       setLoading(false);
     });
 
@@ -187,7 +192,12 @@ export const VehicleHandoverManager: React.FC<VehicleHandoverManagerProps> = ({
       });
       setAuditLogs(logs);
     }, (err) => {
-      console.warn('Audit logs subscription error:', err);
+      const errStr = err instanceof Error ? err.message : String(err);
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('quota metric')) {
+        try { unsubLogs(); } catch {}
+      } else {
+        console.warn('Audit logs subscription error:', err);
+      }
     });
 
     return () => {

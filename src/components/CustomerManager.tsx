@@ -217,8 +217,9 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
       setLoading(false);
     }, (err) => {
       const errStr = err instanceof Error ? err.message : String(err);
-      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('quota metric')) {
         console.warn('[Firestore Quota] Customers listener paused; using local memory/cache.');
+        try { unsubscribe(); } catch {}
       } else {
         console.error('Firestore customers listener error:', err);
       }

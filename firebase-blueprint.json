@@ -229,6 +229,21 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["handoverId", "handoverCode", "action", "performedByStaffId", "timestamp"]
+    },
+    "officialDocument": {
+      "title": "Official Document Record",
+      "description": "Corporate letterhead documents, official letters, price quotations, and custom contracts created by Master Admin.",
+      "type": "object",
+      "properties": {
+        "docNumber": { "type": "string" },
+        "category": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["docNumber", "category", "title"]
     }
   },
   "firestore": {
@@ -295,6 +310,10 @@
     "/handover_audit_logs/{logId}": {
       "schema": "handoverAuditLog",
       "description": "Collection of immutable audit logs for vehicle intake, mechanic signatures, and handover closure."
+    },
+    "/official_documents/{docId}": {
+      "schema": "officialDocument",
+      "description": "Protected collection of official corporate documents, quotations, letters, and custom contracts created by Master Admin."
     }
   }
 }

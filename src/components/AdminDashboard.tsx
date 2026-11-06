@@ -169,7 +169,7 @@ import {
   Offer
 } from '../types';
 import { formatBytes, getBase64SizeInBytes, compressImage, ImageUploadSizeBadge, UploadedImageInfo } from '../lib/imageUtils';
-import { OperationType, handleFirestoreError } from '../lib/firestoreUtils';
+import { OperationType, handleFirestoreError, isFirestoreQuotaError } from '../lib/firestoreUtils';
 import { sendTelegramNotification, escapeTelegramHtml, DEFAULT_TELEGRAM_BOT_TOKEN, DEFAULT_TELEGRAM_CHAT_ID } from '../lib/telegramUtils';
 import { safeFormatDate } from '../lib/dateUtils';
 import { STATIC_GALLERY, STATIC_TESTIMONIALS } from '../lib/constants';
@@ -904,9 +904,17 @@ const AdminDashboard = ({
         isSyncStabilized.current = true;
       }, 4000);
 
+      let unsubM: (() => void) | null = null;
+      let unsubT: (() => void) | null = null;
+      let unsubO: (() => void) | null = null;
+      let unsubS: (() => void) | null = null;
+      let unsubG: (() => void) | null = null;
+      let unsubPartners: (() => void) | null = null;
+      let unsubContracts: (() => void) | null = null;
+
       const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'), limit(150));
 
-      const unsubM = onSnapshot(qM, (snapshot) => {
+      unsubM = onSnapshot(qM, (snapshot) => {
         const results: MaintenanceRecord[] = [];
         
         snapshot.docChanges().forEach((change) => {
@@ -993,6 +1001,10 @@ const AdminDashboard = ({
         try { localStorage.setItem('drfix_cached_maintenance', JSON.stringify(results)); } catch {}
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'maintenance');
+        if (isFirestoreQuotaError(error) && unsubM) {
+          try { unsubM(); } catch {}
+          unsubM = null;
+        }
         try {
           const cached = localStorage.getItem('drfix_cached_maintenance');
           if (cached) setRecords(JSON.parse(cached));
@@ -1001,7 +1013,7 @@ const AdminDashboard = ({
 
       // Testimonials
       const qT = collection(db, 'testimonials');
-      const unsubT = onSnapshot(qT, (snapshot) => {
+      unsubT = onSnapshot(qT, (snapshot) => {
         const results: TestimonialData[] = [];
         snapshot.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as TestimonialData);
@@ -1012,37 +1024,61 @@ const AdminDashboard = ({
           return timeB - timeA;
         });
         setTestimonials(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'testimonials'));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'testimonials');
+        if (isFirestoreQuotaError(error) && unsubT) {
+          try { unsubT(); } catch {}
+          unsubT = null;
+        }
+      });
 
       // Offers
       const qO = query(collection(db, 'offers'), orderBy('createdAt', 'desc'));
-      const unsubO = onSnapshot(qO, (snapshot) => {
+      unsubO = onSnapshot(qO, (snapshot) => {
         const results: Offer[] = [];
         snapshot.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as Offer);
         });
         setOffers(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'offers'));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'offers');
+        if (isFirestoreQuotaError(error) && unsubO) {
+          try { unsubO(); } catch {}
+          unsubO = null;
+        }
+      });
 
       // Services
       const qS = query(collection(db, 'services'));
-      const unsubS = onSnapshot(qS, (snapshot) => {
+      unsubS = onSnapshot(qS, (snapshot) => {
         const results: ServiceItem[] = [];
         snapshot.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as ServiceItem);
         });
         setServices(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'services'));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'services');
+        if (isFirestoreQuotaError(error) && unsubS) {
+          try { unsubS(); } catch {}
+          unsubS = null;
+        }
+      });
 
       // Gallery
       const qG = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
-      const unsubG = onSnapshot(qG, (snapshot) => {
+      unsubG = onSnapshot(qG, (snapshot) => {
         const results: GalleryItem[] = [];
         snapshot.forEach((doc) => {
           results.push({ id: doc.id, ...(doc.data() as any) } as GalleryItem);
         });
         setGallery(results);
-      }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'gallery');
+        if (isFirestoreQuotaError(error) && unsubG) {
+          try { unsubG(); } catch {}
+          unsubG = null;
+        }
+      });
 
       // Staff Users (Loaded via secure sanitized API without exposing passwords or hashes)
       const fetchStaffMembers = async () => {
@@ -1066,7 +1102,7 @@ const AdminDashboard = ({
 
       // Partners
       const qPartners = query(collection(db, 'partners'), orderBy('order', 'asc'));
-      const unsubPartners = onSnapshot(qPartners, (snapshot) => {
+      unsubPartners = onSnapshot(qPartners, (snapshot) => {
         if (!snapshot.empty) {
           const results: Partner[] = [];
           snapshot.forEach((doc) => {
@@ -1078,12 +1114,16 @@ const AdminDashboard = ({
           setPartners(DEFAULT_PARTNERS);
         }
       }, (error) => {
+        if (isFirestoreQuotaError(error) && unsubPartners) {
+          try { unsubPartners(); } catch {}
+          unsubPartners = null;
+        }
         console.warn('Partners fetch fallback:', error);
       });
 
       // Contracts (Workshops & Corporate Fleets)
       const qContracts = query(collection(db, 'contracts'), orderBy('createdAt', 'desc'));
-      const unsubContracts = onSnapshot(qContracts, (snapshot) => {
+      unsubContracts = onSnapshot(qContracts, (snapshot) => {
         if (!snapshot.empty) {
           const results: Contract[] = [];
           snapshot.forEach((doc) => {
@@ -1095,6 +1135,10 @@ const AdminDashboard = ({
           setContracts(DEFAULT_SAMPLE_CONTRACTS);
         }
       }, (error) => {
+        if (isFirestoreQuotaError(error) && unsubContracts) {
+          try { unsubContracts(); } catch {}
+          unsubContracts = null;
+        }
         console.warn('Contracts fetch fallback:', error);
       });
 
@@ -1121,14 +1165,14 @@ const AdminDashboard = ({
 
       return () => {
         clearTimeout(stabilizationTimer);
-        unsubM();
-        unsubT();
-        unsubO();
-        unsubS();
-        unsubG();
+        if (unsubM) try { unsubM(); } catch {}
+        if (unsubT) try { unsubT(); } catch {}
+        if (unsubO) try { unsubO(); } catch {}
+        if (unsubS) try { unsubS(); } catch {}
+        if (unsubG) try { unsubG(); } catch {}
         unsubStaff();
-        unsubPartners();
-        unsubContracts();
+        if (unsubPartners) try { unsubPartners(); } catch {}
+        if (unsubContracts) try { unsubContracts(); } catch {}
         unsubCustomers();
       };
     }
@@ -6753,7 +6797,9 @@ const AdminDashboard = ({
                 onAddVehicleToContract={handleAddVehicleToContract}
                 onUpdateVehicleInContract={handleUpdateVehicleInContract}
                 onDeleteVehicleFromContract={handleDeleteVehicleFromContract}
+                settings={settings}
                 lang={lang}
+                isMasterAdmin={isSuperAdmin}
               />
             </motion.div>
           )}

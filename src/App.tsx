@@ -132,6 +132,7 @@ import { areCustomerNamesMatching, areCustomerPhonesMatching, isGenericCustomerN
 import { useScrollLock } from './lib/scrollLock';
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { LanguageProvider, useLanguage, LanguageToggle, type Language } from './context/LanguageContext';
+import { trackBookingSubmit } from './lib/gtm';
 
 
 // Code-Splitting: Lazy Loaded Admin Dashboard, Routes, and Modals
@@ -244,7 +245,8 @@ export function isFirestoreQuotaError(error: unknown): boolean {
     str.includes('quota metric') ||
     str.includes('RESOURCE_EXHAUSTED') ||
     str.includes('exceeded free quota') ||
-    str.includes('Free daily read units per project')
+    str.includes('Free daily read units per project') ||
+    str.includes('INTERNAL ASSERTION FAILED')
   );
 }
 
@@ -1620,6 +1622,9 @@ const Services = ({ onServiceSelect }: { onServiceSelect: (type: string) => void
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'services');
+      if (isFirestoreQuotaError(error)) {
+        try { unsubscribe(); } catch {}
+      }
       setLoading(false);
     });
     return unsubscribe;
@@ -1792,6 +1797,9 @@ const Offers = ({ onOfferSelect }: { onOfferSelect?: (offer: Offer) => void }) =
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'offers');
+      if (isFirestoreQuotaError(error)) {
+        try { unsubscribe(); } catch {}
+      }
       setLoading(false);
     });
     return unsubscribe;
@@ -1909,6 +1917,9 @@ const Gallery = ({ settings }: { settings?: AppSettings }) => {
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'gallery');
+      if (isFirestoreQuotaError(error)) {
+        try { unsubscribe(); } catch {}
+      }
       setLoading(false);
     });
     return unsubscribe;
@@ -2577,8 +2588,12 @@ const BookingForm = ({
         );
       }
 
-      // Track conversion in Google Analytics 4 (G-63DGX8ECEL)
+      // Track conversion in Google Analytics 4 (G-63DGX8ECEL) & Google Tag Manager (booking_submit)
       try {
+        trackBookingSubmit({
+          service_type: serviceTitle
+        });
+
         if (typeof window !== 'undefined' && (window as any).gtag) {
           (window as any).gtag('event', 'generate_lead', {
             event_category: 'Service Booking',
@@ -2589,7 +2604,7 @@ const BookingForm = ({
           });
         }
       } catch (gtagErr) {
-        console.warn('GA4 event tracking notice:', gtagErr);
+        console.warn('GTM / GA4 event tracking notice:', gtagErr);
       }
 
       // 3. Prepare WhatsApp Message with Unique Booking ID
@@ -3169,6 +3184,7 @@ const Testimonials = () => {
         console.error("Error fetching testimonials:", error);
       } else {
         console.warn("[Firestore Quota] Testimonials using offline/static fallback.");
+        try { unsubscribe(); } catch {}
       }
       handleFirestoreError(error, OperationType.LIST, 'testimonials');
       setLoading(false);
@@ -4340,7 +4356,12 @@ function MainContent() {
           } catch {}
         }
       }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'stats/global'));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'stats/global');
+      if (isFirestoreQuotaError(error)) {
+        try { unsubscribe(); } catch {}
+      }
+    });
 
     return unsubscribe;
   }, []);
@@ -4368,6 +4389,9 @@ function MainContent() {
         setPartners(DEFAULT_PARTNERS);
       }
     }, (error) => {
+      if (isFirestoreQuotaError(error)) {
+        try { unsubscribe(); } catch {}
+      }
       console.warn('Partners fetch fallback in MainContent:', error);
       setPartners(DEFAULT_PARTNERS);
     });

@@ -74,6 +74,25 @@ const MASTER_ADMIN = {
 const staffLoginAttempts = new Map<string, { attempts: number; lockedUntil: number }>();
 const trackAttempts = new Map<string, { count: number; resetAt: number }>();
 
+// Quota Limit Detection & In-Memory Fallbacks (Ensures zero-downtime when Firestore daily free quota is exceeded)
+function isFirestoreQuotaError(err: any): boolean {
+  if (!err) return false;
+  const msg = err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+  return (
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Quota exceeded') ||
+    msg.includes('quota metric') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('exceeded free quota') ||
+    msg.includes('Free daily read units per project') ||
+    msg.includes('INTERNAL ASSERTION FAILED')
+  );
+}
+
+let memoryStaffCache: any[] = [];
+let memoryCustomersCache: any[] = [];
+let memoryBookingsCache: any[] = [];
+
 // Helper functions
 function maskName(name?: string): string {
   if (!name || typeof name !== 'string') return 'عميل محترم';
@@ -322,8 +341,16 @@ export default async function portalHandler(req: Request, res: Response) {
         return timeB - timeA;
       });
 
+      if (list.length > 0) {
+        memoryBookingsCache = list;
+      }
+
       return res.status(200).json({ success: true, bookings: list });
     } catch (err: any) {
+      if (isFirestoreQuotaError(err)) {
+        console.warn('[Customer Bookings]: Operating in offline quota-exceeded mode.');
+        return res.status(200).json({ success: true, bookings: memoryBookingsCache, isOffline: true });
+      }
       console.error('[Customer Bookings Error]:', err);
       return res.status(500).json({ error: 'Server Error', message: 'حدث خطأ أثناء جلب سجلات الحجوزات' });
     }
@@ -538,8 +565,46 @@ export default async function portalHandler(req: Request, res: Response) {
           };
         });
 
+        if (staffList.length > 0) {
+          memoryStaffCache = staffList;
+        }
+
         return res.status(200).json({ success: true, staff: staffList });
       } catch (err: any) {
+        if (isFirestoreQuotaError(err)) {
+          console.warn('[Staff List]: Operating in offline quota-exceeded mode.');
+          const fallbackStaff = memoryStaffCache.length > 0 ? memoryStaffCache : [
+            {
+              id: 'master-admin-fallback',
+              username: MASTER_ADMIN.username,
+              fullName: 'الإدارة العامة - المشرف العام',
+              phone: '0546870807',
+              role: 'super_admin',
+              roleTitleAr: 'المدير العام',
+              permissions: {
+                canViewDashboard: true,
+                canManageBookings: true,
+                canChangeStatus: true,
+                canViewCalendar: true,
+                canManageCustomers: true,
+                canManageTestimonials: true,
+                canManageNotifications: true,
+                canViewAnalytics: true,
+                canViewReports: true,
+                canManageContent: true,
+                canManageSettings: true,
+                canManageStaff: true,
+                canManageContracts: true,
+                canDeleteBookings: true
+              },
+              isActive: true,
+              notes: 'Master Administrator fallback during quota limit',
+              createdAt: new Date().toISOString(),
+              lastLogin: null
+            }
+          ];
+          return res.status(200).json({ success: true, staff: fallbackStaff, isOffline: true });
+        }
         console.error('[Staff List Error]:', err);
         return res.status(500).json({ error: 'Server Error', message: 'حدث خطأ أثناء جلب قائمة الموظفين' });
       }
@@ -694,8 +759,16 @@ export default async function portalHandler(req: Request, res: Response) {
           );
         }
 
+        if (customers.length > 0) {
+          memoryCustomersCache = customers;
+        }
+
         return res.status(200).json({ success: true, customers });
       } catch (err: any) {
+        if (isFirestoreQuotaError(err)) {
+          console.warn('[Staff Customers]: Operating in offline quota-exceeded mode.');
+          return res.status(200).json({ success: true, customers: memoryCustomersCache, isOffline: true });
+        }
         console.error('[Staff Customers Error]:', err);
         return res.status(500).json({ error: 'Server Error', message: 'حدث خطأ أثناء جلب سجلات العملاء' });
       }

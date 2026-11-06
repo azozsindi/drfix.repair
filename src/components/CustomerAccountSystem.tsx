@@ -611,6 +611,11 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setIsPortalOpen(true);
         }
       }
+    }, (err) => {
+      const errStr = err instanceof Error ? err.message : String(err);
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('quota metric')) {
+        try { unsub(); } catch {}
+      }
     });
     return () => unsub();
   }, [pendingVerification?.customerId, customer?.googleUid]);
@@ -660,8 +665,9 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }, (err) => {
       const errStr = err instanceof Error ? err.message : String(err);
-      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED')) {
+      if (errStr.includes('Quota') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('quota metric')) {
         console.warn('[Firestore Quota] Customer real-time sync paused, using local profile session.');
+        try { unsub(); } catch {}
       } else {
         console.error('Customer sync error:', err);
       }

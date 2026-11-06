@@ -413,6 +413,151 @@ export interface Contract {
   updatedAt?: any;
 }
 
+// =========================================================================
+// OFFICIAL DYNAMIC DOCUMENT BUILDER (محرر المستندات والخطابات الرسمي)
+// =========================================================================
+export type OfficialDocCategory = 
+  | 'quotation'               // عرض أسعار
+  | 'letter'                  // خطاب رسمي
+  | 'agreement'               // عقد اتفاقية
+  | 'fleet_contract'          // عقد صيانة أسطول
+  | 'workshop_contract'       // عقد ورشة خارجية
+  | 'rental_proposal'         // عرض خدمات لمكاتب تأجير السيارات
+  | 'corporate_proposal'      // عرض خدمات للشركات والمؤسسات
+  | 'custom';                 // مستند مخصص بالكامل
+
+export type DocumentStatus = 'draft' | 'under_review' | 'approved' | 'cancelled';
+export type DocumentLanguage = 'ar' | 'en' | 'bilingual';
+
+export interface DocumentTableItem {
+  id: string;
+  description: string;
+  sku?: string;
+  qty: number;
+  unitPrice: number;
+  total?: number;
+  warranty?: string;
+}
+
+export interface DocumentSection {
+  id: string;
+  type: 'paragraph' | 'bullet' | 'numbered' | 'subheading';
+  title?: string;
+  content: string;
+  isBold?: boolean;
+  fontSize?: 'sm' | 'base' | 'lg';
+}
+
+export interface DocumentSignatory {
+  name: string;
+  title: string;
+  company?: string;
+}
+
+export interface OfficialDocumentRecord {
+  id: string;
+  category: OfficialDocCategory;
+  docNumber: string; // رقم الإشارة Ref
+  title: string;
+  language: DocumentLanguage;
+  status: DocumentStatus;
+  issueDate: string; // YYYY-MM-DD
+  hijriDate?: string;
+  expiryDate?: string; // Optional
+  
+  // بيانات الشركة المصدرة (تأتي افتراضياً من DR.FIX وقابلة للتعديل لكل مستند)
+  issuer: {
+    name: string;
+    subName?: string;
+    logoUrl?: string;
+    crNumber?: string;
+    taxNumber?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    city?: string;
+    address?: string;
+  };
+
+  // بيانات الجهة المستلمة (فارغة تماماً في البداية)
+  recipient: {
+    companyName: string;
+    contactPerson: string;
+    contactTitle: string;
+    city: string;
+    address: string;
+    crNumber: string;
+    taxNumber: string;
+    phone: string;
+    email: string;
+  };
+
+  // محتوى المستند
+  subject: string;
+  salutation: string;
+  intro: string;
+  sections: DocumentSection[];
+  
+  // جدول الأسعار والخدمات
+  showPricingTable: boolean;
+  tableItems: DocumentTableItem[];
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  taxRate?: number; // 0% افتراضياً، اختياري
+  notes?: string;
+  termsConditions: string[];
+
+  // التوقيعات والاعتماد (بدون أي أختام)
+  firstPartySignatory: DocumentSignatory;
+  secondPartySignatory: DocumentSignatory;
+
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export const OFFICIAL_DOC_CATEGORY_LABELS: Record<OfficialDocCategory, { ar: string; en: string; defaultTitleAr: string }> = {
+  quotation: {
+    ar: 'عرض أسعار معتمد',
+    en: 'Price Quotation',
+    defaultTitleAr: 'عرض أسعار خدمات وصيانة'
+  },
+  letter: {
+    ar: 'خطاب رسمي',
+    en: 'Official Letter',
+    defaultTitleAr: 'خطاب رسمي معتمد'
+  },
+  agreement: {
+    ar: 'عقد اتفاقية',
+    en: 'Agreement Contract',
+    defaultTitleAr: 'عقد اتفاقية خدمات'
+  },
+  fleet_contract: {
+    ar: 'عقد صيانة أسطول',
+    en: 'Fleet Maintenance Contract',
+    defaultTitleAr: 'عقد صيانة وتشغيل أسطول مركبات'
+  },
+  workshop_contract: {
+    ar: 'عقد ورشة خارجية',
+    en: 'External Workshop Contract',
+    defaultTitleAr: 'اتفاقية إسناد أعمال صيانة لورشة متخصصة'
+  },
+  rental_proposal: {
+    ar: 'عرض خدمات لمكاتب تأجير السيارات',
+    en: 'Car Rental Fleet Proposal',
+    defaultTitleAr: 'مقترح خدمات صيانة أسطول تأجير السيارات'
+  },
+  corporate_proposal: {
+    ar: 'عرض خدمات للشركات والمؤسسات',
+    en: 'Corporate Services Proposal',
+    defaultTitleAr: 'مقترح خدمات صيانة وتشغيل أسطول الشركات'
+  },
+  custom: {
+    ar: 'مستند مخصص بالكامل',
+    en: 'Custom Document',
+    defaultTitleAr: 'مستند رسمي'
+  }
+};
+
 export const DEFAULT_SAMPLE_CONTRACTS: Contract[] = [
   {
     id: 'contract-wrk-sample-1',
