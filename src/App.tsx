@@ -132,7 +132,7 @@ import { areCustomerNamesMatching, areCustomerPhonesMatching, isGenericCustomerN
 import { useScrollLock } from './lib/scrollLock';
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from './components/LegalModal';
 import { LanguageProvider, useLanguage, LanguageToggle, type Language } from './context/LanguageContext';
-import { trackBookingSubmit } from './lib/gtm';
+import { trackBookingSubmit, trackWhatsAppClick } from './lib/gtm';
 
 
 // Code-Splitting: Lazy Loaded Admin Dashboard, Routes, and Modals
@@ -1124,6 +1124,7 @@ const Navbar = ({
                 href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
+                onClick={() => trackWhatsAppClick('header_whatsapp')}
                 className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-brand-red hover:border-brand-red transition-all shadow-sm shrink-0 group"
                 title={lang === 'ar' ? 'واتساب' : 'WhatsApp'}
               >
@@ -1208,7 +1209,10 @@ const Navbar = ({
                     href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    onClick={() => setIsOpen(false)}
+                    onClick={() => {
+                      trackWhatsAppClick('mobile_menu_whatsapp');
+                      setIsOpen(false);
+                    }}
                     className="py-3 px-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-sm text-white hover:bg-white/10 hover:border-brand-red transition-colors group"
                   >
                     <MessageCircle className="w-4 h-4 text-brand-red" />
@@ -1285,6 +1289,7 @@ const MobileQuickBar = ({ settings }: { settings: AppSettings }) => {
           href={`https://wa.me/${whatsappNumber}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackWhatsAppClick('mobile_quickbar_whatsapp')}
           className="flex flex-col items-center justify-center py-1.5 px-1 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-brand-red transition-all active:scale-95 group"
         >
           <MessageCircle className="w-5 h-5 mb-0.5 text-brand-red" />
@@ -1411,6 +1416,7 @@ const Hero = ({ settings }: { settings: AppSettings }) => {
                 href={`https://wa.me/${(settings.whatsapp || '966546870807').replace(/\+/g, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
+                onClick={() => trackWhatsAppClick('hero_whatsapp')}
                 className="min-w-0 px-3 sm:px-6 py-3 sm:py-4 bg-white/5 border border-white/10 rounded-xl font-bold flex items-center justify-center gap-2 text-xs sm:text-base hover:bg-white/10 hover:border-brand-red transition-all active:scale-95 cursor-pointer group text-white min-h-[48px]" 
                 title="واتساب"
               >
@@ -3810,6 +3816,7 @@ const Footer = React.memo(({ settings, isAdmin, visitorCount }: { settings: AppS
               href={`https://wa.me/${(settings.whatsapp || DEFAULT_APP_SETTINGS.whatsapp || '966546870807').replace(/[^0-9]/g, '')}`} 
               target="_blank" 
               rel="noopener noreferrer"
+              onClick={() => trackWhatsAppClick('footer_whatsapp')}
               className="w-10 h-10 bg-neutral-900/90 rounded-xl p-2 flex items-center justify-center border border-white/10 hover:border-brand-red hover:shadow-[0_0_12px_rgba(227,24,55,0.4)] transition-all shadow-sm group cursor-pointer shrink-0"
               title="WhatsApp - واتساب"
             >

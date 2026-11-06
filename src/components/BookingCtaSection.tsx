@@ -11,6 +11,7 @@ import {
   Sparkles,
   MessageCircle
 } from 'lucide-react';
+import { trackWhatsAppClick } from '../lib/gtm';
 
 interface BookingCtaSectionProps {
   lang?: 'ar' | 'en';
@@ -135,6 +136,7 @@ export const BookingCtaSection: React.FC<BookingCtaSectionProps> = ({
               href={`https://api.whatsapp.com/send?phone=${cleanWhatsapp}&text=${encodeURIComponent(isAr ? 'السلام عليكم، أود الاستفسار عن حجز صيانة متنقلة لسيارتي' : 'Hello, I want to inquire about mobile car service')}`}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => trackWhatsAppClick('cta_section_whatsapp')}
               className="w-full sm:w-auto px-5 sm:px-6 py-3.5 sm:py-4 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 hover:border-emerald-500/50 text-emerald-400 hover:text-emerald-300 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm md:text-base flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
             >
               <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />

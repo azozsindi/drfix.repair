@@ -11,7 +11,9 @@
 declare global {
   interface Window {
     dataLayer: any[];
+    gtag?: (...args: any[]) => void;
     __DRFIX_GTM_INITIALIZED__?: boolean;
+    __DRFIX_WINDOW_OPEN_WRAPPED__?: boolean;
   }
 }
 
@@ -54,28 +56,42 @@ const sanitizePayload = (payload: Record<string, any>): Record<string, any> => {
 };
 
 /**
- * Safe helper to push events into window.dataLayer
+ * Safe helper to push events into window.dataLayer and sync with gtag if available
  */
 export const pushToDataLayer = (eventName: string, payload: Record<string, any> = {}) => {
   if (typeof window === 'undefined') return;
   window.dataLayer = window.dataLayer || [];
 
   const safePayload = sanitizePayload(payload);
-  window.dataLayer.push({
+  const eventObject = {
     event: eventName,
     ...safePayload,
     timestamp: new Date().toISOString()
-  });
+  };
+
+  window.dataLayer.push(eventObject);
+
+  // Informative debug logger in console (non-intrusive)
+  try {
+    console.log(`%c[DR.FIX GTM Event]%c ${eventName}`, 'color: #E31837; font-weight: bold;', 'color: #10B981; font-weight: bold;', eventObject);
+  } catch {}
 };
 
-// Click debounce state to prevent duplicate events on double clicks
-let lastClickTimestamp = 0;
-let lastClickTarget = '';
+// Channel-specific debounce timestamps to prevent duplicate events on accidental double clicks
+let lastWhatsAppClickTime = 0;
+let lastPhoneClickTime = 0;
 
 /**
  * Track WhatsApp click event (Without any phone number or customer data)
+ * Debounced to 400ms to guarantee exactly one event per user interaction
  */
 export const trackWhatsAppClick = (location?: string) => {
+  const now = Date.now();
+  if (now - lastWhatsAppClickTime < 400) {
+    return;
+  }
+  lastWhatsAppClickTime = now;
+
   pushToDataLayer('whatsapp_click', {
     channel: 'whatsapp',
     click_location: location || 'general'
@@ -84,8 +100,15 @@ export const trackWhatsAppClick = (location?: string) => {
 
 /**
  * Track direct phone call click (Without any customer phone numbers)
+ * Debounced to 400ms to guarantee exactly one event per user interaction
  */
 export const trackPhoneClick = (location?: string) => {
+  const now = Date.now();
+  if (now - lastPhoneClickTime < 400) {
+    return;
+  }
+  lastPhoneClickTime = now;
+
   pushToDataLayer('phone_click', {
     channel: 'phone_call',
     click_location: location || 'general'
@@ -115,9 +138,60 @@ export const trackBookingSubmit = (bookingData?: { service_type?: string }) => {
 };
 
 /**
- * Initialize global click listeners in React
+ * Helper to safely extract the parent anchor element from any click event.
+ * Uses a 3-tier discovery mechanism:
+ * 1. event.composedPath() for SVG, Framer Motion, and Web Components
+ * 2. target.closest('a') with text node resolution
+ * 3. Manual parentElement climb up to 10 levels to handle SVG boundary quirks in iOS Safari/WebKit
+ */
+const findAnchorElement = (event: MouseEvent): HTMLAnchorElement | null => {
+  // Method 1: Check composedPath (most robust for Shadow DOM & SVG trees)
+  if (typeof event.composedPath === 'function') {
+    try {
+      const path = event.composedPath();
+      for (const el of path) {
+        if (!el) continue;
+        const tagName = (el as Element).tagName;
+        if (tagName && tagName.toUpperCase() === 'A') {
+          return el as HTMLAnchorElement;
+        }
+      }
+    } catch {}
+  }
+
+  // Method 2: Standard closest('a') with text-node protection
+  let target = event.target as (Element | null);
+  if (target && (target as any).nodeType === 3) {
+    target = target.parentElement;
+  }
+
+  if (target?.closest) {
+    try {
+      const closestA = target.closest('a');
+      if (closestA) return closestA as HTMLAnchorElement;
+    } catch {}
+  }
+
+  // Method 3: Iterative parent climb (immune to SVG .closest() quirks in WebKit)
+  let curr: Element | null = target;
+  let depth = 0;
+  while (curr && depth < 10) {
+    if (curr.tagName && curr.tagName.toUpperCase() === 'A') {
+      return curr as HTMLAnchorElement;
+    }
+    curr = curr.parentElement;
+    depth++;
+  }
+
+  return null;
+};
+
+/**
+ * Initialize global tracking in React
  * Idempotent: Attaches exactly once to window
- * Supports all statically and dynamically rendered links across the entire DOM tree
+ * Features:
+ * - Monkey-patches window.open to track programmatic WhatsApp dispatches (contact forms, modals, quotes)
+ * - Listens in capture phase on window to intercept all anchor clicks before stopPropagation
  */
 export const initGtmAutoTracking = () => {
   if (typeof window === 'undefined') return;
@@ -131,46 +205,70 @@ export const initGtmAutoTracking = () => {
   // Ensure window.dataLayer is initialized
   window.dataLayer = window.dataLayer || [];
 
+  // 1. Intercept window.open calls with WhatsApp URLs (modals, contact forms, booking redirects)
+  if (typeof window.open === 'function' && !(window as any).__DRFIX_WINDOW_OPEN_WRAPPED__) {
+    (window as any).__DRFIX_WINDOW_OPEN_WRAPPED__ = true;
+    const originalOpen = window.open;
+    window.open = function (url?: string | URL, target?: string, features?: string) {
+      if (url) {
+        try {
+          const urlStr = String(url).toLowerCase();
+          if (
+            urlStr.includes('wa.me') ||
+            urlStr.includes('whatsapp') ||
+            urlStr.includes('api.whatsapp.com')
+          ) {
+            trackWhatsAppClick('window_open');
+          }
+        } catch {}
+      }
+      return originalOpen.apply(window, arguments as any);
+    };
+  }
+
+  // 2. Global click handler for all anchor tags across the entire DOM tree
   const handleGlobalClick = (event: MouseEvent) => {
-    const target = (event.target as HTMLElement)?.closest('a');
-    if (!target) return;
+    const anchor = findAnchorElement(event);
+    if (!anchor) return;
 
-    const href = target.getAttribute('href') || '';
-    if (!href) return;
+    // Get raw href and resolve it safely
+    const rawHref = anchor.getAttribute('href') || (anchor as any).href || '';
+    const hrefStr = typeof rawHref === 'string' ? rawHref : (rawHref?.baseVal || '');
+    if (!hrefStr) return;
 
-    const now = Date.now();
-    const clickKey = `${href}_${target.innerText?.trim() || ''}`;
+    const hrefLower = hrefStr.toLowerCase().trim();
 
-    // 400ms Debounce check: Prevent duplicate event on accidental double click
-    if (now - lastClickTimestamp < 400 && lastClickTarget === clickKey) {
+    const isWhatsApp = 
+      hrefLower.includes('wa.me') || 
+      hrefLower.includes('whatsapp') || 
+      hrefLower.includes('api.whatsapp.com') ||
+      hrefLower.startsWith('whatsapp:');
+
+    const isPhone = 
+      hrefLower.startsWith('tel:') || 
+      hrefLower.includes('tel:');
+
+    if (!isWhatsApp && !isPhone) {
+      // Regular link - do not trigger custom events
       return;
     }
-    lastClickTimestamp = now;
-    lastClickTarget = clickKey;
 
-    // 1. Detect WhatsApp links
-    if (
-      href.includes('wa.me') ||
-      href.includes('api.whatsapp.com') ||
-      href.startsWith('whatsapp:')
-    ) {
-      const location = 
-        target.getAttribute('data-gtm-location') || 
-        target.getAttribute('title') || 
-        target.innerText?.trim().slice(0, 30) || 
-        'whatsapp_button';
+    const location = 
+      anchor.getAttribute('data-gtm-location') || 
+      anchor.getAttribute('title') || 
+      anchor.innerText?.trim().slice(0, 30) || 
+      (isWhatsApp ? 'whatsapp_button' : 'phone_button');
+
+    // 1. Dispatch custom event for WhatsApp
+    if (isWhatsApp) {
       trackWhatsAppClick(location);
     }
-    // 2. Detect Telephone links (tel:)
-    else if (href.startsWith('tel:')) {
-      const location = 
-        target.getAttribute('data-gtm-location') || 
-        target.getAttribute('title') || 
-        target.innerText?.trim().slice(0, 30) || 
-        'phone_button';
+    // 2. Dispatch custom event for Telephone (tel:)
+    else if (isPhone) {
       trackPhoneClick(location);
     }
   };
 
+  // Attach listener during capture phase on window so it triggers before any propagation stops
   window.addEventListener('click', handleGlobalClick, { capture: true, passive: true });
 };
