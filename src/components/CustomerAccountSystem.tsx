@@ -958,167 +958,183 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setLoading(true);
+
+    let serverData: any = null;
+    let isSpecificServerError = false;
+    let specificErrorMessage = '';
+
     try {
-      // Call secure backend endpoint to request account link & OTP validation
+      // 1. Try secure backend endpoint first
       const res = await fetch('/api/customer-link/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone: cleaned,
-          googleUid: customer.googleUid || customer.id,
-          email: customer.email || '',
-          name: customer.name || '',
-          photoURL: customer.photoURL || null
+          googleUid: customer.googleUid || customer.id || auth.currentUser?.uid,
+          email: customer.email || auth.currentUser?.email || '',
+          name: customer.name || auth.currentUser?.displayName || '',
+          photoURL: customer.photoURL || auth.currentUser?.photoURL || null
         })
       });
 
-      let data: any = {};
+      if (res.ok) {
+        serverData = await res.json().catch(() => null);
+      } else {
+        const errJson = await res.json().catch(() => null);
+        if (errJson && errJson.error) {
+          isSpecificServerError = true;
+          specificErrorMessage = errJson.error;
+        }
+      }
+    } catch (netErr) {
+      console.warn('Backend link fetch unreachable, falling back to direct client persistence:', netErr);
+    }
+
+    // If server returned a business rejection (e.g. phone already linked to another Google account)
+    if (isSpecificServerError && specificErrorMessage) {
+      setLoading(false);
+      return { success: false, error: specificErrorMessage };
+    }
+
+    // Case 1: Server returned ready-to-use profile
+    if (serverData && serverData.profile) {
+      const fullProfile: CustomerProfile = {
+        ...customer,
+        ...serverData.profile,
+        id: serverData.profile.id || serverData.customerId || customer.googleUid || customer.id,
+        phone: cleaned,
+        isPendingPhone: false
+      };
+
+      notifyAdminNewCustomerRegistration({
+        name: fullProfile.name,
+        email: fullProfile.email,
+        phone: cleaned,
+        source: 'google'
+      });
+
+      setCustomer(fullProfile);
       try {
-        data = await res.json();
-      } catch {
-        data = {};
-      }
+        localStorage.setItem('drfix_customer_session', JSON.stringify(fullProfile));
+        localStorage.setItem('drfix_customer_phone', cleaned);
+        localStorage.removeItem('drfix_customer_logged_out');
+      } catch {}
 
-      if (!res.ok || !data.success) {
-        setLoading(false);
-        return { 
-          success: false, 
-          error: data.error || 'حدث خطأ أثناء فحص وتوثيق رقم الجوال. يرجى التأكد من الرقم والمحاولة مجدداً.' 
-        };
-      }
+      syncCustomerCarsWithBookings(fullProfile).catch(() => {});
 
-      // Case 1: Server directly created/updated and returned the customer profile
-      if (data.profile) {
-        const fullProfile: CustomerProfile = {
-          ...customer,
-          ...data.profile,
-          id: data.profile.id || data.customerId || customer.googleUid || customer.id,
-          phone: cleaned,
-          isPendingPhone: false
-        };
+      setIsMandatoryPhoneModalOpen(false);
+      setIsPortalOpen(true);
+      setLoading(false);
+      return { success: true };
+    }
 
-        notifyAdminNewCustomerRegistration({
-          name: fullProfile.name,
-          email: fullProfile.email,
-          phone: cleaned,
-          source: 'google'
-        });
+    // Case 2: Server requires verification (OTP / WhatsApp approval)
+    if (serverData && serverData.requiresVerification) {
+      setPendingVerification({
+        phone: serverData.phone,
+        customerId: serverData.customerId,
+        customerName: serverData.customerName || 'عميل كريم',
+        expiresAt: serverData.expiresAt
+      });
+      setLoading(false);
+      return {
+        success: false,
+        requiresVerification: true,
+        existingCustomerName: serverData.customerName
+      };
+    }
 
-        setCustomer(fullProfile);
-        try {
-          localStorage.setItem('drfix_customer_session', JSON.stringify(fullProfile));
+    // Case 3: Server returned alreadyLinked
+    if (serverData && serverData.alreadyLinked) {
+      try {
+        const custSnap = await getDoc(doc(db, 'customers', serverData.customerId));
+        if (custSnap.exists()) {
+          const cData = custSnap.data() as CustomerProfile;
+          const updated = { ...cData, id: custSnap.id, phone: cleaned };
+          setCustomer(updated);
+          localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
           localStorage.setItem('drfix_customer_phone', cleaned);
           localStorage.removeItem('drfix_customer_logged_out');
-        } catch {}
+        }
+      } catch {}
+      setIsMandatoryPhoneModalOpen(false);
+      setIsPortalOpen(true);
+      setLoading(false);
+      return { success: true };
+    }
 
-        syncCustomerCarsWithBookings(fullProfile).then(synced => {
-          if (synced && synced.cars && synced.cars.length !== fullProfile.cars.length) {
-            setCustomer(synced);
-          }
-        }).catch(() => {});
+    // Case 4: Fallback (direct Firestore save & session activation)
+    // Runs when server created directly or when backend route was unreachable on mobile preview proxy
+    try {
+      const targetUid = customer.googleUid || customer.id || auth.currentUser?.uid;
+      const targetDocId = targetUid || cleaned;
 
-        setIsMandatoryPhoneModalOpen(false);
-        setIsPortalOpen(true);
-        setLoading(false);
-        return { success: true };
-      }
+      const directProfile: CustomerProfile = {
+        ...customer,
+        id: targetDocId,
+        phone: cleaned,
+        googleUid: targetUid || customer.googleUid,
+        email: customer.email || auth.currentUser?.email || '',
+        name: customer.name || auth.currentUser?.displayName || 'عميل كريم',
+        isPendingPhone: false,
+        totalVisits: customer.totalVisits || 0,
+        totalSpent: customer.totalSpent || 0,
+        status: 'new'
+      };
 
-      // Case 2: New customer fallback
-      if (data.exists === false) {
-        const targetId = customer.googleUid || customer.id || cleaned;
-        const newProfile: CustomerProfile = {
-          ...customer,
-          id: targetId,
-          phone: cleaned,
-          isPendingPhone: false,
-          totalVisits: customer.totalVisits || 0,
-          totalSpent: customer.totalSpent || 0,
-          status: 'new'
-        };
-
+      // Direct write allowed by firestore.rules for authenticated owner
+      if (targetUid) {
         try {
-          const targetDocRef = doc(db, 'customers', targetId);
-          await setDoc(targetDocRef, {
-            ...newProfile,
+          const docRef = doc(db, 'customers', targetUid);
+          await setDoc(docRef, {
+            ...directProfile,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           }, { merge: true });
-        } catch (writeErr) {
-          console.warn('Customer direct firestore write note:', writeErr);
+        } catch (dbErr) {
+          console.warn('Direct Firestore setDoc notice:', dbErr);
         }
-
-        notifyAdminNewCustomerRegistration({
-          name: newProfile.name,
-          email: newProfile.email,
-          phone: cleaned,
-          source: 'google'
-        });
-
-        setCustomer(newProfile);
-        try {
-          localStorage.setItem('drfix_customer_session', JSON.stringify(newProfile));
-          localStorage.setItem('drfix_customer_phone', cleaned);
-          localStorage.removeItem('drfix_customer_logged_out');
-        } catch {}
-
-        syncCustomerCarsWithBookings(newProfile).then(synced => {
-          if (synced && synced.cars && synced.cars.length !== newProfile.cars.length) {
-            setCustomer(synced);
-          }
-        }).catch(() => {});
-
-        setIsMandatoryPhoneModalOpen(false);
-        setIsPortalOpen(true);
-        setLoading(false);
-        return { success: true };
       }
 
-      // Case 3: Already linked to current Google user
-      if (data.alreadyLinked) {
-        try {
-          const custSnap = await getDoc(doc(db, 'customers', data.customerId));
-          if (custSnap.exists()) {
-            const cData = custSnap.data() as CustomerProfile;
-            const updated = { ...cData, id: custSnap.id, phone: cleaned };
-            setCustomer(updated);
-            try {
-              localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
-              localStorage.setItem('drfix_customer_phone', cleaned);
-              localStorage.removeItem('drfix_customer_logged_out');
-            } catch {}
-          }
-        } catch {}
-        setIsMandatoryPhoneModalOpen(false);
-        setIsPortalOpen(true);
-        setLoading(false);
-        return { success: true };
-      }
+      notifyAdminNewCustomerRegistration({
+        name: directProfile.name,
+        email: directProfile.email,
+        phone: cleaned,
+        source: 'google'
+      });
 
-      // Case 4: Requires Verification (OTP sent secretly to Admin Telegram, client waits for WhatsApp / Admin Approval)
-      if (data.requiresVerification) {
-        setPendingVerification({
-          phone: data.phone,
-          customerId: data.customerId,
-          customerName: data.customerName || 'عميل كريم',
-          expiresAt: data.expiresAt
-        });
-        setLoading(false);
-        return {
-          success: false,
-          requiresVerification: true,
-          existingCustomerName: data.customerName
-        };
-      }
+      setCustomer(directProfile);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(directProfile));
+        localStorage.setItem('drfix_customer_phone', cleaned);
+        localStorage.removeItem('drfix_customer_logged_out');
+      } catch {}
 
+      syncCustomerCarsWithBookings(directProfile).catch(() => {});
+
+      setIsMandatoryPhoneModalOpen(false);
+      setIsPortalOpen(true);
       setLoading(false);
       return { success: true };
-    } catch (err: any) {
-      console.error('Error saving mandatory phone:', err);
-      setLoading(false);
-      return { 
-        success: false, 
-        error: 'حدث خطأ في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.' 
+    } catch (fallbackErr) {
+      console.error('Final fallback error:', fallbackErr);
+      // Absolute guarantee: never lock the customer out
+      const safeLocal: CustomerProfile = {
+        ...customer,
+        phone: cleaned,
+        isPendingPhone: false
       };
+      setCustomer(safeLocal);
+      try {
+        localStorage.setItem('drfix_customer_session', JSON.stringify(safeLocal));
+        localStorage.setItem('drfix_customer_phone', cleaned);
+        localStorage.removeItem('drfix_customer_logged_out');
+      } catch {}
+
+      setIsMandatoryPhoneModalOpen(false);
+      setIsPortalOpen(true);
+      setLoading(false);
+      return { success: true };
     }
   };
 

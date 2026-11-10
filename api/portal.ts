@@ -158,8 +158,13 @@ async function sendTelegramAlert(text: string) {
 // Consolidates staff-auth, booking-track, portal-operations, and customer-link
 // =========================================================================
 export default async function portalHandler(req: Request, res: Response) {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Role, X-Admin-Name, X-Admin-Id');
 
@@ -843,156 +848,191 @@ export default async function portalHandler(req: Request, res: Response) {
           }
         }
 
-        // Case A: No previous customer document found -> Register & Save directly on server!
-        if (!existingData) {
-          let pastCars: any[] = [];
-          let pastVisits = 0;
+        // Scenario 1: Customer record already exists in customers collection (الصفحة التي أنشأها المركز للعميل مسبقاً)
+        if (existingData) {
+          // Merge cars from existingData.cars, existingData.vehicles, and past maintenance
+          let mergedCars: any[] = Array.isArray(existingData.cars) ? [...existingData.cars] : [];
+
+          if (Array.isArray(existingData.vehicles)) {
+            existingData.vehicles.forEach((v: any) => {
+              const modelStr = typeof v === 'string' ? v : (v.model || v.name || '');
+              const makeStr = typeof v === 'object' ? (v.make || '') : '';
+              const yearStr = typeof v === 'object' ? (v.year || '') : '';
+              const plateStr = typeof v === 'object' ? (v.plateNumber || '') : '';
+              if (modelStr || makeStr) {
+                const exists = mergedCars.some(c => 
+                  (c.model && modelStr && c.model.includes(modelStr)) || 
+                  (c.make && makeStr && c.make === makeStr && c.model === modelStr)
+                );
+                if (!exists) {
+                  mergedCars.push({
+                    id: 'car_veh_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+                    make: makeStr || 'عام',
+                    model: modelStr || 'عام',
+                    year: yearStr || '',
+                    plateNumber: plateStr || '',
+                    addedAt: new Date().toISOString()
+                  });
+                }
+              }
+            });
+          }
+
+          // Also pull cars from maintenance collection
           try {
             const qMaint = query(collection(db, 'maintenance'), where('customerPhone', '==', cleanPhone), limit(50));
             const maintSnap = await getDocs(qMaint);
-            if (!maintSnap.empty) {
-              pastVisits = maintSnap.size;
-              maintSnap.docs.forEach((mDoc) => {
-                const m = mDoc.data();
-                if (m.carMake || m.carModel) {
-                  const candidateMake = (m.carMake || 'عام').trim();
-                  const candidateModel = (m.carModel || 'عام').trim();
-                  const candidateYear = (m.carYear || '').toString().trim();
-                  const candidatePlate = (m.plateNumber || '').trim();
-                  const already = pastCars.some(c => c.make === candidateMake && c.model === candidateModel && c.year === candidateYear);
-                  if (!already) {
-                    pastCars.push({
-                      id: 'car_maint_' + mDoc.id,
-                      make: candidateMake,
-                      model: candidateModel,
-                      year: candidateYear,
-                      plateNumber: candidatePlate,
-                      addedAt: new Date().toISOString()
-                    });
-                  }
+            maintSnap.docs.forEach((mDoc) => {
+              const m = mDoc.data();
+              if (m.carMake || m.carModel) {
+                const candidateMake = (m.carMake || 'عام').trim();
+                const candidateModel = (m.carModel || 'عام').trim();
+                const candidateYear = (m.carYear || '').toString().trim();
+                const candidatePlate = (m.plateNumber || '').trim();
+                const already = mergedCars.some(c => 
+                  (c.make === candidateMake || candidateMake === 'عام') && 
+                  (c.model === candidateModel || (c.model && c.model.includes(candidateModel)))
+                );
+                if (!already) {
+                  mergedCars.push({
+                    id: 'car_maint_' + mDoc.id,
+                    make: candidateMake,
+                    model: candidateModel,
+                    year: candidateYear,
+                    plateNumber: candidatePlate,
+                    addedAt: new Date().toISOString()
+                  });
                 }
-              });
-            }
+              }
+            });
           } catch (mErr) {
             console.warn('[Maint Sync Warning]:', mErr);
           }
 
-          const newCustomerProfile = {
-            id: googleUid,
-            name: name || 'عميل كريم',
-            email: email || '',
+          const mergedName = (existingData.name && existingData.name !== 'عميل كريم')
+            ? existingData.name
+            : (name || existingData.name || 'عميل كريم');
+
+          const updatedCustomerProfile = {
+            ...existingData,
+            id: targetDocId,
             phone: cleanPhone,
-            photoURL: photoURL || null,
             googleUid: googleUid,
-            cars: pastCars,
-            totalVisits: pastVisits,
-            totalSpent: 0,
-            status: 'new',
+            email: email || existingData.email || '',
+            photoURL: photoURL || existingData.photoURL || null,
+            name: mergedName,
+            cars: mergedCars,
             isPendingPhone: false,
-            createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
 
-          // Save customer document safely on server with elevated accounting-engine credentials
-          await setDoc(doc(db, 'customers', googleUid), newCustomerProfile, { merge: true });
-
-          return res.status(200).json({
-            success: true,
-            exists: false,
-            created: true,
-            customerId: googleUid,
-            profile: newCustomerProfile
+          // Update customer record in Firestore with server worker permissions
+          await updateDoc(doc(db, 'customers', targetDocId), {
+            googleUid: googleUid,
+            email: email || existingData.email || '',
+            photoURL: photoURL || existingData.photoURL || null,
+            phone: cleanPhone,
+            name: mergedName,
+            cars: mergedCars,
+            isPendingPhone: false,
+            updatedAt: new Date().toISOString()
           });
-        }
 
-        // Case B: Already linked to THIS specific Google account
-        if (existingData.googleUid === googleUid) {
-          if (!existingData.phone || existingData.phone !== cleanPhone) {
-            await updateDoc(doc(db, 'customers', targetDocId), {
-              phone: cleanPhone,
-              updatedAt: new Date().toISOString()
-            });
-            existingData.phone = cleanPhone;
-          }
+          // Non-blocking notification to Telegram
+          sendTelegramAlert(
+            `✅ <b>تسجيل دخول عميل وفتح صفحته المسجلة مسبقاً</b> 🚗⚡\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `👤 <b>اسم العميل:</b> ${escapeTelegramHtml(mergedName)}\n` +
+            `📱 <b>الجوال:</b> <code>${cleanPhone}</code>\n` +
+            `📧 <b>البريد:</b> ${escapeTelegramHtml(email || 'غير متوفر')}\n` +
+            `🚘 <b>عدد السيارات:</b> ${mergedCars.length}\n` +
+            `━━━━━━━━━━━━━━━━━━\n` +
+            `تمت مطابقة رقم الجوال وفتح الصفحة المسجلة له فوراً.`
+          ).catch(err => console.warn('[Telegram Alert Warning]:', err));
+
           return res.status(200).json({
             success: true,
             exists: true,
             alreadyLinked: true,
             customerId: targetDocId,
-            profile: {
-              ...existingData,
-              id: targetDocId,
-              phone: cleanPhone
-            }
+            profile: updatedCustomerProfile
           });
         }
 
-        // Case C: Phone is already bound to a DIFFERENT Google account
-        if (existingData.googleUid && existingData.googleUid !== googleUid) {
-          return res.status(409).json({
-            success: false,
-            error: 'رقم الجوال هذا موثق ومرتبط مسبقاً بحساب Google آخر. لحماية الحسابات لا يمكن ربط نفس الرقم بحسابين مختلفين. يرجى تسجيل الدخول بحسابك الأصلي أو التواصل مع الإدارة.'
-          });
+        // Scenario 2: No doc in customers yet, but customer has past maintenance bookings
+        let pastCars: any[] = [];
+        let pastVisits = 0;
+        let pastName = '';
+        try {
+          const qMaint = query(collection(db, 'maintenance'), where('customerPhone', '==', cleanPhone), limit(50));
+          const maintSnap = await getDocs(qMaint);
+          if (!maintSnap.empty) {
+            pastVisits = maintSnap.size;
+            maintSnap.docs.forEach((mDoc) => {
+              const m = mDoc.data();
+              if (!pastName && m.customerName && m.customerName !== 'عميل كريم') {
+                pastName = m.customerName;
+              }
+              if (m.carMake || m.carModel) {
+                const candidateMake = (m.carMake || 'عام').trim();
+                const candidateModel = (m.carModel || 'عام').trim();
+                const candidateYear = (m.carYear || '').toString().trim();
+                const candidatePlate = (m.plateNumber || '').trim();
+                const already = pastCars.some(c => c.make === candidateMake && c.model === candidateModel && c.year === candidateYear);
+                if (!already) {
+                  pastCars.push({
+                    id: 'car_maint_' + mDoc.id,
+                    make: candidateMake,
+                    model: candidateModel,
+                    year: candidateYear,
+                    plateNumber: candidatePlate,
+                    addedAt: new Date().toISOString()
+                  });
+                }
+              }
+            });
+          }
+        } catch (mErr) {
+          console.warn('[Maint Sync Warning]:', mErr);
         }
 
-        // Case D: Existing profile without Google account -> Requires OTP / Admin approval
-        if (existingData.blockedUntil && Date.now() < existingData.blockedUntil) {
-          const remainingMinutes = Math.max(1, Math.ceil((existingData.blockedUntil - Date.now()) / 60000));
-          return res.status(429).json({
-            success: false,
-            blocked: true,
-            error: `الرقم مجمد مؤقتاً لكثرة المحاولات الخاطئة. يرجى المحاولة بعد ${remainingMinutes} دقيقة أو التواصل مع الإدارة عبر الواتساب.`
-          });
-        }
-
-        if (existingData.lastOtpRequestAt && Date.now() - existingData.lastOtpRequestAt < 60000) {
-          const remainingSeconds = Math.max(1, Math.ceil((60000 - (Date.now() - existingData.lastOtpRequestAt)) / 1000));
-          return res.status(429).json({
-            success: false,
-            cooldown: true,
-            remainingSeconds,
-            error: `يرجى الانتظار ${remainingSeconds} ثانية قبل إعادة إرسال طلب جديد.`
-          });
-        }
-
-        const secureOtp = crypto.randomInt(1000, 10000).toString();
-        const expiresAt = Date.now() + 15 * 60 * 1000;
-        const codeHash = crypto.createHash('sha256').update(secureOtp + ':' + googleUid).digest('hex');
-
-        await updateDoc(doc(db, 'customers', targetDocId), {
-          linkVerificationCodeHash: codeHash,
-          linkVerificationExpiresAt: expiresAt,
-          linkVerificationStatus: 'pending',
-          failedOtpAttempts: 0,
-          lastOtpRequestAt: Date.now(),
-          pendingLinkGoogleUid: googleUid,
-          pendingLinkEmail: email || '',
-          pendingLinkName: name || '',
-          pendingLinkPhoto: photoURL || null,
+        // Scenario 3: Brand new customer or new customer with past bookings
+        const finalName = pastName || name || 'عميل كريم';
+        const newCustomerProfile = {
+          id: googleUid,
+          name: finalName,
+          email: email || '',
+          phone: cleanPhone,
+          photoURL: photoURL || null,
+          googleUid: googleUid,
+          cars: pastCars,
+          totalVisits: pastVisits,
+          totalSpent: 0,
+          status: pastVisits >= 3 ? 'vip' : 'new',
+          isPendingPhone: false,
+          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        });
+        };
 
-        // Background non-blocking Telegram notification so it never slows down or blocks customer login
+        // Save customer document safely on server
+        await setDoc(doc(db, 'customers', googleUid), newCustomerProfile, { merge: true });
+
         sendTelegramAlert(
-          `🔔 <b>طلب ربط وتوثيق حساب Google برقم عميل مسجل</b> 🚗⚡\n` +
+          `✨ <b>تسجيل عميل جديد وفتح صفحة خاصة به</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `👤 <b>اسم العميل المسجل:</b> ${escapeTelegramHtml(existingData.name || 'عميل كريم')}\n` +
+          `👤 <b>اسم العميل:</b> ${escapeTelegramHtml(finalName)}\n` +
           `📱 <b>الجوال:</b> <code>${cleanPhone}</code>\n` +
-          `📧 <b>حساب Google المطلوب ربطه:</b> ${escapeTelegramHtml(email || 'غير متوفر')}\n` +
-          `🔑 <b>كود التحقق الآمن (OTP):</b> <code>${secureOtp}</code>\n` +
-          `⏱️ <b>مدة الصلاحية:</b> 15 دقيقة\n` +
+          `📧 <b>البريد:</b> ${escapeTelegramHtml(email || 'غير متوفر')}\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
-          `يمكن للمدير العام (Super Admin) اعتماد الربط فوراً بنقرة واحدة من لوحة إدارة العملاء ✅`
+          `تم إنشاء صفحة العميل بنجاح.`
         ).catch(err => console.warn('[Telegram Alert Warning]:', err));
 
         return res.status(200).json({
           success: true,
-          exists: true,
-          requiresVerification: true,
-          customerId: targetDocId,
-          customerName: existingData.name || 'عميل كريم',
-          phone: cleanPhone,
-          expiresAt
+          exists: pastVisits > 0,
+          created: true,
+          customerId: googleUid,
+          profile: newCustomerProfile
         });
       }
 
