@@ -25,7 +25,9 @@ import {
   User,
   Phone,
   Trash2,
-  ArrowRightLeft
+  ArrowRightLeft,
+  UserPlus,
+  X
 } from 'lucide-react';
 import {
   AccountingServiceInvoice,
@@ -40,6 +42,28 @@ import {
   AccountingPaymentMethod
 } from '../types/accounting';
 import { formatCurrency, calculateServiceTotals } from '../lib/accountingPermissions';
+
+// Safe accounting fetch helper that attaches session token for iframe and cross-origin compatibility
+const getStoredAccountingToken = () => {
+  try {
+    return sessionStorage.getItem('drfix_acc_token') || localStorage.getItem('drfix_acc_token') || '';
+  } catch {
+    return '';
+  }
+};
+
+const accountingFetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const token = getStoredAccountingToken();
+  const headers = new Headers(init.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(input, {
+    ...init,
+    headers,
+    credentials: 'include'
+  });
+};
 
 export default function AccountingPortal() {
   const [lang, setLang] = useState<'ar' | 'en'>('ar');
@@ -80,7 +104,7 @@ export default function AccountingPortal() {
 
   const checkSession = async () => {
     try {
-      const res = await fetch('/api/accounting/auth/me', { credentials: 'include' });
+      const res = await accountingFetch('/api/accounting/auth/me');
       const data = await res.json();
       if (res.ok && data.success && data.user) {
         setSessionUser(data.user);
@@ -106,6 +130,12 @@ export default function AccountingPortal() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        if (data.token) {
+          try {
+            sessionStorage.setItem('drfix_acc_token', data.token);
+            localStorage.setItem('drfix_acc_token', data.token);
+          } catch {}
+        }
         setSessionUser(data.user);
         setAuthStatus('authenticated');
         showToast(isAr ? 'تم تسجيل الدخول بنجاح' : 'Signed in successfully');
@@ -121,7 +151,11 @@ export default function AccountingPortal() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/accounting/auth/logout', { method: 'POST', credentials: 'include' });
+      await accountingFetch('/api/accounting/auth/logout', { method: 'POST' });
+    } catch {}
+    try {
+      sessionStorage.removeItem('drfix_acc_token');
+      localStorage.removeItem('drfix_acc_token');
     } catch {}
     setSessionUser(null);
     setAuthStatus('unauthenticated');
@@ -129,7 +163,7 @@ export default function AccountingPortal() {
 
   const loadAuditLogs = async () => {
     try {
-      const res = await fetch('/api/accounting/audit-logs', { credentials: 'include' });
+      const res = await accountingFetch('/api/accounting/audit-logs');
       const data = await res.json();
       if (res.ok && data.success) {
         setAuditLogs(data.logs || []);
@@ -146,10 +180,106 @@ export default function AccountingPortal() {
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
+  const [hasSearchedCustomer, setHasSearchedCustomer] = useState(false);
+  const [customerSearchError, setCustomerSearchError] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<AccountingServiceInvoice[]>([]);
   const [customerVouchers, setCustomerVouchers] = useState<AccountingVoucher[]>([]);
   const [customerFinancialAccount, setCustomerFinancialAccount] = useState<CustomerFinancialAccount | null>(null);
+
+  // Quick Customer Creation Modal
+  const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
+  const [quickCustName, setQuickCustName] = useState('');
+  const [quickCustPhone, setQuickCustPhone] = useState('');
+  const [quickCustCarModel, setQuickCustCarModel] = useState('');
+  const [quickCustCarPlate, setQuickCustCarPlate] = useState('');
+  const [isCreatingQuickCust, setIsCreatingQuickCust] = useState(false);
+
+  // Debounced Customer Search Effect
+  useEffect(() => {
+    const trimmed = customerSearchQuery.trim();
+    if (!trimmed || trimmed.length < 2) {
+      setSearchResults([]);
+      setHasSearchedCustomer(false);
+      setCustomerSearchError('');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      performCustomerSearch(trimmed);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [customerSearchQuery]);
+
+  const performCustomerSearch = async (q: string) => {
+    setIsSearchingCustomer(true);
+    setCustomerSearchError('');
+    try {
+      const res = await accountingFetch(`/api/accounting/customers/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSearchResults(data.customers || []);
+      } else {
+        setSearchResults([]);
+        if (data.message) setCustomerSearchError(data.message);
+      }
+    } catch {
+      setCustomerSearchError(isAr ? 'فشل الاتصال بخادم البحث' : 'Search connection failed');
+      setSearchResults([]);
+    } finally {
+      setIsSearchingCustomer(false);
+      setHasSearchedCustomer(true);
+    }
+  };
+
+  const openQuickCustomerModalFromSearch = () => {
+    const q = customerSearchQuery.trim();
+    const isDigits = /^[0-9٠-٩+\s-]+$/.test(q);
+    if (isDigits) {
+      setQuickCustPhone(q);
+      setQuickCustName('');
+    } else {
+      setQuickCustName(q);
+      setQuickCustPhone('');
+    }
+    setQuickCustCarModel('');
+    setQuickCustCarPlate('');
+    setShowQuickCustomerModal(true);
+  };
+
+  const handleCreateQuickCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickCustName.trim()) {
+      showToast(isAr ? 'يرجى كتابة اسم العميل' : 'Customer name is required', 'error');
+      return;
+    }
+    setIsCreatingQuickCust(true);
+    try {
+      const res = await accountingFetch('/api/accounting/customers/quick-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: quickCustName.trim(),
+          phone: quickCustPhone.trim(),
+          carModel: quickCustCarModel.trim(),
+          carPlate: quickCustCarPlate.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(isAr ? 'تم إنشاء الملف المالي للعميل بنجاح' : 'Customer financial file created successfully');
+        setShowQuickCustomerModal(false);
+        selectCustomer(data.customer);
+      } else {
+        showToast(data.message || (isAr ? 'فشل إنشاء ملف العميل' : 'Failed to create customer file'), 'error');
+      }
+    } catch {
+      showToast(isAr ? 'خطأ في الاتصال بالخادم' : 'Connection error', 'error');
+    } finally {
+      setIsCreatingQuickCust(false);
+    }
+  };
 
   // New Invoice Modal
   const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
@@ -177,31 +307,13 @@ export default function AccountingPortal() {
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
-  const searchCustomers = async (q: string) => {
-    setCustomerSearchQuery(q);
-    if (!q.trim() || q.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
-    setIsSearchingCustomer(true);
-    try {
-      const res = await fetch(`/api/accounting/customers/search?q=${encodeURIComponent(q.trim())}`, { credentials: 'include' });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSearchResults(data.customers || []);
-      }
-    } catch {}
-    finally {
-      setIsSearchingCustomer(false);
-    }
-  };
-
   const selectCustomer = async (cust: any) => {
     setSelectedCustomer(cust);
     setSearchResults([]);
     setCustomerSearchQuery('');
+    setHasSearchedCustomer(false);
     try {
-      const res = await fetch(`/api/accounting/customers/${cust.id}`, { credentials: 'include' });
+      const res = await accountingFetch(`/api/accounting/customers/${cust.id}`);
       const data = await res.json();
       if (res.ok && data.success) {
         setCustomerFinancialAccount(data.financialAccount);
@@ -265,10 +377,9 @@ export default function AccountingPortal() {
         };
       }
 
-      const res = await fetch('/api/accounting/services/create', {
+      const res = await accountingFetch('/api/accounting/services/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -303,10 +414,9 @@ export default function AccountingPortal() {
 
     setIsSubmittingVoucher(true);
     try {
-      const res = await fetch('/api/accounting/vouchers/create', {
+      const res = await accountingFetch('/api/accounting/vouchers/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           serviceInvoiceId: voucherModalInvoice?.id,
           customerId: selectedCustomer.id,
@@ -343,10 +453,9 @@ export default function AccountingPortal() {
     }
     setIsSubmittingCancel(true);
     try {
-      const res = await fetch(`/api/accounting/services/${cancelModalInvoice.id}/cancel`, {
+      const res = await accountingFetch(`/api/accounting/services/${cancelModalInvoice.id}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ reason: cancelReason })
       });
       const data = await res.json();
@@ -385,7 +494,7 @@ export default function AccountingPortal() {
 
   const loadPurchases = async () => {
     try {
-      const res = await fetch('/api/accounting/purchases', { credentials: 'include' });
+      const res = await accountingFetch('/api/accounting/purchases');
       const data = await res.json();
       if (res.ok && data.success) {
         setPurchasesList(data.purchases || []);
@@ -406,9 +515,8 @@ export default function AccountingPortal() {
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const res = await fetch('/api/accounting/upload', {
+      const res = await accountingFetch('/api/accounting/upload', {
         method: 'POST',
-        credentials: 'include',
         body: fd
       });
       const data = await res.json();
@@ -433,10 +541,9 @@ export default function AccountingPortal() {
     }
     setIsSubmittingPurchase(true);
     try {
-      const res = await fetch('/api/accounting/purchases/create', {
+      const res = await accountingFetch('/api/accounting/purchases/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           category: purchaseCategory,
           itemName: purchaseItemName,
@@ -487,7 +594,7 @@ export default function AccountingPortal() {
 
   const loadExpenses = async () => {
     try {
-      const res = await fetch('/api/accounting/expenses', { credentials: 'include' });
+      const res = await accountingFetch('/api/accounting/expenses');
       const data = await res.json();
       if (res.ok && data.success) {
         setExpensesList(data.expenses || []);
@@ -509,10 +616,9 @@ export default function AccountingPortal() {
     }
     setIsSubmittingExpense(true);
     try {
-      const res = await fetch('/api/accounting/expenses/create', {
+      const res = await accountingFetch('/api/accounting/expenses/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           category: expenseCategory,
           title: expenseTitle,
@@ -566,7 +672,7 @@ export default function AccountingPortal() {
     const to = now.toISOString().split('T')[0];
 
     try {
-      const res = await fetch(`/api/accounting/reports/summary?from=${from}&to=${to}`, { credentials: 'include' });
+      const res = await accountingFetch(`/api/accounting/reports/summary?from=${from}&to=${to}`);
       const data = await res.json();
       if (res.ok && data.success) {
         setReportData(data.report);
@@ -823,47 +929,124 @@ export default function AccountingPortal() {
           <div className="space-y-6">
             {/* Customer Search & Picker */}
             <div className="bg-[#101216] border border-gray-800 rounded-2xl p-4 sm:p-6">
-              <h2 className="text-sm font-bold text-gray-200 mb-3 flex items-center gap-2">
-                <Search className="w-4 h-4 text-red-500" />
-                <span>{isAr ? 'البحث عن العميل بالسجل المالي' : 'Search Customer Financial File'}</span>
-              </h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <h2 className="text-sm font-bold text-gray-200 flex items-center gap-2">
+                  <Search className="w-4 h-4 text-red-500" />
+                  <span>{isAr ? 'البحث عن العميل بالسجل المالي' : 'Search Customer Financial File'}</span>
+                </h2>
+                <button
+                  type="button"
+                  onClick={openQuickCustomerModalFromSearch}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 border border-gray-700 text-xs font-semibold text-gray-200 transition-colors self-start sm:self-auto"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-red-500" />
+                  <span>{isAr ? '+ فتح ملف لعميل جديد' : '+ New Customer File'}</span>
+                </button>
+              </div>
 
               <div className="relative">
                 <input
                   type="text"
                   value={customerSearchQuery}
-                  onChange={e => searchCustomers(e.target.value)}
-                  placeholder={isAr ? 'أدخل رقم الجوال (مثل 0501234567) أو اسم العميل...' : 'Enter customer phone or name...'}
-                  className="w-full bg-[#181B20] border border-gray-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  onChange={e => setCustomerSearchQuery(e.target.value)}
+                  placeholder={isAr ? 'أدخل رقم الجوال (مثل 0501234567) أو اسم العميل (عربي / English)...' : 'Enter phone or customer name (Arabic / English)...'}
+                  className="w-full bg-[#181B20] border border-gray-700/80 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500 pr-10 rtl:pr-4 rtl:pl-16"
                 />
+
+                {/* Clear Button */}
+                {customerSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerSearchQuery('');
+                      setSearchResults([]);
+                      setHasSearchedCustomer(false);
+                    }}
+                    className="absolute left-8 top-3.5 rtl:left-8 rtl:right-auto text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
                 {isSearchingCustomer && (
-                  <div className="absolute left-3 top-3.5 rtl:left-auto rtl:right-auto rtl:left-3">
+                  <div className="absolute left-3 top-3.5 rtl:left-3 rtl:right-auto">
                     <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                   </div>
                 )}
 
                 {/* Dropdown Results */}
-                {searchResults.length > 0 && (
-                  <div className="absolute top-full mt-2 w-full bg-[#16191E] border border-gray-700 rounded-xl shadow-2xl z-30 max-h-60 overflow-y-auto divide-y divide-gray-800">
-                    {searchResults.map(c => (
+                {customerSearchQuery.trim().length >= 2 && (
+                  <div className="absolute top-full mt-2 w-full bg-[#16191E] border border-gray-700 rounded-xl shadow-2xl z-30 max-h-72 overflow-y-auto divide-y divide-gray-800">
+                    {/* Searching State */}
+                    {isSearchingCustomer && searchResults.length === 0 && (
+                      <div className="p-4 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
+                        <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                        <span>{isAr ? 'جاري البحث في قاعدة البيانات والسجل المالي...' : 'Searching customer records...'}</span>
+                      </div>
+                    )}
+
+                    {/* Results list */}
+                    {searchResults.length > 0 && searchResults.map(c => (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => selectCustomer(c)}
-                        className="w-full p-3 text-right rtl:text-right ltr:text-left hover:bg-gray-800/60 transition-colors flex items-center justify-between"
+                        className="w-full p-3 text-right rtl:text-right ltr:text-left hover:bg-gray-800/70 transition-colors flex items-center justify-between group"
                       >
-                        <div>
-                          <div className="text-sm font-bold text-white">{c.name}</div>
-                          <div className="text-xs text-gray-400 font-mono mt-0.5">{c.phone}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-red-600/10 border border-red-600/20 flex items-center justify-center text-red-500 shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white flex items-center gap-2">
+                              <span>{c.name}</span>
+                              {c.source === 'maintenance' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800/40">
+                                  {isAr ? 'حجز ورشة' : 'Booking'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 font-mono flex items-center gap-2 mt-0.5">
+                              <span>{c.phone || (isAr ? 'بدون جوال' : 'No phone')}</span>
+                              {c.cars && c.cars.length > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-gray-400">
+                                    {[c.cars[0].make, c.cars[0].model, c.cars[0].year, c.cars[0].plateNumber].filter(Boolean).join(' ')}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
                         <div className="text-xs font-semibold px-2.5 py-1 rounded-md bg-gray-900 border border-gray-700 text-gray-300">
                           {isAr ? 'الرصيد: ' : 'Balance: '}
-                          <span className={c.currentBalance > 0 ? 'text-amber-400' : 'text-emerald-400 font-bold'}>
+                          <span className={c.currentBalance > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
                             {formatCurrency(c.currentBalance, lang)}
                           </span>
                         </div>
                       </button>
                     ))}
+
+                    {/* No Results Empty State */}
+                    {!isSearchingCustomer && hasSearchedCustomer && searchResults.length === 0 && (
+                      <div className="p-5 text-center">
+                        <div className="text-sm font-medium text-gray-200 mb-1">
+                          {isAr ? `لم يتم العثور على عميل يطابق: "${customerSearchQuery}"` : `No customer found matching "${customerSearchQuery}"`}
+                        </div>
+                        <p className="text-xs text-gray-400 mb-3">
+                          {isAr ? 'يمكنك فتح ملف مالي وتسجيل العميل فوراً لإصدار الفاتورة بدون مغادرة الصفحة:' : 'You can register a new customer and open their file now:'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={openQuickCustomerModalFromSearch}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-lg shadow-red-600/30"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          <span>{isAr ? '+ فتح ملف مالي وتسجيل العميل' : '+ Open Financial File'}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2124,6 +2307,111 @@ export default function AccountingPortal() {
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: QUICK REGISTER NEW CUSTOMER                       */}
+      {/* ========================================================= */}
+      {showQuickCustomerModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#121418] border border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-800 mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-red-500" />
+                <span>{isAr ? 'فتح ملف مالي لعميل جديد' : 'New Customer Financial File'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQuickCustomerModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateQuickCustomer} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">
+                  {isAr ? 'اسم العميل *' : 'Customer Name *'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={quickCustName}
+                  onChange={e => setQuickCustName(e.target.value)}
+                  placeholder={isAr ? 'الاسم أو اسم العميل / المؤسسة...' : 'Customer or company name...'}
+                  className="w-full bg-[#181B20] border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">
+                  {isAr ? 'رقم الجوال (اختياري / موصى به)' : 'Mobile Phone'}
+                </label>
+                <input
+                  type="tel"
+                  value={quickCustPhone}
+                  onChange={e => setQuickCustPhone(e.target.value)}
+                  placeholder="05XXXXXXXX"
+                  className="w-full bg-[#181B20] border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    {isAr ? 'نوع وموديل السيارة' : 'Car Make / Model'}
+                  </label>
+                  <input
+                    type="text"
+                    value={quickCustCarModel}
+                    onChange={e => setQuickCustCarModel(e.target.value)}
+                    placeholder={isAr ? 'مثال: كامري 2023' : 'e.g. Camry 2023'}
+                    className="w-full bg-[#181B20] border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">
+                    {isAr ? 'رقم اللوحة' : 'Plate Number'}
+                  </label>
+                  <input
+                    type="text"
+                    value={quickCustCarPlate}
+                    onChange={e => setQuickCustCarPlate(e.target.value)}
+                    placeholder={isAr ? 'مثال: أ ب ج 1234' : 'e.g. ABC 1234'}
+                    className="w-full bg-[#181B20] border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-red-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-gray-900 border border-gray-800 text-[11px] text-gray-400">
+                {isAr
+                  ? 'سيتم إنشاء سجل العميل وحسابه المالي فوراً، ويمكنك بعد الحفظ مباشرة إصدار الفواتير وسندات القبض له.'
+                  : 'Customer and financial record will be initialized immediately for billing.'}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickCustomerModal(false)}
+                  className="px-4 py-2 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold hover:bg-gray-700 transition-colors"
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingQuickCust || !quickCustName.trim()}
+                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-red-600/20 transition-all flex items-center gap-1.5"
+                >
+                  {isCreatingQuickCust && (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  <span>{isCreatingQuickCust ? (isAr ? 'جاري الفتح...' : 'Creating...') : (isAr ? 'حفظ وفتح الملف المالي' : 'Save & Open File')}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

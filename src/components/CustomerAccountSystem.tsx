@@ -972,31 +972,80 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+
       if (!res.ok || !data.success) {
         setLoading(false);
         return { 
           success: false, 
-          error: data.error || 'حدث خطأ أثناء فحص وتوثيق رقم الجوال. يرجى المحاولة مرة أخرى.' 
+          error: data.error || 'حدث خطأ أثناء فحص وتوثيق رقم الجوال. يرجى التأكد من الرقم والمحاولة مجدداً.' 
         };
       }
 
-      // Case A: Completely new customer
+      // Case 1: Server directly created/updated and returned the customer profile
+      if (data.profile) {
+        const fullProfile: CustomerProfile = {
+          ...customer,
+          ...data.profile,
+          id: data.profile.id || data.customerId || customer.googleUid || customer.id,
+          phone: cleaned,
+          isPendingPhone: false
+        };
+
+        notifyAdminNewCustomerRegistration({
+          name: fullProfile.name,
+          email: fullProfile.email,
+          phone: cleaned,
+          source: 'google'
+        });
+
+        setCustomer(fullProfile);
+        try {
+          localStorage.setItem('drfix_customer_session', JSON.stringify(fullProfile));
+          localStorage.setItem('drfix_customer_phone', cleaned);
+          localStorage.removeItem('drfix_customer_logged_out');
+        } catch {}
+
+        syncCustomerCarsWithBookings(fullProfile).then(synced => {
+          if (synced && synced.cars && synced.cars.length !== fullProfile.cars.length) {
+            setCustomer(synced);
+          }
+        }).catch(() => {});
+
+        setIsMandatoryPhoneModalOpen(false);
+        setIsPortalOpen(true);
+        setLoading(false);
+        return { success: true };
+      }
+
+      // Case 2: New customer fallback
       if (data.exists === false) {
-        const targetDocRef = doc(db, 'customers', customer.googleUid || customer.id || cleaned);
+        const targetId = customer.googleUid || customer.id || cleaned;
         const newProfile: CustomerProfile = {
           ...customer,
-          id: targetDocRef.id,
+          id: targetId,
           phone: cleaned,
           isPendingPhone: false,
           totalVisits: customer.totalVisits || 0,
           totalSpent: customer.totalSpent || 0,
-          status: 'new',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          status: 'new'
         };
 
-        await setDoc(targetDocRef, newProfile, { merge: true });
+        try {
+          const targetDocRef = doc(db, 'customers', targetId);
+          await setDoc(targetDocRef, {
+            ...newProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        } catch (writeErr) {
+          console.warn('Customer direct firestore write note:', writeErr);
+        }
 
         notifyAdminNewCustomerRegistration({
           name: newProfile.name,
@@ -1009,6 +1058,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try {
           localStorage.setItem('drfix_customer_session', JSON.stringify(newProfile));
           localStorage.setItem('drfix_customer_phone', cleaned);
+          localStorage.removeItem('drfix_customer_logged_out');
         } catch {}
 
         syncCustomerCarsWithBookings(newProfile).then(synced => {
@@ -1023,24 +1073,28 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { success: true };
       }
 
-      // Case B: Already linked to current Google user
+      // Case 3: Already linked to current Google user
       if (data.alreadyLinked) {
-        const custSnap = await getDoc(doc(db, 'customers', data.customerId));
-        if (custSnap.exists()) {
-          const cData = custSnap.data() as CustomerProfile;
-          setCustomer({ ...cData, id: custSnap.id, phone: cleaned });
-          try {
-            localStorage.setItem('drfix_customer_session', JSON.stringify({ ...cData, id: custSnap.id, phone: cleaned }));
-            localStorage.setItem('drfix_customer_phone', cleaned);
-          } catch {}
-        }
+        try {
+          const custSnap = await getDoc(doc(db, 'customers', data.customerId));
+          if (custSnap.exists()) {
+            const cData = custSnap.data() as CustomerProfile;
+            const updated = { ...cData, id: custSnap.id, phone: cleaned };
+            setCustomer(updated);
+            try {
+              localStorage.setItem('drfix_customer_session', JSON.stringify(updated));
+              localStorage.setItem('drfix_customer_phone', cleaned);
+              localStorage.removeItem('drfix_customer_logged_out');
+            } catch {}
+          }
+        } catch {}
         setIsMandatoryPhoneModalOpen(false);
         setIsPortalOpen(true);
         setLoading(false);
         return { success: true };
       }
 
-      // Case C: Requires Verification (OTP sent secretly to Admin Telegram, client waits for WhatsApp / Admin Approval)
+      // Case 4: Requires Verification (OTP sent secretly to Admin Telegram, client waits for WhatsApp / Admin Approval)
       if (data.requiresVerification) {
         setPendingVerification({
           phone: data.phone,
@@ -1063,7 +1117,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLoading(false);
       return { 
         success: false, 
-        error: 'حدث خطأ أثناء الاتصال بالخادم لفحص وتوثيق رقم الجوال.' 
+        error: 'حدث خطأ في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مجدداً.' 
       };
     }
   };
@@ -1094,13 +1148,51 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+
       if (!res.ok || !data.success) {
         setLoading(false);
         return { success: false, error: data.error || 'رمز التحقق غير صحيح أو الطلب ملغي.' };
       }
 
-      // Successful verification! Fetch updated customer record
+      // Successful verification! Check if server provided updated profile
+      if (data.profile) {
+        const fullProfile: CustomerProfile = {
+          ...customer,
+          ...data.profile,
+          id: data.profile.id || pendingVerification.customerId,
+          phone: pendingVerification.phone,
+          googleUid: customer.googleUid,
+          isPendingPhone: false,
+          linkVerificationStatus: 'verified'
+        };
+
+        setCustomer(fullProfile);
+        try {
+          localStorage.setItem('drfix_customer_session', JSON.stringify(fullProfile));
+          localStorage.setItem('drfix_customer_phone', pendingVerification.phone);
+          localStorage.removeItem('drfix_customer_logged_out');
+        } catch {}
+
+        syncCustomerCarsWithBookings(fullProfile).then(synced => {
+          if (synced && synced.cars && synced.cars.length !== fullProfile.cars.length) {
+            setCustomer(synced);
+          }
+        }).catch(() => {});
+
+        setPendingVerification(null);
+        setIsMandatoryPhoneModalOpen(false);
+        setIsPortalOpen(true);
+        setLoading(false);
+        return { success: true };
+      }
+
+      // Fallback: Fetch updated customer record from Firestore
       const targetDocRef = doc(db, 'customers', pendingVerification.customerId);
       const snap = await getDoc(targetDocRef);
       if (snap.exists()) {
@@ -1128,7 +1220,6 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           localStorage.removeItem('drfix_customer_logged_out');
         } catch {}
 
-        // Auto-sync cars with past bookings
         syncCustomerCarsWithBookings(verifiedCustomer).then(synced => {
           if (synced && synced.cars && synced.cars.length !== verifiedCustomer.cars.length) {
             setCustomer(synced);

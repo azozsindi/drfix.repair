@@ -145,7 +145,7 @@ function extractToken(req: Request): string | null {
 // Phone normalizer matching project standards
 function unifySaudiPhone(phone: string): string {
   if (!phone) return '';
-  const converted = phone
+  const converted = String(phone)
     .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
     .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
   let digits = converted.replace(/\D/g, '');
@@ -157,6 +157,128 @@ function unifySaudiPhone(phone: string): string {
     digits = '0' + digits;
   }
   return digits;
+}
+
+function extractDigitsOnly(val: string): string {
+  if (!val) return '';
+  return String(val)
+    .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+    .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)])
+    .replace(/\D/g, '');
+}
+
+function normalizeArabicText(str: string): string {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/[ة]/g, 'ه')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[ؤئ]/g, 'ء')
+    .replace(/[\u064B-\u065F\u0670]/g, '') // strip tashkeel/harakat
+    .replace(/[\s\-_.]+/g, '') // remove spaces/hyphens so 'عبد العزيز' matches 'عبدالعزيز'
+    .trim();
+}
+
+// Map bilingual Arabic/English names for smart matching
+const BILINGUAL_NAME_PAIRS: [string, string][] = [
+  ['عبدالعزيز', 'abdulaziz'],
+  ['عبدالعزيز', 'abdaulaziz'],
+  ['عبدالعزيز', 'abdelaziz'],
+  ['عبدالعزيز', 'aziz'],
+  ['سندي', 'sindi'],
+  ['سندي', 'sendi'],
+  ['احمد', 'ahmed'],
+  ['احمد', 'ahmad'],
+  ['عسيري', 'assiri'],
+  ['عسيري', 'asiri'],
+  ['محمد', 'mohammed'],
+  ['محمد', 'mohamed'],
+  ['محمد', 'muhammad'],
+  ['كشميري', 'kashmiri'],
+  ['تسنيم', 'tasneem'],
+  ['تسنيم', 'tasnim'],
+  ['شامي', 'shami'],
+  ['شامي', 'alshami'],
+  ['علي', 'ali'],
+  ['جون', 'jone'],
+  ['جون', 'john'],
+  ['نهى', 'noha'],
+  ['نهى', 'nuha'],
+  ['الاشبط', 'alashbat'],
+  ['اشبط', 'alashbat'],
+  ['الغامدي', 'ghamdi'],
+  ['الغامدي', 'alghamdi'],
+  ['عبدالرحمن', 'abdulrahman'],
+  ['عبدالرحمن', 'abdelrahman'],
+  ['عبدالرزاق', 'abdulrazaq'],
+  ['عبدالرزاق', 'abdulrazak'],
+  ['جابر', 'jaber']
+];
+
+function isNameMatch(targetName: string, queryText: string): boolean {
+  if (!targetName || !queryText) return false;
+  const rawTarget = String(targetName).toLowerCase();
+  const rawQuery = String(queryText).toLowerCase().trim();
+
+  // 1. Direct standard substring
+  if (rawTarget.includes(rawQuery) || rawQuery.includes(rawTarget)) return true;
+
+  // 2. Normalized Arabic match (ignoring spaces, hamzas, diacritics)
+  const normTarget = normalizeArabicText(targetName);
+  const normQuery = normalizeArabicText(queryText);
+  if (normTarget && normQuery && (normTarget.includes(normQuery) || normQuery.includes(normTarget))) return true;
+
+  // 3. Check individual tokens (e.g. if query is "سندي" and target is "ABDAULAZIZ Sindi" or vice versa)
+  const queryTokens = queryText.toLowerCase().split(/\s+/).filter(Boolean);
+  const targetTokens = targetName.toLowerCase().split(/\s+/).filter(Boolean);
+
+  for (const qTok of queryTokens) {
+    const qNorm = normalizeArabicText(qTok);
+    // Check if qTok matches targetTokens directly
+    for (const tTok of targetTokens) {
+      if (tTok.includes(qTok) || (qNorm && normalizeArabicText(tTok).includes(qNorm))) {
+        return true;
+      }
+    }
+
+    // Check bilingual transliteration pairs
+    for (const [ar, en] of BILINGUAL_NAME_PAIRS) {
+      const arNorm = normalizeArabicText(ar);
+      const isQueryMatch = (qNorm && (qNorm.includes(arNorm) || arNorm.includes(qNorm))) || qTok.includes(en) || en.includes(qTok);
+      if (isQueryMatch) {
+        if (normTarget.includes(arNorm) || rawTarget.includes(en)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function isPhoneMatch(candidatePhone: string, queryPhone: string): boolean {
+  if (!candidatePhone || !queryPhone) return false;
+  const candDigits = extractDigitsOnly(candidatePhone);
+  const queryDigits = extractDigitsOnly(queryPhone);
+  if (!candDigits || !queryDigits) return false;
+
+  // Direct contains
+  if (candDigits.includes(queryDigits) || queryDigits.includes(candDigits)) return true;
+
+  // Unified Saudi mobile comparison (e.g. 0547002821 vs 547002821 vs 966547002821)
+  const uCand = unifySaudiPhone(candidatePhone);
+  const uQuery = unifySaudiPhone(queryPhone);
+  if (uCand && uQuery && (uCand.includes(uQuery) || uQuery.includes(uCand))) return true;
+
+  // Partial 3-9 digits comparison
+  if (queryDigits.length >= 3) {
+    const withZero = queryDigits.startsWith('0') ? queryDigits : '0' + queryDigits;
+    const withoutZero = queryDigits.startsWith('0') ? queryDigits.substring(1) : queryDigits;
+    if (candDigits.includes(withZero) || candDigits.includes(withoutZero)) return true;
+  }
+
+  return false;
 }
 
 // Private attachments folder (strictly outside public directory)
@@ -201,17 +323,34 @@ const uploadMiddleware = multer({
   }
 }).single('file');
 
+// Safely remove any `undefined` values from objects/nested objects before passing to Firestore
+function sanitizeFirestoreData<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== 'object') return data;
+  const clean: any = Array.isArray(data) ? [] : {};
+  for (const [key, val] of Object.entries(data)) {
+    if (val === undefined) {
+      continue;
+    }
+    if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
+      clean[key] = sanitizeFirestoreData(val);
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean;
+}
+
 // Helper to record immutable audit log in Firestore
 async function recordAuditLog(log: Omit<AccountingAuditLog, 'id' | 'timestamp'>) {
   try {
     const db = await getDb();
     const id = `audit_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
-    const fullLog: AccountingAuditLog = {
+    const fullLog: any = {
       ...log,
       id,
       timestamp: new Date().toISOString()
     };
-    await setDoc(doc(db, 'accounting_audit_logs', id), fullLog);
+    await setDoc(doc(db, 'accounting_audit_logs', id), sanitizeFirestoreData(fullLog));
   } catch (err) {
     console.error('[Accounting Audit Log Error]:', err);
   }
@@ -334,9 +473,11 @@ export default async function accountingHandler(req: Request, res: Response) {
 
       const token = createSignedSessionToken(sessionUser);
 
-      // Set HttpOnly, Secure, SameSite=Strict cookie
+      // Set HttpOnly cookie (Lax for iframe compatibility, Secure if HTTPS)
+      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+      const cookieOpts = `Path=/; Max-Age=${SESSION_TTL_MS / 1000}; HttpOnly; SameSite=Lax${isHttps ? '; Secure' : ''}`;
       res.setHeader('Set-Cookie', [
-        `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; Max-Age=${SESSION_TTL_MS / 1000}; HttpOnly; SameSite=Strict; Secure`
+        `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${cookieOpts}`
       ]);
 
       await recordAuditLog({
@@ -362,8 +503,9 @@ export default async function accountingHandler(req: Request, res: Response) {
   // 2. LOGOUT ROUTE: POST /api/accounting/auth/logout
   // ---------------------------------------------------------
   if (pathPart === 'auth/logout' && req.method === 'POST') {
+    const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
     res.setHeader('Set-Cookie', [
-      `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure`
+      `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${isHttps ? '; Secure' : ''}`
     ]);
     return res.status(200).json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
   }
@@ -450,43 +592,117 @@ export default async function accountingHandler(req: Request, res: Response) {
 
     try {
       const db = await getDb();
-      const cleanPhone = unifySaudiPhone(qParam);
+      const resultsMap = new Map<string, any>();
 
-      // Search in customers collection
-      const snap = await getDocs(query(collection(db, 'customers'), limit(150)));
-      const results: any[] = [];
+      // 1. Search in 'customers' collection
+      try {
+        const custSnap = await getDocs(query(collection(db, 'customers'), limit(150)));
+        for (const d of custSnap.docs) {
+          const cData = d.data();
+          const docId = d.id;
+          const name = cData.name || cData.customerName || '';
+          const phone = cData.phone || cData.customerPhone || (extractDigitsOnly(docId).length >= 9 ? docId : '');
 
-      for (const d of snap.docs) {
-        const cData = d.data();
-        const p1 = unifySaudiPhone(cData.phone || '');
-        const p2 = unifySaudiPhone(cData.customerPhone || '');
-        const name = (cData.name || '').toLowerCase();
-        const qLower = qParam.toLowerCase();
+          const matchPhone = isPhoneMatch(phone, qParam) || (extractDigitsOnly(docId).length >= 4 && isPhoneMatch(docId, qParam));
+          const matchName = isNameMatch(name, qParam);
 
-        const matchPhone = cleanPhone && (p1.includes(cleanPhone) || p2.includes(cleanPhone));
-        const matchName = name.includes(qLower);
+          if (matchPhone || matchName) {
+            const unifiedPhone = unifySaudiPhone(phone) || phone;
+            const key = unifiedPhone || docId;
+            resultsMap.set(key, {
+              id: docId,
+              name: name || (unifiedPhone ? `عميل (${unifiedPhone})` : 'عميل مسجل'),
+              phone: unifiedPhone || phone,
+              cars: cData.cars || cData.vehicles || [],
+              source: 'customers',
+              currentBalance: 0
+            });
+          }
+        }
+      } catch (custErr) {
+        console.error('[Accounting Search Cust Error]:', custErr);
+      }
 
-        if (matchPhone || matchName) {
-          // Fetch financial account if exists
-          let balance = 0;
+      // 2. Search in 'maintenance' collection to cover all bookings / workshops customers
+      try {
+        const maintSnap = await getDocs(query(collection(db, 'maintenance'), limit(150)));
+        for (const d of maintSnap.docs) {
+          const mData = d.data();
+          const name = mData.customerName || mData.name || '';
+          const phone = mData.customerPhone || mData.phone || '';
+
+          const matchPhone = isPhoneMatch(phone, qParam);
+          const matchName = isNameMatch(name, qParam);
+
+          if (matchPhone || matchName) {
+            const unifiedPhone = unifySaudiPhone(phone) || phone;
+            const key = unifiedPhone || d.id;
+
+            // If not already in results from customers collection, add from maintenance
+            if (!resultsMap.has(key)) {
+              const cars = [];
+              if (mData.vehicleType || mData.carModel) {
+                cars.push({
+                  make: mData.vehicleType || '',
+                  model: mData.carModel || '',
+                  year: mData.carYear || '',
+                  plateNumber: mData.carPlate || mData.plateNumber || ''
+                });
+              }
+              resultsMap.set(key, {
+                id: `maint_${d.id}`,
+                name: name || (unifiedPhone ? `عميل (${unifiedPhone})` : 'عميل حجز صيانة'),
+                phone: unifiedPhone || phone,
+                cars,
+                source: 'maintenance',
+                maintenanceId: d.id,
+                currentBalance: 0
+              });
+            } else {
+              // Update existing customer record with maintenance car info if empty
+              const existing = resultsMap.get(key);
+              if ((!existing.cars || existing.cars.length === 0) && (mData.vehicleType || mData.carModel)) {
+                existing.cars = [{
+                  make: mData.vehicleType || '',
+                  model: mData.carModel || '',
+                  year: mData.carYear || '',
+                  plateNumber: mData.carPlate || mData.plateNumber || ''
+                }];
+              }
+              // If existing name is generic, upgrade to maintenance customerName
+              if (existing.name.startsWith('عميل') && name && !name.startsWith('عميل')) {
+                existing.name = name;
+              }
+            }
+          }
+        }
+      } catch (maintErr) {
+        console.error('[Accounting Search Maint Error]:', maintErr);
+      }
+
+      const results = Array.from(resultsMap.values()).slice(0, 30);
+
+      // Populate current balances from customer_financial_accounts
+      await Promise.all(
+        results.map(async (cust) => {
           try {
-            const fDoc = await getDoc(doc(db, 'customer_financial_accounts', `cfa_${d.id}`));
-            if (fDoc.exists()) {
-              balance = fDoc.data().currentBalance || 0;
+            const targetIds = [`cfa_${cust.id}`];
+            if (cust.phone) {
+              targetIds.push(`cfa_${cust.phone}`);
+            }
+            if (cust.maintenanceId) {
+              targetIds.push(`cfa_${cust.maintenanceId}`);
+            }
+            for (const cfaId of targetIds) {
+              const fDoc = await getDoc(doc(db, 'customer_financial_accounts', cfaId));
+              if (fDoc.exists()) {
+                cust.currentBalance = fDoc.data().currentBalance || 0;
+                break;
+              }
             }
           } catch {}
-
-          results.push({
-            id: d.id,
-            name: cData.name || 'عميل غير مسجل الاسم',
-            phone: cData.phone || cData.customerPhone || '',
-            cars: cData.cars || [],
-            currentBalance: balance
-          });
-
-          if (results.length >= 20) break;
-        }
-      }
+        })
+      );
 
       return res.status(200).json({ success: true, customers: results });
     } catch (err: any) {
@@ -496,18 +712,168 @@ export default async function accountingHandler(req: Request, res: Response) {
   }
 
   // ---------------------------------------------------------
+  // 6B. QUICK CREATE CUSTOMER: POST /api/accounting/customers/quick-create
+  // ---------------------------------------------------------
+  if (pathPart === 'customers/quick-create' && req.method === 'POST') {
+    const { name, phone, carMake, carModel, carYear, carPlate } = req.body || {};
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({ error: 'Validation', message: 'اسم العميل مطلوب (حرفين على الأقل)' });
+    }
+    const cleanPhone = unifySaudiPhone(phone || '') || phone || '';
+
+    try {
+      const db = await getDb();
+      const newCustId = `cust_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`;
+      const cars = [];
+      if (carMake || carModel || carPlate) {
+        cars.push({
+          id: `car_${Date.now()}`,
+          make: carMake || '',
+          model: carModel || '',
+          year: carYear || '',
+          plateNumber: carPlate || ''
+        });
+      }
+
+      const custData = {
+        id: newCustId,
+        name: name.trim(),
+        phone: cleanPhone,
+        customerPhone: cleanPhone,
+        cars,
+        status: 'regular',
+        totalSpent: 0,
+        totalVisits: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: currentUser.username
+      };
+
+      await setDoc(doc(db, 'customers', newCustId), custData);
+
+      // Create financial account record
+      const cfaId = `cfa_${newCustId}`;
+      const financialAccount: CustomerFinancialAccount = {
+        id: cfaId,
+        customerId: newCustId,
+        customerName: name.trim(),
+        primaryPhone: cleanPhone,
+        phoneHistory: cleanPhone ? [cleanPhone] : [],
+        currentBalance: 0,
+        totalBilled: 0,
+        totalPaid: 0,
+        linkedBookingIds: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(doc(db, 'customer_financial_accounts', cfaId), financialAccount);
+
+      await recordAuditLog({
+        action: 'CREATE_CUSTOMER_ACCOUNT',
+        targetType: 'customer',
+        targetId: newCustId,
+        performedBy: { id: currentUser.id, name: currentUser.fullName, username: currentUser.username },
+        reason: `تسجيل ملف مالي سريع للعميل: ${name.trim()} (${cleanPhone})`
+      });
+
+      return res.status(200).json({
+        success: true,
+        customer: custData,
+        financialAccount,
+        invoices: [],
+        vouchers: []
+      });
+    } catch (err: any) {
+      console.error('[Quick Create Customer Error]:', err);
+      return res.status(500).json({ error: 'Create Error', message: 'فشل إنشاء السجل المالي للعميل' });
+    }
+  }
+
+  // ---------------------------------------------------------
   // 7. GET CUSTOMER FINANCIAL FILE: GET /api/accounting/customers/:id
   // ---------------------------------------------------------
   if (pathPart.startsWith('customers/') && !pathPart.includes('/') && req.method === 'GET') {
-    const customerId = pathPart.replace('customers/', '');
+    const rawCustomerId = pathPart.replace('customers/', '');
     try {
       const db = await getDb();
-      const custDoc = await getDoc(doc(db, 'customers', customerId));
-      if (!custDoc.exists()) {
-        return res.status(404).json({ error: 'Not Found', message: 'العميل غير موجود' });
+      let customerId = rawCustomerId;
+      let cData: any = null;
+
+      // 1. Check if doc exists directly in 'customers'
+      if (!rawCustomerId.startsWith('maint_')) {
+        const custDoc = await getDoc(doc(db, 'customers', rawCustomerId));
+        if (custDoc.exists()) {
+          cData = custDoc.data();
+          customerId = custDoc.id;
+        }
       }
 
-      const cData = custDoc.data();
+      // 2. If not found in 'customers', check if from 'maintenance'
+      if (!cData) {
+        const maintDocId = rawCustomerId.startsWith('maint_')
+          ? rawCustomerId.replace('maint_', '')
+          : rawCustomerId;
+        const maintDoc = await getDoc(doc(db, 'maintenance', maintDocId));
+
+        if (maintDoc.exists()) {
+          const mData = maintDoc.data();
+          const cleanPhone = unifySaudiPhone(mData.customerPhone || mData.phone || '') || mData.customerPhone || mData.phone || '';
+          customerId = `cust_${cleanPhone || maintDocId}`;
+
+          const cars = [];
+          if (mData.vehicleType || mData.carModel) {
+            cars.push({
+              id: `car_${Date.now()}`,
+              make: mData.vehicleType || '',
+              model: mData.carModel || '',
+              year: mData.carYear || '',
+              plateNumber: mData.carPlate || mData.plateNumber || ''
+            });
+          }
+
+          cData = {
+            id: customerId,
+            name: mData.customerName || mData.name || (cleanPhone ? `عميل (${cleanPhone})` : 'عميل غير مسجل'),
+            phone: cleanPhone,
+            customerPhone: cleanPhone,
+            cars,
+            status: 'regular',
+            totalSpent: 0,
+            totalVisits: 1,
+            notes: `تم إنشاء الملف المالي تلقائياً من حجز الصيانة رقم ${maintDocId}`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          // Upsert into customers collection
+          await setDoc(doc(db, 'customers', customerId), cData, { merge: true });
+        }
+      }
+
+      // 3. Fallback: If customer still not found, check by phone or create clean shell
+      if (!cData) {
+        const cleanPhone = unifySaudiPhone(rawCustomerId);
+        if (cleanPhone && cleanPhone.length >= 9) {
+          customerId = `cust_${cleanPhone}`;
+          cData = {
+            id: customerId,
+            name: `عميل (${cleanPhone})`,
+            phone: cleanPhone,
+            customerPhone: cleanPhone,
+            cars: [],
+            status: 'regular',
+            totalSpent: 0,
+            totalVisits: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(doc(db, 'customers', customerId), cData, { merge: true });
+        } else {
+          return res.status(404).json({ error: 'Not Found', message: 'العميل غير موجود' });
+        }
+      }
+
+      // Retrieve or initialize customer_financial_accounts
       const financialAccRef = doc(db, 'customer_financial_accounts', `cfa_${customerId}`);
       const fSnap = await getDoc(financialAccRef);
 
@@ -515,13 +881,13 @@ export default async function accountingHandler(req: Request, res: Response) {
       if (fSnap.exists()) {
         financialAccount = fSnap.data() as CustomerFinancialAccount;
       } else {
-        // Initialize clean record
+        const uPhone = unifySaudiPhone(cData.phone || cData.customerPhone || '');
         financialAccount = {
           id: `cfa_${customerId}`,
           customerId,
           customerName: cData.name || 'عميل',
-          primaryPhone: unifySaudiPhone(cData.phone || cData.customerPhone || ''),
-          phoneHistory: [unifySaudiPhone(cData.phone || cData.customerPhone || '')].filter(Boolean),
+          primaryPhone: uPhone,
+          phoneHistory: [uPhone].filter(Boolean),
           currentBalance: 0,
           totalBilled: 0,
           totalPaid: 0,
@@ -550,7 +916,7 @@ export default async function accountingHandler(req: Request, res: Response) {
 
       return res.status(200).json({
         success: true,
-        customer: { id: custDoc.id, ...cData },
+        customer: { id: customerId, ...cData },
         financialAccount,
         invoices,
         vouchers
@@ -658,19 +1024,16 @@ export default async function accountingHandler(req: Request, res: Response) {
       const remainingBalance = Number((grandTotal - initialPaid).toFixed(2));
       const status = remainingBalance <= 0 ? 'paid' : (initialPaid > 0 ? 'partially_paid' : 'issued');
 
-      const invoice: AccountingServiceInvoice = {
+      const invoice: any = {
         id: invoiceId,
         invoiceNumber,
         financialAccountId: `cfa_${customerId}`,
         customerId,
         customerName: String(customerName || '').trim(),
         customerPhone: unifySaudiPhone(customerPhone || ''),
-        maintenanceId: maintenanceId || undefined,
-        carInfo: carInfo || undefined,
         items: formattedItems,
         subtotal,
         discountAmount: cleanDiscount,
-        discountReason: cleanDiscount > 0 ? discountReason.trim() : undefined,
         amountAfterDiscount: taxableAmount,
         vatRate: rate,
         vatAmount,
@@ -684,12 +1047,22 @@ export default async function accountingHandler(req: Request, res: Response) {
         updatedAt: new Date().toISOString()
       };
 
+      if (maintenanceId && String(maintenanceId).trim()) {
+        invoice.maintenanceId = String(maintenanceId).trim();
+      }
+      if (carInfo && typeof carInfo === 'object') {
+        invoice.carInfo = carInfo;
+      }
+      if (cleanDiscount > 0 && discountReason && String(discountReason).trim()) {
+        invoice.discountReason = String(discountReason).trim();
+      }
+
       // Save invoice
-      await setDoc(doc(db, 'accounting_services', invoiceId), invoice);
+      await setDoc(doc(db, 'accounting_services', invoiceId), sanitizeFirestoreData(invoice));
 
       // Save voucher if created
       if (initialVoucherDoc) {
-        await setDoc(doc(db, 'accounting_vouchers', initialVoucherDoc.id), initialVoucherDoc);
+        await setDoc(doc(db, 'accounting_vouchers', initialVoucherDoc.id), sanitizeFirestoreData(initialVoucherDoc));
       }
 
       // Update customer financial account
@@ -775,18 +1148,16 @@ export default async function accountingHandler(req: Request, res: Response) {
       const prefix = voucherType === 'refund' ? 'DRF-RFD' : 'DRF-RCT';
       const voucherNumber = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      const voucherDoc: AccountingVoucher = {
+      const voucherDoc: any = {
         id: voucherId,
         voucherNumber,
         voucherType: voucherType === 'refund' ? 'refund' : 'receipt',
-        serviceInvoiceId: serviceInvoiceId || undefined,
         financialAccountId: `cfa_${customerId}`,
         customerId,
         customerName: invoiceData?.customerName || 'عميل',
         customerPhone: invoiceData?.customerPhone || '',
         amount: Number(rawAmount.toFixed(2)),
         paymentMethod: method,
-        bankReference: bankReference || undefined,
         notes: notes || (voucherType === 'refund' ? `استرجاع: ${reason}` : 'دفعة سداد'),
         status: 'active',
         recordedByStaffId: currentUser.id,
@@ -794,7 +1165,14 @@ export default async function accountingHandler(req: Request, res: Response) {
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'accounting_vouchers', voucherId), voucherDoc);
+      if (serviceInvoiceId && String(serviceInvoiceId).trim()) {
+        voucherDoc.serviceInvoiceId = String(serviceInvoiceId).trim();
+      }
+      if (bankReference && String(bankReference).trim()) {
+        voucherDoc.bankReference = String(bankReference).trim();
+      }
+
+      await setDoc(doc(db, 'accounting_vouchers', voucherId), sanitizeFirestoreData(voucherDoc));
 
       // Update invoice if linked
       if (invoiceData && invoiceRef) {
@@ -971,12 +1349,11 @@ export default async function accountingHandler(req: Request, res: Response) {
     const purchaseId = `pur_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const purchaseNumber = `DRF-PUR-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const purchaseDoc: AccountingPurchase = {
+    const purchaseDoc: any = {
       id: purchaseId,
       purchaseNumber,
       category: cat,
       itemName: String(itemName).trim(),
-      itemDescription: itemDescription ? String(itemDescription).trim() : undefined,
       quantity: q,
       unitPrice: p,
       subtotal,
@@ -987,9 +1364,6 @@ export default async function accountingHandler(req: Request, res: Response) {
       supplierName: String(supplierName || 'مورد عام').trim(),
       supplierInvoiceNumber: String(supplierInvoiceNumber || 'بدون رقم').trim(),
       paymentMethod: method,
-      receiptAttachmentUrl: receiptAttachmentUrl || undefined,
-      maintenanceId: maintenanceId || undefined,
-      notes: notes || undefined,
       paymentStatus: 'paid',
       status: 'active',
       recordedByStaffId: currentUser.id,
@@ -998,9 +1372,22 @@ export default async function accountingHandler(req: Request, res: Response) {
       createdAt: new Date().toISOString()
     };
 
+    if (itemDescription && String(itemDescription).trim()) {
+      purchaseDoc.itemDescription = String(itemDescription).trim();
+    }
+    if (receiptAttachmentUrl && String(receiptAttachmentUrl).trim()) {
+      purchaseDoc.receiptAttachmentUrl = String(receiptAttachmentUrl).trim();
+    }
+    if (maintenanceId && String(maintenanceId).trim()) {
+      purchaseDoc.maintenanceId = String(maintenanceId).trim();
+    }
+    if (notes && String(notes).trim()) {
+      purchaseDoc.notes = String(notes).trim();
+    }
+
     try {
       const db = await getDb();
-      await setDoc(doc(db, 'accounting_purchases', purchaseId), purchaseDoc);
+      await setDoc(doc(db, 'accounting_purchases', purchaseId), sanitizeFirestoreData(purchaseDoc));
 
       await recordAuditLog({
         action: 'CREATE_PURCHASE',
@@ -1067,7 +1454,7 @@ export default async function accountingHandler(req: Request, res: Response) {
     const expenseId = `exp_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const expenseNumber = `DRF-EXP-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const expenseDoc: AccountingExpense = {
+    const expenseDoc: any = {
       id: expenseId,
       expenseNumber,
       category: cat,
@@ -1079,8 +1466,6 @@ export default async function accountingHandler(req: Request, res: Response) {
       totalAmount,
       paymentMethod: method,
       payeeOrVendor: String(payeeOrVendor || 'جهة الصرف').trim(),
-      receiptAttachmentUrl: receiptAttachmentUrl || undefined,
-      notes: notes || undefined,
       expenseDate,
       paymentStatus: 'paid',
       status: 'active',
@@ -1089,9 +1474,16 @@ export default async function accountingHandler(req: Request, res: Response) {
       createdAt: new Date().toISOString()
     };
 
+    if (receiptAttachmentUrl && String(receiptAttachmentUrl).trim()) {
+      expenseDoc.receiptAttachmentUrl = String(receiptAttachmentUrl).trim();
+    }
+    if (notes && String(notes).trim()) {
+      expenseDoc.notes = String(notes).trim();
+    }
+
     try {
       const db = await getDb();
-      await setDoc(doc(db, 'accounting_expenses', expenseId), expenseDoc);
+      await setDoc(doc(db, 'accounting_expenses', expenseId), sanitizeFirestoreData(expenseDoc));
 
       await recordAuditLog({
         action: 'CREATE_EXPENSE',

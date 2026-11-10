@@ -8,17 +8,25 @@ import { initGtmAutoTracking } from './lib/gtm';
 // Initialize Google Tag Manager (GTM) automated link click tracking
 initGtmAutoTracking();
 
-// Global resilience handlers: Prevent third-party Firestore SDK assertion crashes when quota is exhausted
+// Global resilience handlers: Prevent third-party Firestore SDK assertion crashes and transient gRPC stream resets
 if (typeof window !== 'undefined') {
-  window.addEventListener('error', (event) => {
-    const msg = event.error?.message || event.message || '';
-    if (
+  const isIgnorableFirestoreError = (msg: string) => {
+    return (
       msg.includes('INTERNAL ASSERTION FAILED') ||
       msg.includes('ca9') ||
       msg.includes('b815') ||
       msg.includes('Quota limit exceeded') ||
-      msg.includes('Quota exceeded')
-    ) {
+      msg.includes('Quota exceeded') ||
+      msg.includes('RST_STREAM') ||
+      msg.includes('GrpcConnection') ||
+      msg.includes('Received RST_STREAM') ||
+      msg.includes('Code: 13')
+    );
+  };
+
+  window.addEventListener('error', (event) => {
+    const msg = event.error?.message || event.message || '';
+    if (isIgnorableFirestoreError(msg)) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
@@ -26,13 +34,7 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('unhandledrejection', (event) => {
     const msg = event.reason?.message || String(event.reason || '');
-    if (
-      msg.includes('INTERNAL ASSERTION FAILED') ||
-      msg.includes('ca9') ||
-      msg.includes('b815') ||
-      msg.includes('Quota limit exceeded') ||
-      msg.includes('Quota exceeded')
-    ) {
+    if (isIgnorableFirestoreError(msg)) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }

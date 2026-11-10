@@ -781,43 +781,153 @@ export default async function portalHandler(req: Request, res: Response) {
   const isCustomerLinkRoute = pathname.includes('/customer-link') || actionParam === 'customer-link';
 
   if (isCustomerLinkRoute) {
-    const action = pathname.replace(/^.*\/customer-link\/?/, '') || (req.query.action as string) || '';
+    let action = '';
+    if (pathname.includes('/customer-link/')) {
+      const sub = pathname.split('/customer-link/')[1] || '';
+      action = sub.split('/')[0].split('?')[0].trim();
+    }
+    if (!action) {
+      const qPath = (req.query?.path as string) || (req.query?.subaction as string) || '';
+      if (qPath) {
+        action = qPath.split('/')[0].split('?')[0].trim();
+      }
+    }
+    if (!action && req.query?.action && req.query.action !== 'customer-link') {
+      action = String(req.query.action).trim();
+    }
+    if (!action && req.body && req.body.action) {
+      action = String(req.body.action).trim();
+    }
+
     const db = await getDb();
 
     try {
-      // 1. REQUEST OTP
+      // 1. REQUEST OTP / AUTO-LINK / REGISTER
       if (action === 'request' || action === '/request') {
         const { phone, googleUid, email, name, photoURL } = req.body || {};
         const cleanPhone = unifySaudiPhone(phone);
 
         if (!cleanPhone || !cleanPhone.startsWith('05') || cleanPhone.length !== 10) {
-          return res.status(400).json({ success: false, error: 'يرجى إدخال رقم جوال سعودي صحيح يبدأ بـ 05' });
+          return res.status(400).json({ success: false, error: 'يرجى إدخال رقم جوال سعودي صحيح يبدأ بـ 05 ويتكون من 10 أرقام (مثال: 05XXXXXXXX)' });
         }
 
         if (!googleUid) {
-          return res.status(400).json({ success: false, error: 'بيانات حساب Google غير متوفرة' });
+          return res.status(400).json({ success: false, error: 'بيانات حساب Google غير متوفرة. يرجى تسجيل الدخول بحساب Google أولاً.' });
         }
 
         let targetDocId = cleanPhone;
         let existingData: any = null;
 
+        // Check 1: direct doc by phone ID
         const directDoc = await getDoc(doc(db, 'customers', cleanPhone));
         if (directDoc.exists()) {
           targetDocId = directDoc.id;
           existingData = directDoc.data();
         } else {
+          // Check 2: query by phone field
           const qPhone = query(collection(db, 'customers'), where('phone', '==', cleanPhone));
           const snap = await getDocs(qPhone);
           if (!snap.empty) {
             targetDocId = snap.docs[0].id;
             existingData = snap.docs[0].data();
+          } else {
+            // Check 3: check if customer doc already exists under googleUid
+            const directGoogleDoc = await getDoc(doc(db, 'customers', googleUid));
+            if (directGoogleDoc.exists()) {
+              const gData = directGoogleDoc.data();
+              if (gData.phone === cleanPhone || !gData.phone) {
+                targetDocId = directGoogleDoc.id;
+                existingData = gData;
+              }
+            }
           }
         }
 
+        // Case A: No previous customer document found -> Register & Save directly on server!
         if (!existingData) {
-          return res.json({ success: true, exists: false });
+          let pastCars: any[] = [];
+          let pastVisits = 0;
+          try {
+            const qMaint = query(collection(db, 'maintenance'), where('customerPhone', '==', cleanPhone), limit(50));
+            const maintSnap = await getDocs(qMaint);
+            if (!maintSnap.empty) {
+              pastVisits = maintSnap.size;
+              maintSnap.docs.forEach((mDoc) => {
+                const m = mDoc.data();
+                if (m.carMake || m.carModel) {
+                  const candidateMake = (m.carMake || 'عام').trim();
+                  const candidateModel = (m.carModel || 'عام').trim();
+                  const candidateYear = (m.carYear || '').toString().trim();
+                  const candidatePlate = (m.plateNumber || '').trim();
+                  const already = pastCars.some(c => c.make === candidateMake && c.model === candidateModel && c.year === candidateYear);
+                  if (!already) {
+                    pastCars.push({
+                      id: 'car_maint_' + mDoc.id,
+                      make: candidateMake,
+                      model: candidateModel,
+                      year: candidateYear,
+                      plateNumber: candidatePlate,
+                      addedAt: new Date().toISOString()
+                    });
+                  }
+                }
+              });
+            }
+          } catch (mErr) {
+            console.warn('[Maint Sync Warning]:', mErr);
+          }
+
+          const newCustomerProfile = {
+            id: googleUid,
+            name: name || 'عميل كريم',
+            email: email || '',
+            phone: cleanPhone,
+            photoURL: photoURL || null,
+            googleUid: googleUid,
+            cars: pastCars,
+            totalVisits: pastVisits,
+            totalSpent: 0,
+            status: 'new',
+            isPendingPhone: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+
+          // Save customer document safely on server with elevated accounting-engine credentials
+          await setDoc(doc(db, 'customers', googleUid), newCustomerProfile, { merge: true });
+
+          return res.status(200).json({
+            success: true,
+            exists: false,
+            created: true,
+            customerId: googleUid,
+            profile: newCustomerProfile
+          });
         }
 
+        // Case B: Already linked to THIS specific Google account
+        if (existingData.googleUid === googleUid) {
+          if (!existingData.phone || existingData.phone !== cleanPhone) {
+            await updateDoc(doc(db, 'customers', targetDocId), {
+              phone: cleanPhone,
+              updatedAt: new Date().toISOString()
+            });
+            existingData.phone = cleanPhone;
+          }
+          return res.status(200).json({
+            success: true,
+            exists: true,
+            alreadyLinked: true,
+            customerId: targetDocId,
+            profile: {
+              ...existingData,
+              id: targetDocId,
+              phone: cleanPhone
+            }
+          });
+        }
+
+        // Case C: Phone is already bound to a DIFFERENT Google account
         if (existingData.googleUid && existingData.googleUid !== googleUid) {
           return res.status(409).json({
             success: false,
@@ -825,10 +935,7 @@ export default async function portalHandler(req: Request, res: Response) {
           });
         }
 
-        if (existingData.googleUid === googleUid) {
-          return res.json({ success: true, exists: true, alreadyLinked: true, customerId: targetDocId });
-        }
-
+        // Case D: Existing profile without Google account -> Requires OTP / Admin approval
         if (existingData.blockedUntil && Date.now() < existingData.blockedUntil) {
           const remainingMinutes = Math.max(1, Math.ceil((existingData.blockedUntil - Date.now()) / 60000));
           return res.status(429).json({
@@ -865,7 +972,8 @@ export default async function portalHandler(req: Request, res: Response) {
           updatedAt: new Date().toISOString()
         });
 
-        await sendTelegramAlert(
+        // Background non-blocking Telegram notification so it never slows down or blocks customer login
+        sendTelegramAlert(
           `🔔 <b>طلب ربط وتوثيق حساب Google برقم عميل مسجل</b> 🚗⚡\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           `👤 <b>اسم العميل المسجل:</b> ${escapeTelegramHtml(existingData.name || 'عميل كريم')}\n` +
@@ -875,9 +983,9 @@ export default async function portalHandler(req: Request, res: Response) {
           `⏱️ <b>مدة الصلاحية:</b> 15 دقيقة\n` +
           `━━━━━━━━━━━━━━━━━━\n` +
           `يمكن للمدير العام (Super Admin) اعتماد الربط فوراً بنقرة واحدة من لوحة إدارة العملاء ✅`
-        );
+        ).catch(err => console.warn('[Telegram Alert Warning]:', err));
 
-        return res.json({
+        return res.status(200).json({
           success: true,
           exists: true,
           requiresVerification: true,
@@ -1002,7 +1110,10 @@ export default async function portalHandler(req: Request, res: Response) {
           }
         }
 
-        return res.json({ success: true });
+        const updatedSnap = await getDoc(custRef);
+        const updatedProfile = updatedSnap.exists() ? { id: custRef.id, ...updatedSnap.data() } : null;
+
+        return res.json({ success: true, profile: updatedProfile });
       }
 
       // 3. APPROVE LINK (SUPER ADMIN)

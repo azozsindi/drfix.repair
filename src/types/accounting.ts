@@ -162,9 +162,10 @@ export interface AccountingAuditLog {
     | 'CREATE_EXPENSE'
     | 'CANCEL_EXPENSE'
     | 'SET_PERMISSION'
+    | 'CREATE_CUSTOMER_ACCOUNT'
     | 'LOGIN'
     | 'LOGOUT';
-  targetType: 'service' | 'voucher' | 'purchase' | 'expense' | 'permission' | 'auth';
+  targetType: 'service' | 'voucher' | 'purchase' | 'expense' | 'permission' | 'auth' | 'customer';
   targetId: string;
   performedBy: {
     id: string;

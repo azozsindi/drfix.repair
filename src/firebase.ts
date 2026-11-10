@@ -8,7 +8,8 @@ const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentSingleTabManager({ forceOwnership: true })
-  })
+  }),
+  experimentalAutoDetectLongPolling: true
 }, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app, firebaseConfig.storageBucket);
