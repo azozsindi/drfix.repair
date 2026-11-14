@@ -244,12 +244,20 @@ async function handleBookingNotification(booking: any, req: any) {
     `📊 <b>الحالة:</b> 🆕 جديد\n` +
     `━━━━━━━━━━━━━━━━━━`;
 
-  const defaultPublicUrl = 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+  const defaultPublicUrl = (process.env.APP_URL && !process.env.APP_URL.includes('run.app'))
+    ? process.env.APP_URL.replace(/\/$/, '')
+    : 'https://www.drfix.repair';
   const hostHeader = req.headers?.['x-forwarded-host'] || req.headers?.host || '';
   const protoHeader = req.headers?.['x-forwarded-proto'] || 'https';
   
   let baseUrl = defaultPublicUrl;
-  if (hostHeader && !hostHeader.includes('localhost') && !hostHeader.includes('127.0.0.1') && !hostHeader.includes('0.0.0.0')) {
+  if (
+    hostHeader &&
+    !hostHeader.includes('localhost') &&
+    !hostHeader.includes('127.0.0.1') &&
+    !hostHeader.includes('0.0.0.0') &&
+    !hostHeader.includes('run.app')
+  ) {
     baseUrl = `${protoHeader}://${hostHeader}`;
   }
 

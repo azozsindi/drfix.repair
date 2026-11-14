@@ -78,7 +78,7 @@ async function startServer() {
   app.all([
     '/api/staff*',
     '/api/booking/track',
-    '/api/customer/my-bookings',
+    '/api/customer*',
     '/api/portal*',
     '/api/customer-link*',
     '/api/portal'

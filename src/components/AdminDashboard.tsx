@@ -36,7 +36,8 @@ import {
   limit,
   writeBatch
 } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db, ensureStaffPortalAuth, STAFF_PORTAL_EMAIL } from '../firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { useLanguage, LanguageToggle } from '../context/LanguageContext';
 import { 
   Wrench, 
@@ -905,6 +906,7 @@ const AdminDashboard = ({
       }, 4000);
 
       let unsubM: (() => void) | null = null;
+      let unsubAuth: (() => void) | null = null;
       let unsubT: (() => void) | null = null;
       let unsubO: (() => void) | null = null;
       let unsubS: (() => void) | null = null;
@@ -912,104 +914,127 @@ const AdminDashboard = ({
       let unsubPartners: (() => void) | null = null;
       let unsubContracts: (() => void) | null = null;
 
-      const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'), limit(150));
+      const setupMaintenanceSubscription = () => {
+        if (unsubM) return;
+        const qM = query(collection(db, 'maintenance'), orderBy('serviceDate', 'desc'), limit(150));
 
-      unsubM = onSnapshot(qM, (snapshot) => {
-        const results: MaintenanceRecord[] = [];
-        
-        snapshot.docChanges().forEach((change) => {
-          const docId = change.doc.id;
-          const wasAlreadyKnown = knownBookingIds.current.has(docId);
-          knownBookingIds.current.add(docId);
+        unsubM = onSnapshot(qM, (snapshot) => {
+          const results: MaintenanceRecord[] = [];
+          
+          snapshot.docChanges().forEach((change) => {
+            const docId = change.doc.id;
+            const wasAlreadyKnown = knownBookingIds.current.has(docId);
+            knownBookingIds.current.add(docId);
 
-          // ONLY trigger alerts for records that:
-          // 1. Are 'added'
-          // 2. We have passed the initial 4-second stabilization window (never on initial load or cache sync)
-          // 3. Document ID was not previously seen
-          // 4. Not an unsynced local pending write from the current user
-          // 5. Booking creation timestamp is genuinely new (after or within 10s before opening dashboard)
-          if (change.type === "added" && isSyncStabilized.current && !wasAlreadyKnown && !change.doc.metadata.hasPendingWrites) {
-            const newBooking = change.doc.data() as MaintenanceRecord;
-            knownAssignmentMap.current.set(docId, newBooking.assignedStaffId);
-            const bTimestamp = getBookingTimestamp(newBooking);
-            const isFresh = bTimestamp === 0 || bTimestamp >= (dashboardMountTime.current - 10000);
+            // ONLY trigger alerts for records that:
+            // 1. Are 'added'
+            // 2. We have passed the initial 4-second stabilization window (never on initial load or cache sync)
+            // 3. Document ID was not previously seen
+            // 4. Not an unsynced local pending write from the current user
+            // 5. Booking creation timestamp is genuinely new (after or within 10s before opening dashboard)
+            if (change.type === "added" && isSyncStabilized.current && !wasAlreadyKnown && !change.doc.metadata.hasPendingWrites) {
+              const newBooking = change.doc.data() as MaintenanceRecord;
+              knownAssignmentMap.current.set(docId, newBooking.assignedStaffId);
+              const bTimestamp = getBookingTimestamp(newBooking);
+              const isFresh = bTimestamp === 0 || bTimestamp >= (dashboardMountTime.current - 10000);
 
-            if (isFresh) {
-              const now = Date.now();
-              // Throttled sound alert (max 1 sound chime every 3 seconds)
-              if (settings.enableSoundAlerts !== false && now - lastChimeTime.current > 3000) {
-                lastChimeTime.current = now;
-                playNewBookingSound();
-              }
+              if (isFresh) {
+                const now = Date.now();
+                // Throttled sound alert (max 1 sound chime every 3 seconds)
+                if (settings.enableSoundAlerts !== false && now - lastChimeTime.current > 3000) {
+                  lastChimeTime.current = now;
+                  playNewBookingSound();
+                }
 
-              // Desktop browser notification
-              if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
-                try {
-                  const carTitle = newBooking.carModel ? `${newBooking.carModel}` : 'سيارة';
-                  const serviceTitle = newBooking.serviceType || 'صيانة متنقلة';
-                  new Notification("حجز جديد! 🚗", {
-                    body: `حجز جديد لـ ${carTitle} - ${serviceTitle}`,
-                    icon: settings.logoUrl || "/favicon.ico"
-                  });
-                } catch {}
-              }
-            }
-          }
-
-          // Trigger technician assignment alert when assignedStaffId changes or is freshly assigned
-          if (change.type === "modified" && isSyncStabilized.current && !change.doc.metadata.hasPendingWrites) {
-            const updatedBooking = change.doc.data() as MaintenanceRecord;
-            const prevAssignedId = knownAssignmentMap.current.get(docId);
-            const currAssignedId = updatedBooking.assignedStaffId;
-
-            if (currAssignedId && currAssignedId !== prevAssignedId) {
-              const now = Date.now();
-              if (settings.enableSoundAlerts !== false && now - lastAssignmentChimeTime.current > 2000) {
-                lastAssignmentChimeTime.current = now;
-                playTaskAssignedSound();
-              }
-
-              const isMyAssignment = currentStaffUser?.id === currAssignedId || 
-                Boolean(currentStaffUser?.fullName && updatedBooking.assignedStaffName && currentStaffUser.fullName.trim().toLowerCase() === updatedBooking.assignedStaffName.trim().toLowerCase());
-
-              if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
-                try {
-                  const alertTitle = isMyAssignment 
-                    ? "تم إسناد مهمة صيانة جديدة إليك! 🔧" 
-                    : `تم إسناد الطلب للفني ${updatedBooking.assignedStaffName || ''} 🔧`;
-                  new Notification(alertTitle, {
-                    body: `${updatedBooking.carModel || 'سيارة'} - ${updatedBooking.serviceType || 'صيانة'} (${updatedBooking.customerName || ''})`,
-                    icon: settings.logoUrl || "/favicon.ico"
-                  });
-                } catch {}
+                // Desktop browser notification
+                if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+                  try {
+                    const carTitle = newBooking.carModel ? `${newBooking.carModel}` : 'سيارة';
+                    const serviceTitle = newBooking.serviceType || 'صيانة متنقلة';
+                    new Notification("حجز جديد! 🚗", {
+                      body: `حجز جديد لـ ${carTitle} - ${serviceTitle}`,
+                      icon: settings.logoUrl || "/favicon.ico"
+                    });
+                  } catch {}
+                }
               }
             }
-            knownAssignmentMap.current.set(docId, currAssignedId);
-          }
-        });
 
-        snapshot.forEach((doc) => {
-          knownBookingIds.current.add(doc.id);
-          const recData = doc.data() as MaintenanceRecord;
-          if (!knownAssignmentMap.current.has(doc.id)) {
-            knownAssignmentMap.current.set(doc.id, recData.assignedStaffId);
+            // Trigger technician assignment alert when assignedStaffId changes or is freshly assigned
+            if (change.type === "modified" && isSyncStabilized.current && !change.doc.metadata.hasPendingWrites) {
+              const updatedBooking = change.doc.data() as MaintenanceRecord;
+              const prevAssignedId = knownAssignmentMap.current.get(docId);
+              const currAssignedId = updatedBooking.assignedStaffId;
+
+              if (currAssignedId && currAssignedId !== prevAssignedId) {
+                const now = Date.now();
+                if (settings.enableSoundAlerts !== false && now - lastAssignmentChimeTime.current > 2000) {
+                  lastAssignmentChimeTime.current = now;
+                  playTaskAssignedSound();
+                }
+
+                const isMyAssignment = currentStaffUser?.id === currAssignedId || 
+                  Boolean(currentStaffUser?.fullName && updatedBooking.assignedStaffName && currentStaffUser.fullName.trim().toLowerCase() === updatedBooking.assignedStaffName.trim().toLowerCase());
+
+                if (typeof Notification !== 'undefined' && Notification.permission === "granted") {
+                  try {
+                    const alertTitle = isMyAssignment 
+                      ? "تم إسناد مهمة صيانة جديدة إليك! 🔧" 
+                      : `تم إسناد الطلب للفني ${updatedBooking.assignedStaffName || ''} 🔧`;
+                    new Notification(alertTitle, {
+                      body: `${updatedBooking.carModel || 'سيارة'} - ${updatedBooking.serviceType || 'صيانة'} (${updatedBooking.customerName || ''})`,
+                      icon: settings.logoUrl || "/favicon.ico"
+                    });
+                  } catch {}
+                }
+              }
+              knownAssignmentMap.current.set(docId, currAssignedId);
+            }
+          });
+
+          snapshot.forEach((doc) => {
+            knownBookingIds.current.add(doc.id);
+            const recData = doc.data() as MaintenanceRecord;
+            if (!knownAssignmentMap.current.has(doc.id)) {
+              knownAssignmentMap.current.set(doc.id, recData.assignedStaffId);
+            }
+            results.push({ id: doc.id, ...recData } as MaintenanceRecord);
+          });
+          results.sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
+          setRecords(results);
+          try { localStorage.setItem('drfix_cached_maintenance', JSON.stringify(results)); } catch {}
+        }, (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'maintenance');
+          if (isFirestoreQuotaError(error) && unsubM) {
+            try { unsubM(); } catch {}
+            unsubM = null;
           }
-          results.push({ id: doc.id, ...recData } as MaintenanceRecord);
+          try {
+            const cached = localStorage.getItem('drfix_cached_maintenance');
+            if (cached) setRecords(JSON.parse(cached));
+          } catch {}
         });
-        results.sort((a, b) => getBookingTimestamp(b) - getBookingTimestamp(a));
-        setRecords(results);
-        try { localStorage.setItem('drfix_cached_maintenance', JSON.stringify(results)); } catch {}
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'maintenance');
-        if (isFirestoreQuotaError(error) && unsubM) {
-          try { unsubM(); } catch {}
-          unsubM = null;
-        }
-        try {
-          const cached = localStorage.getItem('drfix_cached_maintenance');
-          if (cached) setRecords(JSON.parse(cached));
-        } catch {}
-      });
+      };
+
+      // Load cached maintenance records immediately for instant UI
+      try {
+        const cached = localStorage.getItem('drfix_cached_maintenance');
+        if (cached) setRecords(JSON.parse(cached));
+      } catch {}
+
+      // Connect real-time maintenance listener once staff portal authentication is confirmed
+      if (auth.currentUser && auth.currentUser.email === STAFF_PORTAL_EMAIL) {
+        setupMaintenanceSubscription();
+      } else {
+        ensureStaffPortalAuth().then((ok) => {
+          if (ok) setupMaintenanceSubscription();
+        });
+        unsubAuth = onAuthStateChanged(auth, (user) => {
+          if (user && user.email === STAFF_PORTAL_EMAIL && !unsubM) {
+            setupMaintenanceSubscription();
+          }
+        });
+      }
 
       // Testimonials
       const qT = collection(db, 'testimonials');
@@ -1165,6 +1190,7 @@ const AdminDashboard = ({
 
       return () => {
         clearTimeout(stabilizationTimer);
+        if (unsubAuth) try { unsubAuth(); } catch {}
         if (unsubM) try { unsubM(); } catch {}
         if (unsubT) try { unsubT(); } catch {}
         if (unsubO) try { unsubO(); } catch {}
@@ -1182,6 +1208,7 @@ const AdminDashboard = ({
     e.preventDefault();
     setLoading(true);
     try {
+      await ensureStaffPortalAuth();
       const unifiedCustomerPhone = unifySaudiPhone(formData.customerPhone) || formData.customerPhone.trim();
       const recordDate = formData.serviceDate ? new Date(formData.serviceDate) : new Date();
 
@@ -1879,6 +1906,9 @@ const AdminDashboard = ({
         const ids = Array.from(selectedBookingIds);
         const count = ids.length;
 
+        // Ensure staff portal credentials are authenticated before deleting from maintenance
+        await ensureStaffPortalAuth();
+
         // Delete all from Firestore in parallel
         await Promise.all(ids.map(id => deleteDoc(doc(db, 'maintenance', String(id)))));
 
@@ -1892,6 +1922,7 @@ const AdminDashboard = ({
         setDeleteConfirmTarget(null);
         setDeleteToast({ message: `تم حذف (${count}) حجز بنجاح!`, type: 'success' });
       } else if (deleteConfirmTarget.type === 'batch_offers') {
+        await ensureStaffPortalAuth();
         const offersToDelete = [...offers];
         await Promise.all(offersToDelete.map(o => deleteDoc(doc(db, 'offers', o.id))));
         setOffers([]);
@@ -1900,6 +1931,7 @@ const AdminDashboard = ({
       } else if (deleteConfirmTarget.type === 'single' && deleteConfirmTarget.collectionName && deleteConfirmTarget.id) {
         const { collectionName, id } = deleteConfirmTarget;
 
+        await ensureStaffPortalAuth();
         await deleteDoc(doc(db, collectionName, id));
 
         if (collectionName === 'maintenance') {
@@ -2008,12 +2040,16 @@ const AdminDashboard = ({
       });
     }
 
-    // Persist to Firestore in background
-    updateDoc(doc(db, 'maintenance', id), {
-      status: newStatus,
-      updatedAt: new Date().toISOString()
-    }).catch(error => {
-      console.error("Error updating status in Firestore:", error);
+    // Persist to Firestore in background with verified staff credentials
+    ensureStaffPortalAuth().then(() => {
+      updateDoc(doc(db, 'maintenance', id), {
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      }).catch(error => {
+        console.error("Error updating status in Firestore:", error);
+      });
+    }).catch(err => {
+      console.warn("Staff auth check failed during status update:", err);
     });
 
     // Record in system audit trail

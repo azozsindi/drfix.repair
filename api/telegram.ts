@@ -2,7 +2,8 @@
 // Self-contained with real-time Firebase Firestore SDK
 
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc, query, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, collection, query, where, limit, getDocs, getDoc, doc, updateDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
 const DEFAULT_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 const DEFAULT_ADMIN_ID = '867105778';
@@ -17,9 +18,33 @@ const FIREBASE_CONFIG = {
   messagingSenderId: '262129832067'
 };
 
-function getDb() {
+const WORKER_EMAIL = 'accounting-engine@drfix.repair';
+const WORKER_PASSWORD = process.env.ACCOUNTING_WORKER_PASSWORD || 'DRFixSecureAccountingWorker2026!#';
+
+let dbInstance: any = null;
+let authPromise: Promise<any> | null = null;
+
+async function getDb() {
   const app = getApps().length > 0 ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
-  return getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
+  const auth = getAuth(app);
+  if (!auth.currentUser || auth.currentUser.email !== WORKER_EMAIL) {
+    if (!authPromise) {
+      authPromise = signInWithEmailAndPassword(auth, WORKER_EMAIL, WORKER_PASSWORD)
+        .then(() => {
+          authPromise = null;
+        })
+        .catch((err) => {
+          authPromise = null;
+          console.error('[Telegram Worker Auth Error]:', err.message);
+          throw err;
+        });
+    }
+    await authPromise;
+  }
+  if (!dbInstance) {
+    dbInstance = getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
+  }
+  return dbInstance;
 }
 
 function escapeHtml(text: any): string {
@@ -159,7 +184,7 @@ function getWhatsAppStatusUrlForTelegram(record: any, newStatus: string): string
 
 async function fetchAllMaintenanceRecords() {
   try {
-    const db = getDb();
+    const db = await getDb();
     const snap = await getDocs(collection(db, 'maintenance'));
     const records: any[] = [];
     snap.forEach(d => {
@@ -174,17 +199,41 @@ async function fetchAllMaintenanceRecords() {
 
 async function updateBookingStatus(bookingIdOrDocId: string, newStatus: string, updatedByInfo: string) {
   try {
-    const db = getDb();
-    const snap = await getDocs(collection(db, 'maintenance'));
+    const db = await getDb();
+    const cleanId = String(bookingIdOrDocId || '').trim().replace(/^#/, '');
     let targetDocId: string | null = null;
     let targetDocData: any = null;
-    
-    for (const d of snap.docs) {
-      const data = d.data();
-      if (d.id === bookingIdOrDocId || data.bookingId === bookingIdOrDocId) {
-        targetDocId = d.id;
-        targetDocData = { id: d.id, ...data };
-        break;
+
+    // 1. Fast indexed query by bookingId
+    const qSnap = await getDocs(
+      query(collection(db, 'maintenance'), where('bookingId', '==', cleanId), limit(1))
+    );
+    if (!qSnap.empty) {
+      const d = qSnap.docs[0];
+      targetDocId = d.id;
+      targetDocData = { id: d.id, ...d.data() };
+    }
+
+    // 2. Direct lookup by document ID
+    if (!targetDocId && cleanId) {
+      const directSnap = await getDoc(doc(db, 'maintenance', cleanId));
+      if (directSnap.exists()) {
+        targetDocId = directSnap.id;
+        targetDocData = { id: directSnap.id, ...directSnap.data() };
+      }
+    }
+
+    // 3. Fallback scan
+    if (!targetDocId && cleanId) {
+      const snap = await getDocs(query(collection(db, 'maintenance'), limit(200)));
+      const lowerId = cleanId.toLowerCase();
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (d.id.toLowerCase() === lowerId || String(data.bookingId || '').trim().toLowerCase() === lowerId) {
+          targetDocId = d.id;
+          targetDocData = { id: d.id, ...data };
+          break;
+        }
       }
     }
 
@@ -374,7 +423,7 @@ async function sendStatsReport(chatId: string | number) {
     let reviewsCount = 0;
     let totalStars = 0;
     try {
-      const db = getDb();
+      const db = await getDb();
       const testSnap = await getDocs(collection(db, 'testimonials'));
       testSnap.forEach(d => {
         reviewsCount++;
@@ -649,7 +698,9 @@ export default async function handler(req: any, res: any) {
         }
 
         const cleanPhone = formatSaudiPhone(customerPhone);
-        const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}` : null;
+        const waUrl = cleanPhone
+          ? getWhatsAppStatusUrlForTelegram(updateRes.record || { bookingId, customerPhone }, newStatus)
+          : null;
 
         let mapsUrl = '';
         if (updateRes.record?.coordinates?.latitude && updateRes.record?.coordinates?.longitude) {
@@ -667,8 +718,9 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        const appBase = process.env.APP_URL || 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
-        const cleanBaseUrl = appBase.startsWith('http') ? appBase : `https://${appBase}`;
+        const rawAppUrl = (process.env.APP_URL || '').trim();
+        const appBase = (rawAppUrl && !rawAppUrl.includes('run.app')) ? rawAppUrl : 'https://www.drfix.repair';
+        const cleanBaseUrl = (appBase.startsWith('http') ? appBase : `https://${appBase}`).replace(/\/$/, '');
 
         const inline_keyboard: any[][] = [];
         const actionRow: any[] = [];

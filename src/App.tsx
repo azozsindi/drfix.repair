@@ -2296,6 +2296,28 @@ const BookingForm = ({
         isImmediate: isImmediateBooking
       };
 
+      // Prevent duplicate rapid bookings within 45 seconds for same phone & car without unauthenticated Firestore queries
+      const nowMs = Date.now();
+      const submissionKey = `drfix_booking_${cleanPhone}_${(normalizedModel || data.carModel).trim().toLowerCase()}`;
+      try {
+        const lastSubmitted = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(submissionKey) : null;
+        if (lastSubmitted && (nowMs - Number(lastSubmitted)) < 45000) {
+          console.warn('[Website Booking]: Duplicate booking prevented within 45s cooldown.');
+          setIsLoading(false);
+          setIsSubmitted(true);
+          setTimeout(() => {
+            setIsSubmitted(false);
+            reset();
+          }, 3500);
+          return;
+        }
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(submissionKey, String(nowMs));
+        }
+      } catch (cdErr) {
+        console.warn('[Website Booking Cooldown Check]:', cdErr);
+      }
+
       await addDoc(collection(db, 'maintenance'), bookingDocData);
       
       // 1b. Automatically open/update customer file in Firestore (توحيد كرت وملف العميل بدون أي تكرار)
@@ -2567,8 +2589,8 @@ const BookingForm = ({
           `━━━━━━━━━━━━━━━━━━`;
 
         const rawOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-        const baseUrl = (!rawOrigin || rawOrigin.includes('localhost') || rawOrigin.includes('127.0.0.1'))
-          ? 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app'
+        const baseUrl = (!rawOrigin || rawOrigin.includes('localhost') || rawOrigin.includes('127.0.0.1') || rawOrigin.includes('run.app'))
+          ? 'https://www.drfix.repair'
           : rawOrigin;
 
         const inline_keyboard = [

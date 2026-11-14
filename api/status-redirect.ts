@@ -1,6 +1,7 @@
 // Self-contained Serverless Function to Update Status and Directly Redirect to WhatsApp
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, query, where, limit, getDocs, getDoc, doc, updateDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
 const DEFAULT_BOT_TOKEN = '8172576765:AAHhOYxpOlaX-Ly0FlN4dHtbHx9t4QYNLQE';
 const DEFAULT_ADMIN_ID = '867105778';
@@ -15,9 +16,33 @@ const FIREBASE_CONFIG = {
   messagingSenderId: '262129832067'
 };
 
-function getDb() {
+const WORKER_EMAIL = 'accounting-engine@drfix.repair';
+const WORKER_PASSWORD = process.env.ACCOUNTING_WORKER_PASSWORD || 'DRFixSecureAccountingWorker2026!#';
+
+let dbInstance: any = null;
+let authPromise: Promise<any> | null = null;
+
+async function getDb() {
   const app = getApps().length > 0 ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
-  return getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
+  const auth = getAuth(app);
+  if (!auth.currentUser || auth.currentUser.email !== WORKER_EMAIL) {
+    if (!authPromise) {
+      authPromise = signInWithEmailAndPassword(auth, WORKER_EMAIL, WORKER_PASSWORD)
+        .then(() => {
+          authPromise = null;
+        })
+        .catch((err) => {
+          authPromise = null;
+          console.error('[Status-Redirect Worker Auth Error]:', err.message);
+          throw err;
+        });
+    }
+    await authPromise;
+  }
+  if (!dbInstance) {
+    dbInstance = getFirestore(app, FIREBASE_CONFIG.firestoreDatabaseId);
+  }
+  return dbInstance;
 }
 
 function formatSaudiPhone(phone: string | undefined | null): string {
@@ -114,41 +139,73 @@ function buildWhatsAppMessage(record: any, newStatus: string): { msg: string, wa
 }
 
 export default async function handler(req: any, res: any) {
-  const bookingIdOrDocId = req.query.id || req.body?.id;
-  let newStatus = req.query.status || req.body?.status || 'accepted';
+  const rawId = req.query.id || req.body?.id;
+  const bookingIdOrDocId = rawId ? String(rawId).trim().replace(/^#/, '') : '';
+  let newStatus = String(req.query.status || req.body?.status || 'accepted').trim().toLowerCase();
 
+  if (newStatus === 'accept') newStatus = 'accepted';
   if (newStatus === 'onway') newStatus = 'on_the_way';
   if (newStatus === 'done') newStatus = 'completed';
-  if (newStatus === 'reject') newStatus = 'cancelled';
+  if (newStatus === 'reject' || newStatus === 'rejected') newStatus = 'cancelled';
 
   if (!bookingIdOrDocId) {
     return res.status(400).send('Missing booking ID');
   }
 
   try {
-    const db = getDb();
-    const snap = await getDocs(collection(db, 'maintenance'));
+    const db = await getDb();
     let targetDocId: string | null = null;
     let targetData: any = null;
 
-    for (const d of snap.docs) {
-      const data = d.data();
-      if (d.id === bookingIdOrDocId || data.bookingId === bookingIdOrDocId) {
-        targetDocId = d.id;
-        targetData = { id: d.id, ...data };
-        break;
+    // 1. Fast indexed query by bookingId
+    const qSnap = await getDocs(
+      query(collection(db, 'maintenance'), where('bookingId', '==', bookingIdOrDocId), limit(1))
+    );
+    if (!qSnap.empty) {
+      const d = qSnap.docs[0];
+      targetDocId = d.id;
+      targetData = { id: d.id, ...d.data() };
+    }
+
+    // 2. Direct lookup by document ID
+    if (!targetDocId) {
+      const directSnap = await getDoc(doc(db, 'maintenance', bookingIdOrDocId));
+      if (directSnap.exists()) {
+        targetDocId = directSnap.id;
+        targetData = { id: directSnap.id, ...directSnap.data() };
+      }
+    }
+
+    // 3. Fallback case-insensitive match within recent maintenance records
+    if (!targetDocId) {
+      const snap = await getDocs(query(collection(db, 'maintenance'), limit(200)));
+      const lowerId = bookingIdOrDocId.toLowerCase();
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (
+          d.id.toLowerCase() === lowerId ||
+          String(data.bookingId || '').trim().toLowerCase() === lowerId
+        ) {
+          targetDocId = d.id;
+          targetData = { id: d.id, ...data };
+          break;
+        }
       }
     }
 
     if (!targetDocId || !targetData) {
-      return res.status(404).send('Booking record not found');
+      if (req.headers.accept?.includes('application/json') && !req.query.redirect) {
+        return res.status(404).json({ ok: false, error: 'Booking record not found' });
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(404).send(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>لم يتم العثور على الحجز - DR.FIX</title></head><body style="background:#0b0f19;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;"><div style="background:#111827;border:1px solid #ef4444;padding:30px;border-radius:20px;max-width:420px;width:100%;"><div style="font-size:42px;margin-bottom:12px;">⚠️</div><h2 style="margin:0 0 10px;color:#f87171;">لم يتم العثور على الحجز</h2><p style="color:#9ca3af;font-size:14px;">رقم الحجز <b>#${bookingIdOrDocId}</b> غير موجود أو تم حذفه.</p></div></body></html>`);
     }
 
     // Update status in Firestore
     await updateDoc(doc(db, 'maintenance', targetDocId), {
       status: newStatus,
       updatedAt: new Date().toISOString(),
-      lastUpdatedBy: 'Direct WhatsApp Action Link'
+      lastUpdatedBy: 'Telegram Action Link'
     });
 
     const wa = buildWhatsAppMessage(targetData, newStatus);
@@ -194,7 +251,6 @@ export default async function handler(req: any, res: any) {
       console.warn('FCM dispatch failed in status-redirect:', fcmErr);
     }
 
-
     // If client requested JSON
     if (req.headers.accept?.includes('application/json') && !req.query.redirect) {
       return res.status(200).json({
@@ -212,13 +268,14 @@ export default async function handler(req: any, res: any) {
       newStatus === 'completed' ? 'تم الإنجاز 🏁' :
       (newStatus === 'cancelled' || newStatus === 'reject' || newStatus === 'rejected') ? 'تم رفض / إلغاء الطلب ❌' : 'قيد العمل 🔧';
 
+    const hasPhone = Boolean(wa.waPhone);
     const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>فتح محادثة واتساب - DR.FIX</title>
-  <meta http-equiv="refresh" content="0;url=${wa.waMeUrl}">
+  <title>${hasPhone ? 'فتح محادثة واتساب' : 'تم تحديث الحالة'} - DR.FIX</title>
+  ${hasPhone ? `<meta http-equiv="refresh" content="0;url=${wa.waMeUrl}">` : ''}
   <style>
     body {
       background-color: #0b0f19;
@@ -285,21 +342,24 @@ export default async function handler(req: any, res: any) {
       margin-bottom: 15px;
     }
   </style>
-  <script>
+  ${hasPhone ? `<script>
     // Automatically redirect to WhatsApp
-    window.location.href = "${wa.waMeUrl}";
+    window.location.href = ${JSON.stringify(wa.waMeUrl)};
     setTimeout(function() {
-      window.location.href = "${wa.appUrl}";
+      window.location.href = ${JSON.stringify(wa.appUrl)};
     }, 800);
-  </script>
+  </script>` : ''}
 </head>
 <body>
   <div class="card">
-    <div class="icon">💬⚡</div>
+    <div class="icon">${hasPhone ? '💬⚡' : '✅'}</div>
     <div class="status-badge">تم التحديث: ${statusLabel}</div>
-    <h2>جاري فتح تطبيق الواتساب...</h2>
+    <h2>${hasPhone ? 'جاري فتح تطبيق الواتساب...' : 'تم تحديث حالة الطلب بنجاح'}</h2>
     <p>تم تحديث الحجز رقم <b>#${targetData.bookingId || targetData.id}</b> بنجاح.</p>
-    <a href="${wa.waMeUrl}" class="btn">فتح تطبيق واتساب مباشرة 💬</a>
+    ${hasPhone
+      ? `<a href="${wa.waMeUrl}" class="btn">فتح تطبيق واتساب مباشرة 💬</a>`
+      : `<p style="color:#f59e0b;font-size:13px;">تنبيه: لا يوجد رقم جوال مسجل لهذا الحجز لفتح واتساب.</p>`
+    }
   </div>
 </body>
 </html>`;

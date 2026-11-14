@@ -7,7 +7,7 @@ import {
   TrendingUp, Navigation, Activity
 } from 'lucide-react';
 import { 
-  doc, setDoc, getDoc, updateDoc, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs
+  doc, setDoc, getDoc, updateDoc, addDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs, limit
 } from 'firebase/firestore';
 import { 
   GoogleAuthProvider, 
@@ -729,49 +729,27 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     setLoading(true);
     try {
-      let customerRef = doc(db, 'customers', phone);
-      let snap = await getDoc(customerRef);
+      const res = await fetch('/api/customer/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, password: pass })
+      });
+      const data = await res.json();
 
-      // If document was not found directly by phone ID, query by phone field (e.g. registered with Google)
-      if (!snap.exists()) {
-        const qPhone = query(collection(db, 'customers'), where('phone', '==', phone));
-        const phoneSnap = await getDocs(qPhone);
-        if (!phoneSnap.empty) {
-          snap = phoneSnap.docs[0];
-          customerRef = doc(db, 'customers', snap.id);
-        }
-      }
-
-      if (!snap.exists()) {
+      if (!res.ok || !data.success || !data.customer) {
         setLoading(false);
-        return { 
-          success: false, 
-          error: 'لم يتم العثور على حساب بهذا الرقم. يمكنك الضغط على "إنشاء حساب جديد" أو تسجيل الدخول بجوجل للتسجيل بسهولة.' 
-        };
+        return { success: false, error: data.message || 'تعذر تسجيل الدخول برقم الجوال' };
       }
 
-      const data = snap.data() as CustomerProfile;
-      // If customer set a password and input is checked
-      if (data.password && pass && data.password !== pass) {
-        setLoading(false);
-        return { success: false, error: 'كلمة المرور غير صحيحة.' };
-      }
-
-      const rawCars = Array.isArray(data.cars) ? data.cars : [];
-      const cleanCars = deduplicateCarsList(rawCars, data.removedCars || []);
+      const rawCars = Array.isArray(data.customer.cars) ? data.customer.cars : [];
+      const cleanCars = deduplicateCarsList(rawCars, data.customer.removedCars || []);
 
       const loggedUser: CustomerProfile = {
-        ...data,
-        id: snap.id,
-        phone: data.phone || phone,
+        ...data.customer,
+        id: data.customer.id || phone,
+        phone: data.customer.phone || phone,
         cars: cleanCars
       };
-
-      // Update lastLoginAt
-      await updateDoc(customerRef, { 
-        lastLoginAt: serverTimestamp(),
-        cars: cleanCars
-      }).catch(() => {});
 
       setCustomer(loggedUser);
       try {
@@ -793,7 +771,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err: any) {
       console.error('Login error:', err);
       setLoading(false);
-      return { success: false, error: 'حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.' };
+      return { success: false, error: 'حدث خطأ أثناء الاتصال بالخادم. يرجى المحاولة مرة أخرى.' };
     }
   };
 
@@ -2198,6 +2176,8 @@ export const CustomerPortalModal: React.FC = () => {
   const [newReqDate, setNewReqDate] = useState('');
   const [submittingNewReq, setSubmittingNewReq] = useState(false);
   const [newReqSuccess, setNewReqSuccess] = useState(false);
+  const isSubmittingNewReqRef = useRef(false);
+  const lastBookingTimeRef = useRef(0);
 
   // Profile edit
   const [editName, setEditName] = useState('');
@@ -2333,13 +2313,52 @@ export const CustomerPortalModal: React.FC = () => {
   // Submit direct new maintenance request
   const handleCreateNewRequest = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingNewReq || isSubmittingNewReqRef.current) return;
     if (!newReqCarModel.trim()) {
       alert('يرجى تحديد أو إدخال سيارتك');
       return;
     }
+
+    const now = Date.now();
+    // Anti double-click debounce: prevent rapid re-submissions within 6 seconds
+    if (now - lastBookingTimeRef.current < 6000) {
+      return;
+    }
+    lastBookingTimeRef.current = now;
+    isSubmittingNewReqRef.current = true;
     setSubmittingNewReq(true);
+
     try {
       const cleanPhone = customer.phone ? cleanSaudiPhone(customer.phone) : editPhone ? cleanSaudiPhone(editPhone) : '';
+
+      // Prevent duplicate rapid booking requests within 45 seconds without unauthenticated Firestore queries
+      if (cleanPhone) {
+        const submissionKey = `drfix_cust_booking_${cleanPhone}_${newReqCarModel.trim().toLowerCase()}`;
+        try {
+          const lastSubmitted = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(submissionKey) : null;
+          if (lastSubmitted && (now - Number(lastSubmitted)) < 45000) {
+            console.warn('[Deduplication]: Duplicate request detected within 45s cooldown, skipping duplicate write.');
+            setNewReqCarModel('');
+            setNewReqNotes('');
+            setNewReqLocation('جدة');
+            setNewReqDate('');
+            setSubmittingNewReq(false);
+            isSubmittingNewReqRef.current = false;
+            setNewReqSuccess(true);
+            setTimeout(() => {
+              setNewReqSuccess(false);
+              setActiveTab('bookings');
+            }, 1200);
+            return;
+          }
+          if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(submissionKey, String(now));
+          }
+        } catch (checkErr) {
+          console.warn('[Deduplication Check Warn]:', checkErr);
+        }
+      }
+
       const uniqueBookingId = 'FIX-' + Math.floor(1000 + Math.random() * 9000);
 
       const bookingDoc = {
@@ -2370,6 +2389,12 @@ export const CustomerPortalModal: React.FC = () => {
         }).catch(() => {});
       }
 
+      // Reset form fields immediately so they cannot be submitted again
+      setNewReqCarModel('');
+      setNewReqNotes('');
+      setNewReqLocation('جدة');
+      setNewReqDate('');
+
       // 1. Dispatch Server-side Telegram Notification
       let serverNotified = false;
       try {
@@ -2380,10 +2405,10 @@ export const CustomerPortalModal: React.FC = () => {
             bookingId: uniqueBookingId,
             customerPhone: cleanPhone,
             customerName: customer.name || 'عميل DR.FIX',
-            carModel: newReqCarModel.trim(),
+            carModel: bookingDoc.carModel,
             serviceType: newReqServiceType,
-            notes: newReqNotes.trim(),
-            location: newReqLocation.trim() || 'جدة',
+            notes: bookingDoc.notes,
+            location: bookingDoc.location,
             serviceDate: newReqDate ? new Date(newReqDate).toLocaleDateString('ar-SA') : 'موعد فوري',
             isImmediate: true
           })
@@ -2407,14 +2432,17 @@ export const CustomerPortalModal: React.FC = () => {
           `🔖 <b>رقم الحجز:</b> <code>${uniqueBookingId}</code>\n` +
           `👤 <b>العميل:</b> ${escapeTelegramHtml(customer.name || 'عميل كريم')}\n` +
           `📱 <b>الجوال:</b> <code>${cleanPhone}</code>\n` +
-          `🚘 <b>السيارة:</b> ${escapeTelegramHtml(newReqCarModel.trim())}\n` +
+          `🚘 <b>السيارة:</b> ${escapeTelegramHtml(bookingDoc.carModel)}\n` +
           `🔧 <b>الخدمة:</b> ${escapeTelegramHtml(newReqServiceType)}\n` +
-          `📍 <b>الموقع:</b> ${escapeTelegramHtml(newReqLocation.trim() || 'جدة')}\n` +
-          (newReqNotes.trim() ? `📝 <b>الملاحظات:</b> ${escapeTelegramHtml(newReqNotes.trim())}\n` : '') +
+          `📍 <b>الموقع:</b> ${escapeTelegramHtml(bookingDoc.location)}\n` +
+          (bookingDoc.notes ? `📝 <b>الملاحظات:</b> ${escapeTelegramHtml(bookingDoc.notes)}\n` : '') +
           `⏰ <b>الوقت:</b> ${new Date().toLocaleTimeString('ar-SA')}\n` +
           `━━━━━━━━━━━━━━━━━━`;
 
-        const publicBaseUrl = 'https://ais-dev-67s7t2ibowkgamyonguwv5-138630195296.europe-west2.run.app';
+        const rawOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+        const publicBaseUrl = (!rawOrigin || rawOrigin.includes('localhost') || rawOrigin.includes('127.0.0.1') || rawOrigin.includes('run.app'))
+          ? 'https://www.drfix.repair'
+          : rawOrigin;
         const inline_keyboard: any[][] = [];
         if (waLink) {
           inline_keyboard.push([{ text: '💬 فتح واتساب العميل', url: waLink }]);
@@ -2431,16 +2459,17 @@ export const CustomerPortalModal: React.FC = () => {
       addDoc(collection(db, 'notifications'), {
         type: 'new_booking',
         title: 'طلب صيانة جديد 🚗',
-        body: `طلب صيانة جديد #${uniqueBookingId} للسيارة ${newReqCarModel.trim()} من ${customer.name || cleanPhone}`,
+        body: `طلب صيانة جديد #${uniqueBookingId} للسيارة ${bookingDoc.carModel} من ${customer.name || cleanPhone}`,
         bookingId: uniqueBookingId,
         customerName: customer.name || 'عميل',
         customerPhone: cleanPhone,
-        carModel: newReqCarModel.trim(),
+        carModel: bookingDoc.carModel,
         serviceType: newReqServiceType,
         createdAt: serverTimestamp()
       }).catch(() => {});
 
       setSubmittingNewReq(false);
+      isSubmittingNewReqRef.current = false;
       setNewReqSuccess(true);
       setTimeout(() => {
         setNewReqSuccess(false);
@@ -2449,6 +2478,7 @@ export const CustomerPortalModal: React.FC = () => {
     } catch (err) {
       console.error('Create request error:', err);
       setSubmittingNewReq(false);
+      isSubmittingNewReqRef.current = false;
       alert('حدث خطأ أثناء إرسال طلب الصيانة، يرجى المحاولة مرة أخرى.');
     }
   };
@@ -2698,10 +2728,10 @@ export const CustomerPortalModal: React.FC = () => {
 
                   <div>
                     <h2 className="text-lg sm:text-2xl font-display font-black tracking-tight flex items-center gap-2 flex-wrap">
-                      <span>مرحبًا {customer.name || 'ABDULAZIZ Sindi'} 👋</span>
+                      <span>مرحبًا {customer.name || 'عميلنا العزيز'} 👋</span>
                     </h2>
                     <p className={`text-xs sm:text-sm mt-1 leading-relaxed ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                      متابعة تلقائية وآمنة لطلباتك، مع إشعارات مباشرة وفواتير ومكافآت في حساب واحد.
+                      متابعة تلقائية وآمنة لطلباتك، مع إشعارات مباشرة وتفاصيل الصيانة في حساب واحد.
                     </p>
                   </div>
 
@@ -3326,7 +3356,7 @@ export const CustomerPortalModal: React.FC = () => {
                   <span>مركز الإشعارات والتنبيهات المباشرة</span>
                 </h4>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  تحديثات حالة طلباتك، المواعيد المعتمدة، والمكافآت الحصرية
+                  تحديثات حالة طلباتك ومواعيد الصيانة المعتمدة أولاً بأول
                 </p>
               </div>
 
@@ -3387,21 +3417,6 @@ export const CustomerPortalModal: React.FC = () => {
                   );
                 })}
 
-                {/* 3. Loyalty Reward Notification */}
-                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                    <Shield className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                      <span>مكافأة عميل dr.fix المعتمد</span>
-                      <span className="text-[10px] font-mono bg-emerald-500/20 px-1.5 py-0.2 rounded">نشط</span>
-                    </div>
-                    <p className="text-[11px] text-gray-300 mt-1 leading-relaxed">
-                      يسري لحسابك ضمان الصيانة الذهبي المعتمد وخصم 15% على الفحص الشامل القادم.
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
           )}

@@ -321,6 +321,130 @@ export default async function portalHandler(req: Request, res: Response) {
   }
 
   // =========================================================================
+  // SECTION 1.5: CUSTOMER PHONE LOGIN / AUTO-ONBOARDING (/api/customer/login)
+  // =========================================================================
+  if ((pathname.includes('/customer/login') || pathname.includes('/customer/phone-login') || actionParam === 'customer-login') && req.method === 'POST') {
+    const { phone: rawPhone, password: pass } = req.body || {};
+    const rawClean = String(rawPhone || '').trim();
+    if (!rawClean) {
+      return res.status(400).json({ error: 'Validation Error', message: 'رقم الجوال مطلوب' });
+    }
+
+    // Convert Arabic digits
+    const converted = rawClean
+      .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+      .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]);
+    let digits = converted.replace(/\D/g, '');
+    if (digits.startsWith('009665')) {
+      digits = '0' + digits.substring(5);
+    } else if (digits.startsWith('9665') && digits.length >= 12) {
+      digits = '0' + digits.substring(3);
+    } else if (digits.startsWith('5') && digits.length === 9) {
+      digits = '0' + digits;
+    }
+
+    if (digits.length < 10) {
+      return res.status(400).json({ error: 'Validation Error', message: 'يرجى إدخال رقم جوال صحيح (مثال: 05xxxxxxxx)' });
+    }
+
+    try {
+      const db = await getDb();
+      let customerDocId = digits;
+      let customerData: any = null;
+
+      // 1. Direct document check by normalized phone ID
+      const directRef = doc(db, 'customers', digits);
+      const directSnap = await getDoc(directRef);
+      if (directSnap.exists()) {
+        customerData = directSnap.data();
+        customerDocId = directSnap.id;
+      } else {
+        // 2. Query by phone field
+        const qCust = query(collection(db, 'customers'), where('phone', '==', digits), limit(1));
+        const custSnap = await getDocs(qCust);
+        if (!custSnap.empty) {
+          customerData = custSnap.docs[0].data();
+          customerDocId = custSnap.docs[0].id;
+        }
+      }
+
+      // 3. If customer profile exists, check password if one was set
+      if (customerData) {
+        if (customerData.password && pass && String(customerData.password).trim() !== String(pass).trim()) {
+          return res.status(401).json({ error: 'Auth Failed', message: 'كلمة المرور غير صحيحة.' });
+        }
+
+        // Update lastLoginAt
+        updateDoc(doc(db, 'customers', customerDocId), {
+          lastLoginAt: new Date().toISOString()
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          customer: {
+            ...customerData,
+            id: customerDocId,
+            phone: customerData.phone || digits
+          }
+        });
+      }
+
+      // 4. Customer profile does not exist in 'customers' collection yet:
+      // Search 'maintenance' collection to see if admin added bookings for this phone number!
+      const qMaint = query(collection(db, 'maintenance'), where('customerPhone', '==', digits), limit(20));
+      const maintSnap = await getDocs(qMaint);
+
+      let detectedName = 'عميل كريم';
+      const extractedCars: any[] = [];
+
+      if (!maintSnap.empty) {
+        maintSnap.forEach(d => {
+          const mData = d.data() as Record<string, any>;
+          if (mData.customerName && detectedName === 'عميل كريم') {
+            detectedName = String(mData.customerName).trim();
+          }
+          if (mData.vehicleType || mData.carModel) {
+            extractedCars.push({
+              id: `car_booking_${d.id}`,
+              make: mData.vehicleType || 'سيارة',
+              model: mData.carModel || '',
+              year: mData.carYear || new Date().getFullYear().toString(),
+              plateNumber: mData.carPlate || mData.plateNumber || '',
+              addedAt: new Date().toISOString()
+            });
+          }
+        });
+      }
+
+      // 5. Create new customer profile automatically so the page opens seamlessly!
+      const newProfile = {
+        id: digits,
+        name: detectedName,
+        phone: digits,
+        customerPhone: digits,
+        email: '',
+        status: 'regular',
+        cars: extractedCars,
+        totalSpent: 0,
+        totalVisits: maintSnap.size,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'customers', digits), newProfile);
+
+      return res.status(200).json({
+        success: true,
+        customer: newProfile,
+        isNewProfile: true
+      });
+    } catch (err: any) {
+      console.error('[Customer Phone Login Error]:', err);
+      return res.status(500).json({ error: 'Server Error', message: 'حدث خطأ في الخادم أثناء تسجيل الدخول' });
+    }
+  }
+
+  // =========================================================================
   // SECTION 2: CUSTOMER MY-BOOKINGS (/api/customer/my-bookings)
   // =========================================================================
   if (pathname.includes('/customer/my-bookings') || actionParam === 'my-bookings') {

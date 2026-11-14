@@ -57,31 +57,31 @@ service cloud.firestore {
     match /services/{serviceId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     match /offers/{offerId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     match /gallery/{itemId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     match /partners/{partnerId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     match /contracts/{contractId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     // ==========================================================
@@ -90,7 +90,7 @@ service cloud.firestore {
     match /official_documents/{docId} {
       allow read: if true;
       allow create, update: if true;
-      allow delete: if false;
+      allow delete: if isStaffOrBackend();
     }
 
     // ==========================================================
@@ -108,7 +108,7 @@ service cloud.firestore {
     // Public reads removed: accessible via /api/booking/track, staff API, or verified owner
     // ==========================================================
     match /maintenance/{recordId} {
-      allow read: if isAccountingBackend()
+      allow read: if isStaffOrBackend()
         || (isSignedIn() && (
           (resource.data.googleUid is string && resource.data.googleUid == request.auth.uid)
           || (resource.data.customerGoogleUid is string && resource.data.customerGoogleUid == request.auth.uid)
@@ -116,8 +116,8 @@ service cloud.firestore {
           || (resource.data.assignedStaffId is string && resource.data.assignedStaffId == request.auth.uid)
         ));
       allow create: if isValidBooking(request.resource.data);
-      allow update: if isAccountingBackend();
-      allow delete: if false;
+      allow update: if isStaffOrBackend();
+      allow delete: if isStaffOrBackend();
     }
 
     // ==========================================================
